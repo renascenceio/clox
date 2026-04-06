@@ -6,7 +6,6 @@
   :root {
     --background: #F2F2F7;
     --foreground: #1C1C1E;
-    --primary: 88 86 214; /* #5856D6 */
   }
 
   @media (prefers-color-scheme: dark) {
@@ -20,30 +19,40 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, sans-serif;
+  font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 @layer utilities {
-  .bg-surface {
-    background-color: #FFFFFF;
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
   }
-  .bg-surface-secondary {
-    background-color: #F2F2F7;
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
   }
-  .text-label {
-    color: #1C1C1E;
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(120, 120, 128, 0.2);
+    border-radius: 10px;
   }
-  .text-label-secondary {
-    color: #636366;
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(120, 120, 128, 0.3);
   }
-  .border-separator {
-    border-color: #E5E5EA;
+
+  .shadow-hig {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06);
   }
-  .text-primary {
-    color: #5856D6;
+
+  .glass {
+    @apply bg-white/80 backdrop-blur-xl border border-white/20;
   }
-  .bg-primary {
-    background-color: #5856D6;
-  }
+}
+
+.prose pre {
+  @apply bg-fill rounded-hig-md border border-separator/50 !important;
+}
+
+.prose code {
+  @apply text-primary font-mono !important;
 }
