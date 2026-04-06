@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  user
+  pro
+  admin
+  super_admin
+}
+
+enum Plan {
+  free
+  pro
+  enterprise
+}
+
+enum Workspace {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  role         Role          @default(user)
+  plan         Plan          @default(free)
+  createdAt    DateTime      @default(now())
+  chats        Chat[]
+  projects     Project[]
+  galleryItems GalleryItem[]
+}
+
+model Chat {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  workspace Workspace // TEXT | IMAGE | VIDEO | AUDIO
+  modelId   String
+  title     String
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id])
+  role      String   // user | assistant
+  content   String   @db.Text
+  mediaUrl  String?  // for image/video/audio outputs
+  modelId   String
+  tokens    Int?
+  createdAt DateTime @default(now())
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  name        String
+  coverUrl    String?
+  shareToken  String?       @unique
+  createdAt   DateTime      @default(now())
+  items       GalleryItem[]
+}
+
+model GalleryItem {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  projectId  String?
+  project    Project?  @relation(fields: [projectId], references: [id])
+  workspace  Workspace
+  modelId    String
+  prompt     String    @db.Text
+  mediaUrl   String
+  settings   Json
+  note       String?
+  createdAt  DateTime  @default(now())
+}
+
+model ApiKey {
+  id         String   @id @default(cuid())
+  provider   String
+  keyHash    String   // AES-256 encrypted, never stored plain
+  isActive   Boolean  @default(true)
+  spendCap   Float?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #F2F2F7;
+    --foreground: #1C1C1E;
+    --primary: 88 86 214; /* #5856D6 */
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #000000;
+      --foreground: #FFFFFF;
+    }
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer utilities {
+  .bg-surface {
+    background-color: #FFFFFF;
+  }
+  .bg-surface-secondary {
+    background-color: #F2F2F7;
+  }
+  .text-label {
+    color: #1C1C1E;
+  }
+  .text-label-secondary {
+    color: #636366;
+  }
+  .border-separator {
+    border-color: #E5E5EA;
+  }
+  .text-primary {
+    color: #5856D6;
+  }
+  .bg-primary {
+    background-color: #5856D6;
+  }
+}
