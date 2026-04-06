@@ -11,7 +11,8 @@ export default function SignupPage() {
 
   const handleSignup = (e: React.FormEvent) => {
     e.preventDefault()
-    // Mock signup redirect for verification
+    // Set a mock session cookie for easy access
+    document.cookie = "mock-session=true; path=/; max-age=3600"
     window.location.href = '/dashboard'
   }
 
@@ -73,7 +74,10 @@ export default function SignupPage() {
         </form>
 
         <div className="text-center space-y-4 pt-4 border-t border-[#E5E5EA]">
-           <button className="w-full h-12 bg-white border border-[#E5E5EA] rounded-2xl flex items-center justify-center gap-3 hover:bg-[#F2F2F7] transition-all font-medium text-sm">
+           <button
+             onClick={handleSignup}
+             className="w-full h-12 bg-white border border-[#E5E5EA] rounded-2xl flex items-center justify-center gap-3 hover:bg-[#F2F2F7] transition-all font-medium text-sm"
+           >
              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" alt="Google logo" />
              Continue with Google
            </button>

@@ -7,17 +7,15 @@
   - Environments: .env
 
  ✓ Starting...
- ✓ Ready in 3s
+ ✓ Ready in 4.5s
  ○ Compiling /src/middleware ...
- ✓ Compiled /src/middleware in 513ms (170 modules)
+ ✓ Compiled /src/middleware in 645ms (170 modules)
  ○ Compiling / ...
-<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (215kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
- ✓ Compiled / in 4.8s (631 modules)
- ✓ Compiled in 638ms (272 modules)
- GET / 200 in 5500ms
+ ✓ Compiled / in 6.3s (631 modules)
+ ✓ Compiled in 890ms (272 modules)
+ GET / 200 in 7238ms
  ○ Compiling /login ...
- ✓ Compiled /login in 3s (1407 modules)
- GET /login 200 in 3302ms
- ✓ Compiled /signup in 366ms (1413 modules)
- GET /signup 200 in 547ms
- GET /login 200 in 29ms
+ ✓ Compiled /login in 6.3s (1407 modules)
+ GET /login 200 in 6577ms
+ ✓ Compiled /dashboard in 401ms (1415 modules)
+ GET /dashboard 200 in 553ms
