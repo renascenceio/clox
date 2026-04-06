@@ -16,12 +16,12 @@ export default function LandingPage() {
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-xl border-b border-[#E5E5EA] z-50">
         <div className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 bg-[#5856D6] rounded-xl flex items-center justify-center">
               <span className="text-white font-bold text-lg">C</span>
             </div>
             <span className="font-bold text-xl tracking-tight">Clox Studio</span>
-          </div>
+          </Link>
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
             <Link href="#features" className="hover:text-[#5856D6] transition-colors">Features</Link>
             <Link href="#pricing" className="hover:text-[#5856D6] transition-colors">Pricing</Link>
@@ -45,7 +45,7 @@ export default function LandingPage() {
               <Link href="/signup" className="w-full sm:w-auto px-8 py-4 bg-[#5856D6] text-white rounded-2xl text-lg font-bold hover:bg-[#3634A3] transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]">
                 Start Generating for Free
               </Link>
-              <Link href="/dashboard" className="w-full sm:w-auto px-8 py-4 bg-white border border-[#E5E5EA] rounded-2xl text-lg font-bold hover:bg-[#F2F2F7] transition-all">
+              <Link href="/login" className="w-full sm:w-auto px-8 py-4 bg-white border border-[#E5E5EA] rounded-2xl text-lg font-bold hover:bg-[#F2F2F7] transition-all">
                 Enter Dashboard
               </Link>
             </div>
@@ -89,12 +89,12 @@ export default function LandingPage() {
 
       <footer className="py-20 px-6 border-t border-[#E5E5EA] bg-white">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 bg-[#5856D6] rounded-xl flex items-center justify-center">
               <span className="text-white font-bold text-lg">C</span>
             </div>
             <span className="font-bold text-xl tracking-tight">Clox Studio</span>
-          </div>
+          </Link>
           <div className="text-sm text-[#636366]">
             © 2025 Clox Studio. Built following Apple Human Interface Guidelines.
           </div>
