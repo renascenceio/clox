@@ -7,7 +7,7 @@ export default function DashboardPage() {
       <div className="p-10 space-y-8 max-w-6xl mx-auto">
         <header>
           <h1 className="text-3xl font-bold tracking-tight">Welcome back, Aslan</h1>
-          <p className="text-label-secondary mt-2">Here's an overview of your AI generations and projects.</p>
+          <p className="text-label-secondary mt-2">Here&apos;s an overview of your AI generations and projects.</p>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

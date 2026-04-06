@@ -9,18 +9,21 @@
  ✓ Starting...
  ✓ Ready in 1724ms
  ○ Compiling /src/middleware ...
- ✓ Compiled /src/middleware in 1431ms (170 modules)
- ○ Compiling /text ...
- ✓ Compiled /text in 11.9s (2018 modules)
-Warning: You provided a `value` prop to a form field without an `onChange` handler. This will render a read-only field. If the field should be mutable use `defaultValue`. Otherwise, set either `onChange` or `readOnly`.
-    at textarea
-    at form
-    at div
-    at div
-    at div
-    at div
-    at main
-    at div
+ ✓ Compiled /src/middleware  ⚠ Found a change in next.config.mjs. Restarting the server to apply the changes...
+ ⚠ Port 3000 is in use, trying 3001 instead.
+ ⚠ Port 3000 is in use, trying 3001 instead.
+  ▲ Next.js 14.2.15
+  - Local:        http://localhost:3002
+  - Environments: .env
+
+ ✓ Sta  ▲ Nex ✓ Ready in 11s
+ocal:       ✓ Ready in 11.8s
+\x9c\x93 Ready in 11.7s
+ts: .env
+
+ ✓ Starting...
+ ✓ Ready in 10.9s
+   at div
     at AppLayout (webpack-internal:///(ssr)/./src/shared/ui/layout/AppLayout.tsx:63:22)
     at TextPage (webpack-internal:///(ssr)/./src/app/text/page.tsx:50:94)
     at ClientPageRoot (webpack-internal:///(ssr)/./node_modules/next/dist/client/components/client-page.js:14:11)
@@ -76,3 +79,14 @@ Warning: You provided a `value` prop to a form field without an `onChange` handl
 <w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (215kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
  ✓ Compiled in 680ms (969 modules)
  ✓ Compiled in 970ms (2170 modules)
+ ⚠ Found a change in next.config.mjs. Restarting the server to apply the changes...
+ ⚠ Port 3000 is in use, trying 3001 instead.
+ ⚠ Port 3001 is in use, trying 3002 instead.
+ ⚠ Port 3002 is in use, trying 3003 instead.
+ ⚠ Port 3003 is in use, trying 3004 instead.
+  ▲ Next.js 14.2.15
+  - Local:        http://localhost:3004
+  - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 10.2s

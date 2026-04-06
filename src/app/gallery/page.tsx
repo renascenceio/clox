@@ -5,6 +5,7 @@ import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
 import { motion } from 'framer-motion'
 import { useState } from 'react'
 import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
+import Image from 'next/image'
 
 export default function GalleryPage() {
   const [activeTab, setActiveTab] = useState('All')
@@ -50,7 +51,12 @@ export default function GalleryPage() {
         <motion.div variants={stagger} initial="initial" animate="animate" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
            {[1, 2, 3, 4, 5, 6].map(i => (
              <motion.div key={i} variants={cardVariant} className="bg-surface border border-separator rounded-2xl overflow-hidden shadow-sm aspect-square relative group">
-                <img src={`https://picsum.photos/seed/gallery-${i}/800/800`} alt="Gallery item" className="w-full h-full object-cover" />
+                <Image
+                  src={`https://picsum.photos/seed/gallery-${i}/800/800`}
+                  alt="Gallery item"
+                  fill
+                  className="object-cover"
+                />
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
                    <div className="text-white text-[10px] font-bold uppercase tracking-widest mb-1">Image · FLUX.1</div>
                    <div className="text-white text-xs font-medium truncate">Architecture visualization...</div>
