@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import { IMAGE_MODELS, ASPECT_RATIOS } from '@/domains/image-generation/services/image-models'
 import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
+import Image from 'next/image'
 
 export default function ImagePage() {
   const [selectedModel, setSelectedModel] = useState(IMAGE_MODELS[0])
@@ -105,7 +106,14 @@ export default function ImagePage() {
                 layout
                 className="relative group bg-surface border border-separator rounded-2xl overflow-hidden shadow-sm hover:shadow-hig transition-all break-inside-avoid"
               >
-                <img src={gen.url} alt={gen.prompt} className="w-full h-auto" />
+                <div className="relative aspect-square w-full">
+                  <Image
+                    src={gen.url}
+                    alt={gen.prompt}
+                    fill
+                    className="object-cover"
+                  />
+                </div>
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
                    <p className="text-white text-xs line-clamp-2 mb-3">{gen.prompt}</p>
                    <div className="flex gap-2">
