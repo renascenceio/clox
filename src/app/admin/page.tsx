@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { getAdminSettings, saveAdminSettings } from '@/lib/admin-settings'
 
 // COMPLETE Provider configurations with documentation links
 const PROVIDER_CONFIG = {
@@ -84,11 +85,18 @@ export default function AdminDashboard() {
       return
     }
 
-    // Load API keys from localStorage
-    const stored = localStorage.getItem('clox_api_keys')
-    if (stored) {
-      setApiKeys(JSON.parse(stored))
-    }
+    // Load API keys from shared settings store
+    const settings = getAdminSettings()
+    const keys: Record<string, { key: string; secret: string; url: string; enabled: boolean }> = {}
+    Object.entries(settings.providers).forEach(([provider, config]) => {
+      keys[provider] = {
+        key: config.apiKey || '',
+        secret: config.apiSecret || '',
+        url: config.baseUrl || '',
+        enabled: config.enabled
+      }
+    })
+    setApiKeys(keys)
 
     // Load users from Supabase
     try {
@@ -104,10 +112,15 @@ export default function AdminDashboard() {
   }
 
   const handleSaveKey = (provider: string) => {
-    const updated = { ...apiKeys }
-    localStorage.setItem('clox_api_keys', JSON.stringify(updated))
-    
-    // Also sync to Supabase for persistence (future enhancement)
+    const config = apiKeys[provider]
+    const settings = getAdminSettings()
+    settings.providers[provider] = {
+      enabled: config?.enabled ?? false,
+      apiKey: config?.key || '',
+      apiSecret: config?.secret || '',
+      baseUrl: config?.url || ''
+    }
+    saveAdminSettings(settings)
     alert(`${PROVIDER_CONFIG[provider as keyof typeof PROVIDER_CONFIG].name} settings saved!`)
   }
 
@@ -117,10 +130,23 @@ export default function AdminDashboard() {
         ...prev,
         [provider]: {
           ...prev[provider],
+          key: prev[provider]?.key || '',
+          secret: prev[provider]?.secret || '',
+          url: prev[provider]?.url || '',
           enabled: !prev[provider]?.enabled
         }
       }
-      localStorage.setItem('clox_api_keys', JSON.stringify(updated))
+      // Save to shared settings store immediately
+      const settings = getAdminSettings()
+      Object.entries(updated).forEach(([provider, config]) => {
+        settings.providers[provider] = {
+          enabled: config.enabled,
+          apiKey: config.key || '',
+          apiSecret: config.secret || '',
+          baseUrl: config.url || ''
+        }
+      })
+      saveAdminSettings(settings)
       return updated
     })
   }
