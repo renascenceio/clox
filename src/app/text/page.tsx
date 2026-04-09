@@ -262,7 +262,7 @@ export default function TextPage() {
                   value={input}
                   onChange={handleInputChange}
                   placeholder={`Message ${activeAIType} AI...`}
-                  className="w-full min-h-[80px] max-h-[240px] p-6 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
+                  className="w-full min-h-[80px] max-h-[240px] p-6 pl-16 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
                   rows={1}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -272,6 +272,17 @@ export default function TextPage() {
                     }
                   }}
                 />
+                {/* File Upload Button */}
+                <button
+                  type="button"
+                  className="absolute left-4 bottom-4 w-10 h-10 flex items-center justify-center text-label-secondary hover:text-brown dark:hover:text-teal transition-all hover:scale-110 active:scale-95"
+                  title="Attach files or images"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
+                </button>
+                {/* Send Button */}
                 <button
                   type="submit"
                   disabled={isLoading || !input?.trim()}

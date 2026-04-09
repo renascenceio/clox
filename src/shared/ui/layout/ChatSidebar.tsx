@@ -69,6 +69,19 @@ export default function ChatSidebar({ children }: ChatSidebarProps) {
             <FolderItem title="Research" count={3} />
           </div>
         </div>
+
+        <div className="px-3 mt-4">
+          <a 
+            href="/gallery" 
+            className="flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group"
+          >
+            <svg className="w-4 h-4 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            <span className="text-sm font-bold text-label-primary group-hover:text-brown dark:group-hover:text-teal transition-colors">Gallery</span>
+            <span className="ml-auto px-2 py-0.5 bg-brown-100 dark:bg-brown-900/40 text-brown-700 dark:text-brown-300 rounded-md text-xs font-bold border border-brown-200 dark:border-brown-700">42</span>
+          </a>
+        </div>
       </div>
     </div>
   )
