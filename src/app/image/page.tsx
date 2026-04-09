@@ -10,7 +10,7 @@ import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
 import Image from 'next/image'
 
 export default function ImagePage() {
-  const [selectedModel, setSelectedModel] = useState(IMAGE_MODELS[0])
+  const [selectedModel, setSelectedModel] = useState<typeof IMAGE_MODELS[number]>(IMAGE_MODELS[0])
   const [selectedRatio, setSelectedRatio] = useState('1:1')
   const [selectedQuality, setSelectedQuality] = useState('hd')
   const [selectedStyle, setSelectedStyle] = useState('photorealistic')
@@ -45,7 +45,7 @@ export default function ImagePage() {
       type="image"
       models={IMAGE_MODELS}
       selectedModel={selectedModel}
-      onModelChange={setSelectedModel}
+      onModelChange={(model) => setSelectedModel(model as typeof IMAGE_MODELS[number])}
       aspectRatios={ASPECT_RATIOS}
       selectedAspectRatio={selectedRatio}
       onAspectRatioChange={setSelectedRatio}
