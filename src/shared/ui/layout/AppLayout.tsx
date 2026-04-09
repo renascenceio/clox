@@ -1,5 +1,5 @@
 import { motion, Transition, Variants } from 'framer-motion'
-import { ReactNode } from 'react'
+import { ReactNode, useState } from 'react'
 import ThemeToggle from '@/shared/ui/components/ThemeToggle'
 import LanguageSwitcher from '@/shared/ui/components/LanguageSwitcher'
 import Avatar from '@/shared/ui/components/Avatar'
@@ -29,6 +29,8 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutProps) {
+  const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false)
+  
   return (
     <div className="flex h-screen relative bg-gradient-to-br from-surface-secondary via-surface-tertiary to-surface-secondary text-label-primary font-sans selection:bg-teal/20 overflow-hidden p-6 gap-6">
       {/* Visible Animated Background Blobs */}
@@ -45,19 +47,49 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
              <span className="text-white font-bold text-base">C</span>
            </div>
            
-           {/* Workspace Switcher */}
-           <div className="flex items-center gap-2">
-             <button className="flex items-center gap-2 px-3 py-1.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
+           {/* Workspace Switcher with Dropdown */}
+           <div className="relative">
+             <button 
+               onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)}
+               className="flex items-center gap-2 px-3 py-1.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group"
+             >
                <span className="text-sm font-medium text-label-primary group-hover:text-brown dark:group-hover:text-teal truncate max-w-[120px]">Personal</span>
                <svg className="w-3.5 h-3.5 text-label-tertiary group-hover:text-brown dark:group-hover:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                </svg>
              </button>
-             <button className="w-7 h-7 rounded-hig-lg bg-surface-tertiary/60 dark:bg-surface/60 border border-separator/30 flex items-center justify-center hover:bg-surface hover:border-brown dark:hover:border-teal transition-all text-label-secondary hover:text-brown dark:hover:text-teal">
-               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-               </svg>
-             </button>
+             
+             {showWorkspaceMenu && (
+               <div className="absolute top-full right-0 mt-2 w-56 bg-surface-secondary dark:bg-[#2C2C2E] rounded-hig-xl border border-separator/50 shadow-float overflow-hidden z-50">
+                 <div className="p-1">
+                   <button className="w-full px-4 py-2.5 text-left text-sm font-medium text-label-primary hover:bg-surface-tertiary dark:hover:bg-surface transition-colors rounded-hig-lg flex items-center gap-3">
+                     <div className="w-7 h-7 gradient-brown-teal rounded-hig-lg flex items-center justify-center">
+                       <span className="text-white text-xs font-bold">P</span>
+                     </div>
+                     <div className="flex-1">
+                       <div className="font-medium">Personal</div>
+                       <div className="text-[10px] text-label-tertiary">Active</div>
+                     </div>
+                     <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                     </svg>
+                   </button>
+                   <div className="h-px bg-separator/30 my-1"></div>
+                   <button 
+                     onClick={() => {
+                       setShowWorkspaceMenu(false)
+                       // Handle create new workspace
+                     }}
+                     className="w-full px-4 py-2.5 text-left text-sm font-medium text-brown dark:text-teal hover:bg-surface-tertiary dark:hover:bg-surface transition-colors rounded-hig-lg flex items-center gap-3"
+                   >
+                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                     </svg>
+                     Create New Workspace
+                   </button>
+                 </div>
+               </div>
+             )}
            </div>
         </div>
         <div className="flex-grow overflow-y-auto custom-scrollbar p-4">

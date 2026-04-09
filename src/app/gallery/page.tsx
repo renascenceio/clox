@@ -6,17 +6,27 @@ import { motion } from 'framer-motion'
 import { useState } from 'react'
 import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 
 export default function GalleryPage() {
   const [activeTab, setActiveTab] = useState('All')
+  const [activeChatId, setActiveChatId] = useState('portfolio-v1')
+  const router = useRouter()
+
+  const handleChatSelect = (chatId: string) => {
+    console.log('[v0] Gallery - Chat selected:', chatId)
+    setActiveChatId(chatId)
+    // Navigate to text page when a chat is selected
+    router.push('/text')
+  }
 
   const sidebar = (
-    <ChatSidebar>
+    <ChatSidebar activeChatId={activeChatId} onChatSelect={handleChatSelect}>
        <div className="px-2 mb-4">
           <div className="text-[11px] font-bold text-label-secondary uppercase tracking-tight px-2 mb-2">Projects</div>
-          <SidebarItem id="portfolio-v1" title="Portfolio v1" active />
-          <SidebarItem id="social-media-ads" title="Social Media Ads" />
-          <SidebarItem id="research" title="Research" />
+          <SidebarItem id="portfolio-v1" title="Portfolio v1" active={activeChatId === 'portfolio-v1'} onClick={() => handleChatSelect('portfolio-v1')} />
+          <SidebarItem id="social-media-ads" title="Social Media Ads" active={activeChatId === 'social-media-ads'} onClick={() => handleChatSelect('social-media-ads')} />
+          <SidebarItem id="research" title="Research" active={activeChatId === 'research'} onClick={() => handleChatSelect('research')} />
           <button className="w-full text-left px-3 py-2 text-primary text-xs font-medium hover:bg-primary/5 rounded-lg transition-colors mt-2">
             + New Project
           </button>
