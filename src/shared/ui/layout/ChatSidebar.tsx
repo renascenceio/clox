@@ -78,31 +78,27 @@ export function SidebarItem({ title, model, active }: { title: string; model?: s
   return (
     <motion.div
       whileHover={{ x: 4 }}
-      className={`group px-3 py-2.5 rounded-hig-lg cursor-pointer transition-all flex items-center justify-between relative ${
-        active
-          ? "bg-brown-50 text-brown-700 border border-brown-200"
-          : "hover:bg-fill text-label-primary"
-      }`}
+      className={`group px-3 py-2.5 rounded-hig-lg cursor-pointer transition-all flex items-center justify-between relative hover:bg-surface-tertiary dark:hover:bg-surface`}
     >
       <div className="flex-grow min-w-0 mr-2">
-        <div className={`text-sm font-bold truncate ${active ? 'text-brown-700' : 'text-label-primary'}`}>
+        <div className={`text-sm font-bold truncate ${active ? 'text-brown dark:text-teal' : 'text-label-primary'}`}>
           {title}
         </div>
         {model && (
-          <div className={`text-[10px] font-medium opacity-50 truncate`}>
+          <div className={`text-[10px] font-medium ${active ? 'text-brown/70 dark:text-teal/70' : 'text-label-tertiary'} truncate`}>
             {model}
           </div>
         )}
       </div>
       <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-        <button className="w-5 h-5 rounded-md hover:bg-white/50 flex items-center justify-center text-xs text-label-secondary transition-colors">
+        <button className="w-5 h-5 rounded-md hover:bg-surface-tertiary dark:hover:bg-surface flex items-center justify-center text-xs text-label-secondary transition-colors">
           ⋯
         </button>
       </div>
       {active && (
         <motion.div
           layoutId="sidebar-active"
-          className="absolute left-0 top-2 bottom-2 w-1 bg-brown rounded-full shadow-brown-glow"
+          className="absolute left-0 top-1 bottom-1 w-1 bg-brown dark:bg-teal rounded-full"
         />
       )}
     </motion.div>
