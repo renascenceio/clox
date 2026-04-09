@@ -11,7 +11,7 @@ export default function ChatSidebar({ children }: ChatSidebarProps) {
   return (
     <div className="flex flex-col h-full bg-surface">
       <div className="p-5 space-y-4">
-        <button className="w-full h-11 bg-primary text-white rounded-2xl font-bold transition-all shadow-lg hover:shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2">
+        <button className="w-full h-11 gradient-brown-teal text-white rounded-hig-xl font-bold transition-all shadow-brown-glow hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2">
           <span className="text-lg">+</span> New Chat
         </button>
 
@@ -21,9 +21,9 @@ export default function ChatSidebar({ children }: ChatSidebarProps) {
             placeholder="Search chats..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-9 pl-9 pr-4 bg-fill border-none rounded-xl text-xs focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-label-secondary/50 font-medium"
+            className="w-full h-9 pl-9 pr-4 bg-fill border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 focus:border-brown/30 outline-none transition-all placeholder:text-label-secondary/50 font-medium"
           />
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-secondary/40 group-focus-within:text-primary transition-colors">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-secondary/40 group-focus-within:text-brown transition-colors">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -68,14 +68,14 @@ export function SidebarItem({ title, model, active }: { title: string; model?: s
   return (
     <motion.div
       whileHover={{ x: 4 }}
-      className={`group px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-center justify-between relative ${
+      className={`group px-3 py-2.5 rounded-hig-lg cursor-pointer transition-all flex items-center justify-between relative ${
         active
-          ? "bg-primary/5 text-primary"
+          ? "bg-brown-50 text-brown-700 border border-brown-200"
           : "hover:bg-fill text-label-primary"
       }`}
     >
       <div className="flex-grow min-w-0 mr-2">
-        <div className={`text-sm font-bold truncate ${active ? 'text-primary' : 'text-label-primary'}`}>
+        <div className={`text-sm font-bold truncate ${active ? 'text-brown-700' : 'text-label-primary'}`}>
           {title}
         </div>
         {model && (
@@ -92,7 +92,7 @@ export function SidebarItem({ title, model, active }: { title: string; model?: s
       {active && (
         <motion.div
           layoutId="sidebar-active"
-          className="absolute left-0 top-2 bottom-2 w-1 bg-primary rounded-full shadow-[0_0_8px_rgba(88,86,214,0.4)]"
+          className="absolute left-0 top-2 bottom-2 w-1 bg-brown rounded-full shadow-brown-glow"
         />
       )}
     </motion.div>
@@ -101,12 +101,14 @@ export function SidebarItem({ title, model, active }: { title: string; model?: s
 
 function FolderItem({ title, count }: { title: string; count: number }) {
   return (
-    <div className="group px-3 py-2 rounded-xl cursor-pointer transition-all hover:bg-fill flex items-center justify-between">
+    <div className="group px-3 py-2 rounded-hig-lg cursor-pointer transition-all hover:bg-fill flex items-center justify-between">
       <div className="flex items-center gap-2.5 min-w-0">
-        <span className="text-xs opacity-40 group-hover:opacity-100 transition-opacity">📁</span>
+        <svg className="w-4 h-4 text-label-tertiary group-hover:text-brown transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+        </svg>
         <span className="text-sm font-medium text-label-primary truncate">{title}</span>
       </div>
-      <span className="text-[10px] font-bold text-label-secondary/40 group-hover:text-primary transition-colors">
+      <span className="text-[10px] font-bold text-label-secondary/40 group-hover:text-teal transition-colors">
         {count}
       </span>
     </div>

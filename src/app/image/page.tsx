@@ -2,15 +2,18 @@
 
 import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
+import UnifiedControlsPanel from '@/shared/ui/layout/UnifiedControlsPanel'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
-import { IMAGE_MODELS, ASPECT_RATIOS } from '@/domains/image-generation/services/image-models'
+import { IMAGE_MODELS, ASPECT_RATIOS, QUALITY_LEVELS, STYLE_PRESETS } from '@/domains/image-generation/services/image-models'
 import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
 import Image from 'next/image'
 
 export default function ImagePage() {
   const [selectedModel, setSelectedModel] = useState(IMAGE_MODELS[0])
   const [selectedRatio, setSelectedRatio] = useState('1:1')
+  const [selectedQuality, setSelectedQuality] = useState('hd')
+  const [selectedStyle, setSelectedStyle] = useState('photorealistic')
   const [prompt, setPrompt] = useState('')
   const [generations, setGenerations] = useState<{ id: string; url: string; prompt: string; model: string; ratio: string }[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
@@ -38,47 +41,21 @@ export default function ImagePage() {
   }
 
   const settingsPanel = (
-    <div className="p-6 space-y-8">
-      <div className="space-y-4">
-        <label className="text-[11px] font-bold text-label-secondary uppercase tracking-tight">Model</label>
-        <select
-          value={selectedModel.id}
-          onChange={(e) => setSelectedModel(IMAGE_MODELS.find(m => m.id === e.target.value)!)}
-          className="w-full h-10 px-3 bg-fill border-none rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none"
-        >
-          {IMAGE_MODELS.map(model => (
-            <option key={model.id} value={model.id}>{model.name}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="space-y-4">
-        <label className="text-[11px] font-bold text-label-secondary uppercase tracking-tight">Aspect Ratio</label>
-        <div className="grid grid-cols-3 gap-2">
-          {ASPECT_RATIOS.map(ratio => (
-            <button
-              key={ratio.value}
-              onClick={() => setSelectedRatio(ratio.value)}
-              className={`h-12 rounded-lg border text-xs flex items-center justify-center transition-all ${
-                selectedRatio === ratio.value
-                  ? 'bg-primary/10 border-primary text-primary'
-                  : 'bg-surface border-separator hover:border-primary-light'
-              }`}
-            >
-              {ratio.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-4">
-         <label className="text-[11px] font-bold text-label-secondary uppercase tracking-tight">Quality</label>
-         <div className="grid grid-cols-2 gap-2">
-            <button className="h-10 rounded-lg bg-primary/10 border border-primary text-primary text-xs">Standard</button>
-            <button className="h-10 rounded-lg bg-surface border border-separator text-xs">HD</button>
-         </div>
-      </div>
-    </div>
+    <UnifiedControlsPanel
+      type="image"
+      models={IMAGE_MODELS}
+      selectedModel={selectedModel}
+      onModelChange={setSelectedModel}
+      aspectRatios={ASPECT_RATIOS}
+      selectedAspectRatio={selectedRatio}
+      onAspectRatioChange={setSelectedRatio}
+      qualityLevels={QUALITY_LEVELS}
+      selectedQuality={selectedQuality}
+      onQualityChange={setSelectedQuality}
+      stylePresets={STYLE_PRESETS}
+      selectedStyle={selectedStyle}
+      onStyleChange={setSelectedStyle}
+    />
   )
 
   const sidebar = (
@@ -130,20 +107,20 @@ export default function ImagePage() {
           </AnimatePresence>
         </motion.div>
 
-        <div className="fixed bottom-0 left-60 right-[280px] p-6 bg-gradient-to-t from-surface-secondary via-surface-secondary/90 to-transparent z-20">
-          <div className="max-w-3xl mx-auto">
+        <div className="fixed bottom-0 left-[284px] right-[344px] p-6 bg-gradient-to-t from-surface-secondary via-surface-secondary/90 to-transparent z-20 pointer-events-none">
+          <div className="max-w-3xl mx-auto pointer-events-auto">
             <form onSubmit={handleGenerate} className="relative group">
-              <div className="flex bg-surface border border-separator rounded-2xl shadow-hig overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+              <div className="flex glass-float rounded-hig-2xl shadow-float overflow-hidden focus-within:ring-2 focus-within:ring-brown/20 transition-all">
                 <input
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="Describe the image you want to create..."
-                  className="flex-grow p-4 bg-transparent outline-none text-sm"
+                  className="flex-grow p-5 bg-transparent outline-none text-sm font-medium placeholder:text-label-tertiary"
                 />
                 <button
                   type="submit"
                   disabled={isGenerating || !prompt.trim()}
-                  className="px-6 bg-primary text-white text-sm font-medium disabled:opacity-50 transition-opacity"
+                  className="px-8 gradient-brown-teal text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:shadow-brown-glow"
                 >
                   {isGenerating ? 'Generating...' : 'Generate'}
                 </button>

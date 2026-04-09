@@ -27,76 +27,120 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutProps) {
   return (
-    <div className="flex h-screen bg-surface-secondary text-label-primary font-sans selection:bg-primary/30 overflow-hidden">
-      {/* Sidebar (240px) */}
-      <aside className="w-60 border-r border-separator bg-surface flex-shrink-0 flex flex-col z-20">
-        <div className="h-14 border-b border-separator flex items-center px-6">
-           <div className="w-6 h-6 bg-primary rounded-lg flex items-center justify-center mr-2 shadow-sm">
-             <span className="text-white font-bold text-xs">C</span>
+    <div className="flex h-screen bg-gradient-to-br from-surface-secondary via-surface-tertiary to-surface-secondary text-label-primary font-sans selection:bg-teal/20 overflow-hidden p-6 gap-6">
+      {/* Floating Left Sidebar (260px) */}
+      <aside className="w-[260px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
+        <div className="h-16 border-b border-separator/50 flex items-center px-6">
+           <div className="w-8 h-8 gradient-brown-teal rounded-hig-lg flex items-center justify-center mr-3 shadow-brown-glow">
+             <span className="text-white font-bold text-sm">C</span>
            </div>
-           <span className="font-bold text-sm tracking-tight">Clox Studio</span>
+           <span className="font-bold text-base tracking-tight">Clox Studio</span>
         </div>
         <div className="flex-grow overflow-y-auto custom-scrollbar">
           {sidebar}
         </div>
-        <div className="p-4 border-t border-separator bg-surface-secondary/50">
-           <div className="flex items-center gap-3 p-2 bg-surface rounded-2xl border border-separator shadow-sm group cursor-pointer hover:shadow-md transition-all active:scale-95">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-white shadow-inner group-hover:scale-105 transition-transform">
+        <div className="p-4 border-t border-separator/50">
+           <div className="flex items-center gap-3 p-2.5 bg-surface rounded-hig-xl border border-separator shadow-sm group cursor-pointer hover:shadow-hig-hover transition-all active:scale-95">
+              <div className="w-9 h-9 rounded-full gradient-teal-brown flex items-center justify-center text-xs font-bold text-white shadow-teal-glow group-hover:scale-105 transition-transform">
                 AR
               </div>
               <div className="flex-grow min-w-0">
                  <div className="text-xs font-bold truncate">Aslan Renascence</div>
-                 <div className="text-[9px] font-bold text-primary uppercase tracking-widest">Super Admin</div>
+                 <div className="text-[9px] font-bold text-brown uppercase tracking-widest">Super Admin</div>
               </div>
            </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-grow flex flex-col min-w-0 bg-surface-secondary relative z-10">
-        <nav className="h-14 border-b border-separator bg-surface/80 backdrop-blur-xl flex items-center px-8 justify-between sticky top-0 z-30 shadow-sm/5">
+      {/* Main Content with Floating Top Nav */}
+      <main className="flex-grow flex flex-col min-w-0 relative z-10 gap-6">
+        {/* Floating Top Navigation */}
+        <nav className="glass-float rounded-hig-2xl shadow-float flex items-center px-8 h-16 justify-between flex-shrink-0">
            <div className="flex items-center gap-8">
-              <div className="flex items-center gap-6 text-sm font-bold">
-                 <a href="/text" className="text-label-secondary hover:text-primary transition-all hover:scale-105">Text</a>
-                 <a href="/image" className="text-label-secondary hover:text-primary transition-all hover:scale-105">Image</a>
-                 <a href="/video" className="text-label-secondary hover:text-primary transition-all hover:scale-105">Video</a>
-                 <a href="/audio" className="text-label-secondary hover:text-primary transition-all hover:scale-105">Audio</a>
+              {/* Modern Segmented Control for Generator Types */}
+              <div className="flex items-center gap-2 bg-surface-secondary/60 p-1.5 rounded-hig-lg border border-separator/30">
+                 <NavTab href="/text" label="Text" icon={
+                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                   </svg>
+                 } />
+                 <NavTab href="/image" label="Image" icon={
+                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                   </svg>
+                 } />
+                 <NavTab href="/video" label="Video" icon={
+                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                   </svg>
+                 } />
+                 <NavTab href="/audio" label="Audio" icon={
+                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                   </svg>
+                 } />
               </div>
-              <div className="h-4 w-[1px] bg-separator"></div>
-              <a href="/gallery" className="text-sm font-bold text-label-secondary hover:text-primary transition-all hover:scale-105 flex items-center gap-2">
+              
+              <div className="h-6 w-[1px] bg-separator/50"></div>
+              
+              <a href="/gallery" className="text-sm font-semibold text-label-secondary hover:text-brown transition-all flex items-center gap-2 hover:scale-105 active:scale-95">
+                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                 </svg>
                  <span>Gallery</span>
-                 <span className="px-1.5 py-0.5 bg-surface-secondary rounded-md text-[10px] font-bold text-primary border border-separator">42</span>
+                 <span className="px-2 py-0.5 bg-brown-100 text-brown-700 rounded-md text-xs font-bold border border-brown-200">42</span>
               </a>
            </div>
 
-           <div className="flex items-center gap-4">
-              <div className="hidden md:flex bg-fill px-3 py-1.5 rounded-full items-center gap-2 border border-separator/50">
-                 <span className="text-[10px] font-bold text-label-secondary uppercase tracking-widest">Credits</span>
-                 <span className="text-xs font-bold text-primary">$12.40</span>
-                 <div className="w-3 h-3 bg-success rounded-full shadow-inner animate-pulse"></div>
+           <div className="flex items-center gap-3">
+              <div className="hidden md:flex bg-surface-secondary/60 px-4 py-2 rounded-hig-lg items-center gap-3 border border-separator/30">
+                 <span className="text-[10px] font-bold text-label-tertiary uppercase tracking-widest">Credits</span>
+                 <span className="text-sm font-bold text-teal-600">$12.40</span>
+                 <div className="w-2 h-2 bg-success rounded-full shadow-sm animate-pulse"></div>
               </div>
-              <button className="w-8 h-8 rounded-full bg-surface-secondary border border-separator flex items-center justify-center hover:bg-surface transition-colors shadow-sm active:scale-90">
-                 <span className="text-xs">🔔</span>
+              <button className="w-9 h-9 rounded-hig-lg bg-surface-secondary/60 border border-separator/30 flex items-center justify-center hover:bg-surface hover:border-separator transition-all shadow-sm active:scale-90 text-label-secondary hover:text-label-primary">
+                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                 </svg>
               </button>
            </div>
         </nav>
 
-        <div className="flex-grow relative overflow-y-auto scroll-smooth custom-scrollbar">
+        {/* Content Area */}
+        <div className="flex-grow relative overflow-y-auto scroll-smooth custom-scrollbar rounded-hig-2xl">
           {children}
         </div>
       </main>
 
-      {/* Settings Panel (280px) */}
+      {/* Floating Right Panel (320px) */}
       {rightPanel && (
         <motion.aside
           initial={{ x: "100%" }}
           animate={{ x: 0 }}
           transition={spring}
-          className="w-[280px] border-l border-separator bg-surface flex-shrink-0 z-20 shadow-2xl shadow-black/5"
+          className="w-[320px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 z-20 overflow-hidden"
         >
           {rightPanel}
         </motion.aside>
       )}
     </div>
+  )
+}
+
+function NavTab({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
+  const isActive = typeof window !== 'undefined' && window.location.pathname === href
+  
+  return (
+    <a
+      href={href}
+      className={`flex items-center gap-2 px-4 py-2 rounded-hig-md font-semibold text-sm transition-all ${
+        isActive
+          ? 'bg-white text-brown shadow-hig border border-separator/50'
+          : 'text-label-secondary hover:text-label-primary hover:bg-white/50'
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+    </a>
   )
 }

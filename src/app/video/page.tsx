@@ -2,11 +2,17 @@
 
 import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
+import UnifiedControlsPanel from '@/shared/ui/layout/UnifiedControlsPanel'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
+import { VIDEO_MODELS, VIDEO_ASPECT_RATIOS, VIDEO_DURATIONS, VIDEO_RESOLUTIONS } from '@/domains/video-generation/services/video-models'
 
 export default function VideoPage() {
+  const [selectedModel, setSelectedModel] = useState(VIDEO_MODELS[0])
+  const [selectedRatio, setSelectedRatio] = useState('16:9')
+  const [selectedDuration, setSelectedDuration] = useState(5)
+  const [selectedResolution, setSelectedResolution] = useState('1080p')
   const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [videos, setVideos] = useState<{ id: string; url: string; prompt: string; model: string }[]>([])
@@ -28,24 +34,20 @@ export default function VideoPage() {
   }
 
   const settingsPanel = (
-    <div className="p-6 space-y-8">
-      <div className="space-y-4">
-        <label className="text-[11px] font-bold text-label-secondary uppercase tracking-tight">Model</label>
-        <select className="w-full h-10 px-3 bg-fill border-none rounded-lg text-sm outline-none">
-          <option>Luma Dream Machine</option>
-          <option>Runway Gen-3</option>
-          <option>Kling 1.5</option>
-        </select>
-      </div>
-      <div className="space-y-4">
-        <label className="text-[11px] font-bold text-label-secondary uppercase tracking-tight">Duration</label>
-        <div className="grid grid-cols-3 gap-2">
-           <button className="h-10 rounded-lg bg-primary/10 border border-primary text-primary text-xs">5s</button>
-           <button className="h-10 rounded-lg bg-surface border border-separator text-xs">10s</button>
-           <button className="h-10 rounded-lg bg-surface border border-separator text-xs">15s</button>
-        </div>
-      </div>
-    </div>
+    <UnifiedControlsPanel
+      type="video"
+      models={VIDEO_MODELS}
+      selectedModel={selectedModel}
+      onModelChange={setSelectedModel}
+      aspectRatios={VIDEO_ASPECT_RATIOS}
+      selectedAspectRatio={selectedRatio}
+      onAspectRatioChange={setSelectedRatio}
+      durations={VIDEO_DURATIONS}
+      selectedDuration={selectedDuration}
+      onDurationChange={setSelectedDuration}
+      resolution={selectedResolution}
+      onResolutionChange={setSelectedResolution}
+    />
   )
 
   const sidebar = (
@@ -75,16 +77,16 @@ export default function VideoPage() {
            </AnimatePresence>
         </motion.div>
 
-        <div className="fixed bottom-0 left-60 right-[280px] p-6 bg-gradient-to-t from-surface-secondary via-surface-secondary/90 to-transparent z-20">
-          <div className="max-w-3xl mx-auto">
-             <form onSubmit={handleGenerate} className="flex bg-surface border border-separator rounded-2xl shadow-hig overflow-hidden">
+        <div className="fixed bottom-0 left-[284px] right-[344px] p-6 bg-gradient-to-t from-surface-secondary via-surface-secondary/90 to-transparent z-20 pointer-events-none">
+          <div className="max-w-3xl mx-auto pointer-events-auto">
+             <form onSubmit={handleGenerate} className="flex glass-float rounded-hig-2xl shadow-float overflow-hidden focus-within:ring-2 focus-within:ring-brown/20">
                 <input
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="Describe your video scene..."
-                  className="flex-grow p-4 bg-transparent outline-none text-sm"
+                  className="flex-grow p-5 bg-transparent outline-none text-sm font-medium placeholder:text-label-tertiary"
                 />
-                <button className="px-6 bg-primary text-white text-sm font-medium disabled:opacity-50" disabled={isGenerating}>
+                <button className="px-8 gradient-brown-teal text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-brown-glow transition-all" disabled={isGenerating}>
                   {isGenerating ? 'Processing...' : 'Generate Video'}
                 </button>
              </form>
