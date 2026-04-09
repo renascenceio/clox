@@ -66,8 +66,8 @@ export default function AudioPage() {
 
   const sidebar = (
     <ChatSidebar>
-       <SidebarItem title="Lo-fi hip hop" active />
-       <SidebarItem title="Narrative voiceover" />
+       <SidebarItem id="lofi-hip-hop" title="Lo-fi hip hop" active />
+       <SidebarItem id="narrative-voiceover" title="Narrative voiceover" />
     </ChatSidebar>
   )
 
@@ -128,15 +128,17 @@ export default function AudioPage() {
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="Describe your sound or enter text for TTS..."
-                  className="w-full min-h-[80px] max-h-[240px] p-6 pr-28 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
+                  className="w-full min-h-[80px] max-h-[240px] p-6 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
                   rows={1}
                 />
                 <button 
                   type="submit"
-                  className="absolute right-4 bottom-4 px-6 py-2.5 gradient-brown-teal text-white text-sm font-bold rounded-hig-lg disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-brown-glow transition-all" 
+                  className="absolute right-4 bottom-4 w-12 h-12 flex items-center justify-center gradient-brown-teal text-white rounded-hig-xl shadow-brown-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95" 
                   disabled={isGenerating}
                 >
-                  {isGenerating ? 'Synthesizing...' : 'Generate'}
+                  <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 3.33331V12.6666M8 3.33331L4 7.33331M8 3.33331L12 7.33331" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </button>
               </form>
             </div>

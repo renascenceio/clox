@@ -1,6 +1,7 @@
 import { motion, Transition, Variants } from 'framer-motion'
 import { ReactNode } from 'react'
 import ThemeToggle from '@/shared/ui/components/ThemeToggle'
+import LanguageSwitcher from '@/shared/ui/components/LanguageSwitcher'
 import Avatar from '@/shared/ui/components/Avatar'
 
 export const spring: Transition = { type: "spring", stiffness: 380, damping: 30 }
@@ -38,27 +39,42 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
       </div>
       {/* Floating Left Sidebar (280px) - Improved Design */}
       <aside className="w-[280px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
-        <div className="h-20 border-b border-separator/50 flex items-center px-6 bg-gradient-to-br from-brown/5 to-teal/5 dark:from-brown/10 dark:to-teal/10">
-           <div className="w-10 h-10 gradient-brown-teal rounded-hig-xl flex items-center justify-center mr-3 shadow-brown-glow">
-             <span className="text-white font-bold text-lg">C</span>
+        <div className="h-16 border-b border-separator/50 flex items-center justify-between px-4 bg-gradient-to-br from-brown/5 to-teal/5 dark:from-brown/10 dark:to-teal/10">
+           {/* Logo Icon Only */}
+           <div className="w-9 h-9 gradient-brown-teal rounded-hig-lg flex items-center justify-center shadow-brown-glow">
+             <span className="text-white font-bold text-base">C</span>
            </div>
-           <div>
-             <div className="font-bold text-lg tracking-tight">Clox Studio</div>
-             <div className="text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-widest">AI Platform</div>
+           
+           {/* Workspace Switcher */}
+           <div className="flex items-center gap-2">
+             <button className="flex items-center gap-2 px-3 py-1.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
+               <span className="text-sm font-medium text-label-primary group-hover:text-brown dark:group-hover:text-teal truncate max-w-[120px]">Personal</span>
+               <svg className="w-3.5 h-3.5 text-label-tertiary group-hover:text-brown dark:group-hover:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+               </svg>
+             </button>
+             <button className="w-7 h-7 rounded-hig-lg bg-surface-tertiary/60 dark:bg-surface/60 border border-separator/30 flex items-center justify-center hover:bg-surface hover:border-brown dark:hover:border-teal transition-all text-label-secondary hover:text-brown dark:hover:text-teal">
+               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+               </svg>
+             </button>
            </div>
         </div>
         <div className="flex-grow overflow-y-auto custom-scrollbar p-4">
           {sidebar}
         </div>
         <div className="p-4 border-t border-separator/50 bg-surface-secondary/30 dark:bg-surface-tertiary/30 space-y-3">
-           {/* Credits & Theme */}
+           {/* Credits, Language & Theme */}
            <div className="flex items-center justify-between">
              <div className="flex items-center gap-2 bg-surface-tertiary/60 dark:bg-surface/60 px-3 py-2 rounded-hig-lg border border-separator/30">
                <span className="text-[10px] font-bold text-label-tertiary uppercase tracking-widest">Credits</span>
                <span className="text-xs font-bold text-teal-600 dark:text-teal-400">$12.40</span>
                <div className="w-1.5 h-1.5 bg-success rounded-full shadow-sm animate-pulse"></div>
              </div>
-             <ThemeToggle />
+             <div className="flex items-center gap-2">
+               <LanguageSwitcher />
+               <ThemeToggle />
+             </div>
            </div>
            
            {/* User Profile */}

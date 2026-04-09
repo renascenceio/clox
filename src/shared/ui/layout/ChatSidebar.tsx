@@ -1,29 +1,173 @@
+'use client'
+
 import { motion } from 'framer-motion'
-import { ReactNode, useState } from 'react'
+import { ReactNode, useState, useEffect } from 'react'
+
+interface Chat {
+  id: string
+  title: string
+  model: string
+  createdAt: number
+  type: 'chat' | 'project'
+  folderId?: string
+}
+
+interface Folder {
+  id: string
+  title: string
+  createdAt: number
+}
 
 interface ChatSidebarProps {
   children?: ReactNode
+  activeChatId?: string
+  onChatSelect?: (chatId: string) => void
 }
 
-export default function ChatSidebar({ children }: ChatSidebarProps) {
+// LocalStorage keys
+const CHATS_KEY = 'clox_chats'
+const FOLDERS_KEY = 'clox_folders'
+
+export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarProps) {
   const [search, setSearch] = useState('')
+  const [chats, setChats] = useState<Chat[]>([])
+  const [folders, setFolders] = useState<Folder[]>([])
+  const [showNewMenu, setShowNewMenu] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+
+  // Load chats and folders from localStorage
+  useEffect(() => {
+    const savedChats = localStorage.getItem(CHATS_KEY)
+    const savedFolders = localStorage.getItem(FOLDERS_KEY)
+    if (savedChats) setChats(JSON.parse(savedChats))
+    if (savedFolders) setFolders(JSON.parse(savedFolders))
+  }, [])
+
+  // Save chats to localStorage
+  const saveChats = (newChats: Chat[]) => {
+    setChats(newChats)
+    localStorage.setItem(CHATS_KEY, JSON.stringify(newChats))
+  }
+
+  // Save folders to localStorage
+  const saveFolders = (newFolders: Folder[]) => {
+    setFolders(newFolders)
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify(newFolders))
+  }
 
   const handleNewChat = () => {
-    // Clear localStorage to reset recent activity
-    localStorage.removeItem('clox_recent_chats')
-    // Reload the page to clear state
-    window.location.reload()
+    const newChat: Chat = {
+      id: `chat_${Date.now()}`,
+      title: 'New Chat',
+      model: 'Gemini 2.5 Flash',
+      createdAt: Date.now(),
+      type: 'chat'
+    }
+    saveChats([newChat, ...chats])
+    setShowNewMenu(false)
+    onChatSelect?.(newChat.id)
   }
+
+  const handleNewProject = () => {
+    const newProject: Chat = {
+      id: `project_${Date.now()}`,
+      title: 'New Project',
+      model: '',
+      createdAt: Date.now(),
+      type: 'project'
+    }
+    saveChats([newProject, ...chats])
+    setShowNewMenu(false)
+    onChatSelect?.(newProject.id)
+  }
+
+  const handleNewFolder = () => {
+    const newFolder: Folder = {
+      id: `folder_${Date.now()}`,
+      title: 'New Folder',
+      createdAt: Date.now()
+    }
+    saveFolders([newFolder, ...folders])
+    setShowNewMenu(false)
+  }
+
+  const handleDeleteChat = (id: string) => {
+    saveChats(chats.filter(c => c.id !== id))
+  }
+
+  const handleDeleteFolder = (id: string) => {
+    // Remove folder and unassign chats from it
+    const updatedChats = chats.map(c => c.folderId === id ? { ...c, folderId: undefined } : c)
+    saveChats(updatedChats)
+    saveFolders(folders.filter(f => f.id !== id))
+  }
+
+  const handleRename = (id: string, newTitle: string, type: 'chat' | 'folder') => {
+    if (type === 'chat') {
+      saveChats(chats.map(c => c.id === id ? { ...c, title: newTitle } : c))
+    } else {
+      saveFolders(folders.map(f => f.id === id ? { ...f, title: newTitle } : f))
+    }
+    setEditingId(null)
+  }
+
+  const startEditing = (id: string, currentTitle: string) => {
+    setEditingId(id)
+    setEditingTitle(currentTitle)
+  }
+
+  // Filter chats by search
+  const filteredChats = chats.filter(c => 
+    c.title.toLowerCase().includes(search.toLowerCase()) && !c.folderId
+  )
+
+  const getChatsByFolder = (folderId: string) => 
+    chats.filter(c => c.folderId === folderId)
 
   return (
     <div className="flex flex-col h-full bg-surface dark:bg-surface-secondary">
       <div className="p-5 space-y-4">
-        <button 
-          onClick={handleNewChat}
-          className="w-full h-11 gradient-brown-teal text-white rounded-hig-xl font-bold transition-all shadow-brown-glow hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
-        >
-          <span className="text-lg">+</span> New Chat
-        </button>
+        {/* New Button with Dropdown */}
+        <div className="relative">
+          <button 
+            onClick={() => setShowNewMenu(!showNewMenu)}
+            className="w-full h-11 gradient-brown-teal text-white rounded-hig-xl font-bold transition-all shadow-brown-glow hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+          >
+            <span className="text-lg">+</span> New
+          </button>
+          {showNewMenu && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-surface dark:bg-surface-secondary border border-separator rounded-hig-lg shadow-float z-50 overflow-hidden">
+              <button
+                onClick={handleNewChat}
+                className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
+              >
+                <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                New Chat
+              </button>
+              <button
+                onClick={handleNewProject}
+                className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
+              >
+                <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                New Project
+              </button>
+              <button
+                onClick={handleNewFolder}
+                className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
+              >
+                <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                New Folder
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="relative group">
           <input
@@ -43,33 +187,70 @@ export default function ChatSidebar({ children }: ChatSidebarProps) {
       </div>
 
       <div className="flex-grow overflow-y-auto px-3 space-y-6 custom-scrollbar pb-10">
+        {/* Recent Activity */}
         <div className="space-y-1">
           <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest flex justify-between items-center">
             <span>Recent Activity</span>
-            <span className="w-1 h-1 rounded-full bg-primary/40"></span>
+            {filteredChats.length > 0 && (
+              <span className="text-label-tertiary">{filteredChats.length}</span>
+            )}
           </div>
           <div className="space-y-0.5">
-             {children || (
-               <>
-                 <SidebarItem title="Initial prompt..." model="GPT-4o" active />
-                 <SidebarItem title="Refining the code" model="Claude 3.5" />
-                 <SidebarItem title="Marketing ideas" model="Gemini Pro" />
-               </>
-             )}
+            {filteredChats.length === 0 ? (
+              <div className="px-3 py-4 text-xs text-label-tertiary text-center">
+                No chats yet. Click + New to start.
+              </div>
+            ) : (
+              filteredChats.map(chat => (
+                <SidebarItem
+                  key={chat.id}
+                  id={chat.id}
+                  title={chat.title}
+                  model={chat.type === 'project' ? 'Project' : chat.model}
+                  active={chat.id === activeChatId}
+                  isEditing={editingId === chat.id}
+                  editingTitle={editingTitle}
+                  onEditingTitleChange={setEditingTitle}
+                  onStartEdit={() => startEditing(chat.id, chat.title)}
+                  onSaveEdit={() => handleRename(chat.id, editingTitle, 'chat')}
+                  onCancelEdit={() => setEditingId(null)}
+                  onDelete={() => handleDeleteChat(chat.id)}
+                  onClick={() => onChatSelect?.(chat.id)}
+                />
+              ))
+            )}
           </div>
         </div>
 
-        <div className="space-y-1">
-          <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest">
-            Folders
+        {/* Folders */}
+        {folders.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest">
+              Folders
+            </div>
+            <div className="space-y-0.5">
+              {folders.map(folder => (
+                <FolderItem
+                  key={folder.id}
+                  id={folder.id}
+                  title={folder.title}
+                  chats={getChatsByFolder(folder.id)}
+                  activeChatId={activeChatId}
+                  isEditing={editingId === folder.id}
+                  editingTitle={editingTitle}
+                  onEditingTitleChange={setEditingTitle}
+                  onStartEdit={() => startEditing(folder.id, folder.title)}
+                  onSaveEdit={() => handleRename(folder.id, editingTitle, 'folder')}
+                  onCancelEdit={() => setEditingId(null)}
+                  onDelete={() => handleDeleteFolder(folder.id)}
+                  onChatSelect={onChatSelect}
+                />
+              ))}
+            </div>
           </div>
-          <div className="space-y-0.5">
-            <FolderItem title="Project Phoenix" count={12} />
-            <FolderItem title="Social Content" count={5} />
-            <FolderItem title="Research" count={3} />
-          </div>
-        </div>
+        )}
 
+        {/* Gallery Link */}
         <div className="px-3 mt-4">
           <a 
             href="/gallery" 
@@ -79,7 +260,6 @@ export default function ChatSidebar({ children }: ChatSidebarProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
             <span className="text-sm font-bold text-label-primary group-hover:text-brown dark:group-hover:text-teal transition-colors">Gallery</span>
-            <span className="ml-auto px-2 py-0.5 bg-brown-100 dark:bg-brown-900/40 text-brown-700 dark:text-brown-300 rounded-md text-xs font-bold border border-brown-200 dark:border-brown-700">42</span>
           </a>
         </div>
       </div>
@@ -87,27 +267,88 @@ export default function ChatSidebar({ children }: ChatSidebarProps) {
   )
 }
 
-export function SidebarItem({ title, model, active }: { title: string; model?: string; active?: boolean }) {
+interface SidebarItemProps {
+  id: string
+  title: string
+  model?: string
+  active?: boolean
+  isEditing?: boolean
+  editingTitle?: string
+  onEditingTitleChange?: (title: string) => void
+  onStartEdit?: () => void
+  onSaveEdit?: () => void
+  onCancelEdit?: () => void
+  onDelete?: () => void
+  onClick?: () => void
+}
+
+export function SidebarItem({ 
+  title, 
+  model, 
+  active, 
+  isEditing, 
+  editingTitle, 
+  onEditingTitleChange,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+  onClick 
+}: SidebarItemProps) {
   return (
     <motion.div
       whileHover={{ x: 4 }}
+      onClick={onClick}
       className={`group px-3 py-2.5 rounded-hig-lg cursor-pointer transition-all flex items-center justify-between relative hover:bg-surface-tertiary dark:hover:bg-surface`}
     >
       <div className="flex-grow min-w-0 mr-2">
-        <div className={`text-sm font-bold truncate ${active ? 'text-brown dark:text-teal' : 'text-label-primary'}`}>
-          {title}
-        </div>
-        {model && (
+        {isEditing ? (
+          <input
+            type="text"
+            value={editingTitle}
+            onChange={(e) => onEditingTitleChange?.(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onSaveEdit?.()
+              if (e.key === 'Escape') onCancelEdit?.()
+            }}
+            onBlur={onSaveEdit}
+            autoFocus
+            className="w-full text-sm font-bold bg-transparent outline-none border-b border-brown dark:border-teal"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <div className={`text-sm font-bold truncate ${active ? 'text-brown dark:text-teal' : 'text-label-primary'}`}>
+            {title}
+          </div>
+        )}
+        {model && !isEditing && (
           <div className={`text-[10px] font-medium ${active ? 'text-brown/70 dark:text-teal/70' : 'text-label-tertiary'} truncate`}>
             {model}
           </div>
         )}
       </div>
-      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-        <button className="w-5 h-5 rounded-md hover:bg-surface-tertiary dark:hover:bg-surface flex items-center justify-center text-xs text-label-secondary transition-colors">
-          ⋯
-        </button>
-      </div>
+      {!isEditing && (
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+          <button 
+            onClick={(e) => { e.stopPropagation(); onStartEdit?.(); }}
+            className="w-5 h-5 rounded-md hover:bg-surface-tertiary dark:hover:bg-surface flex items-center justify-center text-xs text-label-secondary transition-colors"
+            title="Rename"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+          </button>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+            className="w-5 h-5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 flex items-center justify-center text-xs text-label-secondary hover:text-red-500 transition-colors"
+            title="Delete"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+      )}
       {active && (
         <motion.div
           layoutId="sidebar-active"
@@ -118,7 +359,34 @@ export function SidebarItem({ title, model, active }: { title: string; model?: s
   )
 }
 
-function FolderItem({ title, count }: { title: string; count: number }) {
+interface FolderItemProps {
+  id: string
+  title: string
+  chats: Chat[]
+  activeChatId?: string
+  isEditing?: boolean
+  editingTitle?: string
+  onEditingTitleChange?: (title: string) => void
+  onStartEdit?: () => void
+  onSaveEdit?: () => void
+  onCancelEdit?: () => void
+  onDelete?: () => void
+  onChatSelect?: (chatId: string) => void
+}
+
+function FolderItem({ 
+  title, 
+  chats, 
+  activeChatId,
+  isEditing,
+  editingTitle,
+  onEditingTitleChange,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+  onChatSelect
+}: FolderItemProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (
@@ -127,7 +395,7 @@ function FolderItem({ title, count }: { title: string; count: number }) {
         onClick={() => setIsExpanded(!isExpanded)}
         className="group px-3 py-2 rounded-hig-lg cursor-pointer transition-all hover:bg-surface-tertiary dark:hover:bg-surface flex items-center justify-between"
       >
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0 flex-grow">
           <svg 
             className={`w-3 h-3 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-all ${isExpanded ? 'rotate-90' : ''}`} 
             fill="none" 
@@ -139,20 +407,67 @@ function FolderItem({ title, count }: { title: string; count: number }) {
           <svg className="w-4 h-4 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
-          <span className="text-sm font-medium text-label-primary group-hover:text-brown dark:group-hover:text-teal truncate">{title}</span>
+          {isEditing ? (
+            <input
+              type="text"
+              value={editingTitle}
+              onChange={(e) => onEditingTitleChange?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onSaveEdit?.()
+                if (e.key === 'Escape') onCancelEdit?.()
+              }}
+              onBlur={onSaveEdit}
+              autoFocus
+              className="flex-grow text-sm font-medium bg-transparent outline-none border-b border-brown dark:border-teal"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span className="text-sm font-medium text-label-primary group-hover:text-brown dark:group-hover:text-teal truncate">{title}</span>
+          )}
         </div>
-        <span className="text-[10px] font-bold text-label-secondary group-hover:text-teal dark:group-hover:text-brown transition-colors">
-          {count}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-label-secondary group-hover:text-teal dark:group-hover:text-brown transition-colors">
+            {chats.length}
+          </span>
+          {!isEditing && (
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+              <button 
+                onClick={(e) => { e.stopPropagation(); onStartEdit?.(); }}
+                className="w-5 h-5 rounded-md hover:bg-surface flex items-center justify-center text-xs text-label-secondary transition-colors"
+                title="Rename"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+                className="w-5 h-5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 flex items-center justify-center text-xs text-label-secondary hover:text-red-500 transition-colors"
+                title="Delete"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
-      {isExpanded && (
+      {isExpanded && chats.length > 0 && (
         <div className="ml-6 mt-1 space-y-0.5">
-          <div className="px-3 py-1.5 text-xs text-label-secondary hover:text-label-primary cursor-pointer transition-colors">
-            Chat item 1
-          </div>
-          <div className="px-3 py-1.5 text-xs text-label-secondary hover:text-label-primary cursor-pointer transition-colors">
-            Chat item 2
-          </div>
+          {chats.map(chat => (
+            <div 
+              key={chat.id}
+              onClick={() => onChatSelect?.(chat.id)}
+              className={`px-3 py-1.5 text-xs cursor-pointer transition-colors rounded-md ${
+                chat.id === activeChatId 
+                  ? 'text-brown dark:text-teal font-medium' 
+                  : 'text-label-secondary hover:text-label-primary'
+              }`}
+            >
+              {chat.title}
+            </div>
+          ))}
         </div>
       )}
     </div>

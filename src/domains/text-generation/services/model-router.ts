@@ -19,8 +19,8 @@ const MODEL_ID_MAP: Record<string, string> = {
   'claude-sonnet-4.6': 'claude-sonnet-4-20250514',
   'claude-haiku-4.5': 'claude-3-5-haiku-20241022',
   
-  // Google Gemini - 2.5 Flash is the working model
-  'gemini-2.5-flash': 'gemini-2.5-flash-preview-04-17',
+  // Google Gemini - Use correct GA model IDs
+  'gemini-2.5-flash': 'gemini-2.5-flash',
   'gemini-2.0-flash': 'gemini-2.0-flash',
   'gemini-1.5-pro': 'gemini-1.5-pro',
   
@@ -64,6 +64,14 @@ export function getModel(provider: AIProvider, modelId: string, apiKey?: string)
       const openai = createOpenAI({ apiKey })
       return openai('gpt-4o')
   }
+}
+
+// Provider-specific max durations (in seconds) based on API limits
+export const PROVIDER_MAX_DURATION: Record<AIProvider, number> = {
+  openai: 60,
+  anthropic: 60,
+  google: 300, // Google allows longer requests
+  mistral: 60,
 }
 
 export const TEXT_MODELS = [

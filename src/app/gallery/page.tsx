@@ -14,9 +14,9 @@ export default function GalleryPage() {
     <ChatSidebar>
        <div className="px-2 mb-4">
           <div className="text-[11px] font-bold text-label-secondary uppercase tracking-tight px-2 mb-2">Projects</div>
-          <SidebarItem title="Portfolio v1" active />
-          <SidebarItem title="Social Media Ads" />
-          <SidebarItem title="Research" />
+          <SidebarItem id="portfolio-v1" title="Portfolio v1" active />
+          <SidebarItem id="social-media-ads" title="Social Media Ads" />
+          <SidebarItem id="research" title="Research" />
           <button className="w-full text-left px-3 py-2 text-primary text-xs font-medium hover:bg-primary/5 rounded-lg transition-colors mt-2">
             + New Project
           </button>
