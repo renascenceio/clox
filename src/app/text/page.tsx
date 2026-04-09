@@ -10,7 +10,7 @@ import ReactMarkdown from 'react-markdown'
 import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
 
 export default function TextPage() {
-  const [selectedModel, setSelectedModel] = useState(TEXT_MODELS[0])
+  const [selectedModel, setSelectedModel] = useState<typeof TEXT_MODELS[number]>(TEXT_MODELS[0])
   const chat = useChat({
     api: '/api/chat',
     body: {
@@ -27,7 +27,7 @@ export default function TextPage() {
       type="text"
       models={TEXT_MODELS}
       selectedModel={selectedModel}
-      onModelChange={setSelectedModel}
+      onModelChange={(model) => setSelectedModel(model as typeof TEXT_MODELS[number])}
     />
   )
 
