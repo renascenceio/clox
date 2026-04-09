@@ -52,7 +52,6 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
     maxTokens: 2048,
     modelId: 'gemini-2.5-flash'
   })
-  const [showMoveMenu, setShowMoveMenu] = useState<string | null>(null)
 
   // Load chats and folders from localStorage
   useEffect(() => {
