@@ -1,0 +1,92 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+
+const LANGUAGES = [
+  { code: 'en', label: 'English', flag: '🇺🇸' },
+  { code: 'es', label: 'Español', flag: '🇪🇸' },
+  { code: 'fr', label: 'Français', flag: '🇫🇷' },
+  { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
+  { code: 'ja', label: '日本語', flag: '🇯🇵' },
+  { code: 'zh', label: '中文', flag: '🇨🇳' },
+  { code: 'ko', label: '한국어', flag: '🇰🇷' },
+  { code: 'ru', label: 'Русский', flag: '🇷🇺' },
+]
+
+export default function LanguageSwitcher() {
+  const [mounted, setMounted] = useState(false)
+  const [currentLang, setCurrentLang] = useState('en')
+  const [isOpen, setIsOpen] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+    const savedLang = localStorage.getItem('language') || 'en'
+    setCurrentLang(savedLang)
+  }, [])
+
+  const changeLanguage = (langCode: string) => {
+    setCurrentLang(langCode)
+    localStorage.setItem('language', langCode)
+    setIsOpen(false)
+    // Here you would typically trigger your i18n library to change language
+    // e.g., i18n.changeLanguage(langCode)
+  }
+
+  if (!mounted) {
+    return <div className="w-10 h-10" /> // Placeholder to prevent layout shift
+  }
+
+  const currentLanguage = LANGUAGES.find(lang => lang.code === currentLang) || LANGUAGES[0]
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-10 h-10 rounded-hig-lg bg-surface-secondary hover:bg-fill border border-separator/30 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+        aria-label="Switch language"
+      >
+        <span className="text-base">{currentLanguage.flag}</span>
+      </button>
+
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={() => setIsOpen(false)}
+          />
+          
+          {/* Dropdown */}
+          <div className="absolute bottom-full mb-2 right-0 w-56 bg-surface-secondary dark:bg-surface border border-separator rounded-hig-xl shadow-hig-hover overflow-hidden z-50">
+            <div className="p-2 border-b border-separator">
+              <div className="text-xs font-bold text-label-secondary uppercase tracking-widest px-2 py-1">
+                Select Language
+              </div>
+            </div>
+            <div className="max-h-64 overflow-y-auto custom-scrollbar p-1">
+              {LANGUAGES.map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => changeLanguage(lang.code)}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-hig-lg transition-all ${
+                    currentLang === lang.code
+                      ? 'bg-brown/10 dark:bg-teal/10 text-brown dark:text-teal border border-brown/20 dark:border-teal/20'
+                      : 'hover:bg-surface-tertiary dark:hover:bg-surface-tertiary/50 text-label-primary'
+                  }`}
+                >
+                  <span className="text-xl">{lang.flag}</span>
+                  <span className="text-sm font-medium">{lang.label}</span>
+                  {currentLang === lang.code && (
+                    <svg className="ml-auto w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

@@ -1,6 +1,7 @@
 import { motion, Transition, Variants } from 'framer-motion'
 import { ReactNode } from 'react'
 import ThemeToggle from '@/shared/ui/components/ThemeToggle'
+import LanguageSwitcher from '@/shared/ui/components/LanguageSwitcher'
 import Avatar from '@/shared/ui/components/Avatar'
 
 export const spring: Transition = { type: "spring", stiffness: 380, damping: 30 }
@@ -63,14 +64,17 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
           {sidebar}
         </div>
         <div className="p-4 border-t border-separator/50 bg-surface-secondary/30 dark:bg-surface-tertiary/30 space-y-3">
-           {/* Credits & Theme */}
+           {/* Credits, Language & Theme */}
            <div className="flex items-center justify-between">
              <div className="flex items-center gap-2 bg-surface-tertiary/60 dark:bg-surface/60 px-3 py-2 rounded-hig-lg border border-separator/30">
                <span className="text-[10px] font-bold text-label-tertiary uppercase tracking-widest">Credits</span>
                <span className="text-xs font-bold text-teal-600 dark:text-teal-400">$12.40</span>
                <div className="w-1.5 h-1.5 bg-success rounded-full shadow-sm animate-pulse"></div>
              </div>
-             <ThemeToggle />
+             <div className="flex items-center gap-2">
+               <LanguageSwitcher />
+               <ThemeToggle />
+             </div>
            </div>
            
            {/* User Profile */}
