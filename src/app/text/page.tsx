@@ -12,7 +12,6 @@ import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
 export default function TextPage() {
   const [selectedModel, setSelectedModel] = useState(TEXT_MODELS[0])
   const chat = useChat({
-    // @ts-expect-error - api is valid but type definition is missing in some versions
     api: '/api/chat',
     body: {
       model: selectedModel.id,
