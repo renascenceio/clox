@@ -1,0 +1,48 @@
+-- Create admin user in Supabase Auth
+-- This needs to be run from Supabase SQL Editor
+
+-- First, create the user in auth.users
+-- Note: Supabase auth uses bcrypt for password hashing
+-- Password: Admin123!
+
+-- Insert the admin user
+-- You'll need to run this in Supabase SQL Editor or use the Supabase dashboard
+-- to create user: aslan@renascence.io with password: Admin123!
+
+-- For now, use Supabase dashboard:
+-- 1. Go to Authentication > Users
+-- 2. Click "Invite user" or "Add user"  
+-- 3. Email: aslan@renascence.io
+-- 4. Password: Admin123!
+-- 5. Check "Auto Confirm User" if available
+
+-- Or use this SQL (requires admin access):
+-- INSERT INTO auth.users (
+--   instance_id,
+--   id,
+--   aud,
+--   role,
+--   email,
+--   encrypted_password,
+--   email_confirmed_at,
+--   created_at,
+--   updated_at,
+--   confirmation_token,
+--   email_change,
+--   email_change_token_new,
+--   recovery_token
+-- ) VALUES (
+--   '00000000-0000-0000-0000-000000000000',
+--   gen_random_uuid(),
+--   'authenticated',
+--   'authenticated',
+--   'aslan@renascence.io',
+--   crypt('Admin123!', gen_salt('bf')),
+--   NOW(),
+--   NOW(),
+--   NOW(),
+--   '',
+--   '',
+--   '',
+--   ''
+-- );

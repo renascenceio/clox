@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -9,55 +10,67 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
 
-    // Simple hardcoded check for now
-    if (email === 'aslan@renascence.io' && password === 'Admin123!') {
-      // Set a session flag in localStorage
-      localStorage.setItem('clox_admin_session', 'true')
-      router.push('/admin')
-    } else {
-      setError('Invalid email or password')
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (signInError) {
+        setError(signInError.message)
+        setLoading(false)
+        return
+      }
+
+      if (data.user) {
+        // Redirect to admin dashboard
+        router.push('/admin')
+      }
+    } catch {
+      setError('An unexpected error occurred')
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #F2F2F7 0%, #FFFFFF 50%, #F2F2F7 100%)' }}>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-surface-secondary via-white to-surface-secondary dark:from-surface-secondary dark:via-surface dark:to-surface-tertiary p-4">
       <div className="w-full max-w-md">
         {/* Logo/Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #A2845E 0%, #5AC8C8 100%)', boxShadow: '0 8px 16px rgba(162, 132, 94, 0.3)' }}>
+            <div className="w-14 h-14 gradient-brown-teal rounded-hig-2xl flex items-center justify-center shadow-brown-glow">
               <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h1 className="text-4xl font-bold" style={{ color: '#1C1C1E' }}>Clox Studio</h1>
+            <h1 className="text-4xl font-bold text-label-primary">Clox Studio</h1>
           </div>
-          <p className="text-sm font-semibold" style={{ color: '#636366' }}>Admin Access Portal</p>
+          <p className="text-sm font-semibold text-label-secondary">Admin Access Portal</p>
         </div>
 
         {/* Login Form */}
-        <form onSubmit={handleLogin} className="rounded-3xl p-8 space-y-6 shadow-xl" style={{ background: '#FFFFFF', border: '1px solid rgba(229, 229, 234, 0.5)' }}>
+        <form onSubmit={handleLogin} className="bg-white dark:bg-surface rounded-hig-3xl p-8 space-y-6 shadow-float border border-separator/30">
           <div>
-            <h2 className="text-2xl font-bold mb-2" style={{ color: '#1C1C1E' }}>Welcome Back</h2>
-            <p className="text-sm" style={{ color: '#636366' }}>Enter your credentials to access the admin dashboard</p>
+            <h2 className="text-2xl font-bold text-label-primary mb-2">Welcome Back</h2>
+            <p className="text-sm text-label-secondary">Enter your credentials to access the admin dashboard</p>
           </div>
 
           {error && (
-            <div className="p-4 rounded-2xl text-sm font-semibold" style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#B91C1C' }}>
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-hig-xl text-sm font-semibold text-red-800 dark:text-red-200">
               {error}
             </div>
           )}
 
           <div className="space-y-5">
             <div>
-              <label htmlFor="email" className="block text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#636366' }}>
+              <label htmlFor="email" className="block text-xs font-bold text-label-secondary uppercase tracking-widest mb-2">
                 Email Address
               </label>
               <input
@@ -66,18 +79,13 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                style={{ 
-                  background: '#FFFFFF',
-                  border: '2px solid rgba(229, 229, 234, 0.8)',
-                  color: '#1C1C1E'
-                }}
-                className="w-full h-14 px-4 rounded-2xl text-base font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-20 transition-all"
+                className="w-full h-14 px-4 bg-white dark:bg-surface-tertiary border-2 border-separator rounded-hig-xl text-base font-medium text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/30 focus:border-brown transition-all"
                 placeholder="admin@example.com"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#636366' }}>
+              <label htmlFor="password" className="block text-xs font-bold text-label-secondary uppercase tracking-widest mb-2">
                 Password
               </label>
               <input
@@ -86,12 +94,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                style={{ 
-                  background: '#FFFFFF',
-                  border: '2px solid rgba(229, 229, 234, 0.8)',
-                  color: '#1C1C1E'
-                }}
-                className="w-full h-14 px-4 rounded-2xl text-base font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-opacity-20 transition-all"
+                className="w-full h-14 px-4 bg-white dark:bg-surface-tertiary border-2 border-separator rounded-hig-xl text-base font-medium text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/30 focus:border-brown transition-all"
                 placeholder="••••••••"
               />
             </div>
@@ -100,25 +103,21 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full h-16 text-white rounded-2xl text-lg font-bold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ 
-              background: loading ? '#9CA3AF' : 'linear-gradient(135deg, #A2845E 0%, #5AC8C8 100%)',
-              boxShadow: loading ? 'none' : '0 10px 25px rgba(162, 132, 94, 0.4)'
-            }}
+            className="w-full h-16 gradient-brown-teal text-white rounded-hig-2xl text-lg font-bold shadow-float hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Signing In...' : 'Sign In to Dashboard'}
           </button>
 
-          <div className="pt-4 border-t text-center" style={{ borderColor: 'rgba(229, 229, 234, 0.5)' }}>
-            <p className="text-xs" style={{ color: '#8E8E93' }}>
-              Default credentials: aslan@renascence.io / Admin123!
+          <div className="pt-4 border-t border-separator/30 text-center">
+            <p className="text-xs text-label-tertiary">
+              Use your Supabase credentials to sign in
             </p>
           </div>
         </form>
 
         {/* Footer */}
-        <div className="mt-6 text-center text-xs" style={{ color: '#8E8E93' }}>
-          <p>Clox Studio v1.0 • Powered by Renascence AI</p>
+        <div className="mt-6 text-center text-xs text-label-tertiary">
+          <p>Clox Studio • Powered by Supabase</p>
         </div>
       </div>
     </div>
