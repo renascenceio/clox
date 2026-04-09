@@ -4,7 +4,7 @@ import { useChat } from '@ai-sdk/react'
 import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
 import { useRouter } from 'next/navigation'
@@ -15,21 +15,28 @@ type AIType = 'text' | 'image' | 'video' | 'audio'
 export default function TextPage() {
   const router = useRouter()
   
-  // Filter models based on enabled providers in admin
-  const enabledModels = useMemo(() => {
-    const settings = getAdminSettings()
-    return TEXT_MODELS.filter(model => {
-      const isEnabled = settings.providers[model.provider]?.enabled ?? true // Default to true if not set
-      return isEnabled
-    })
-  }, [])
-  
-  const [selectedModel, setSelectedModel] = useState<typeof TEXT_MODELS[number]>(enabledModels[0] || TEXT_MODELS[0])
-  const [selectedBrand, setSelectedBrand] = useState<string>(selectedModel.brandName || selectedModel.provider)
+  // Start with all models, will filter client-side
+  const [enabledModels, setEnabledModels] = useState(TEXT_MODELS)
+  const [selectedModel, setSelectedModel] = useState<typeof TEXT_MODELS[number]>(TEXT_MODELS[0])
+  const [selectedBrand, setSelectedBrand] = useState<string>(TEXT_MODELS[0].brandName || TEXT_MODELS[0].provider)
   const [activeAIType, setActiveAIType] = useState<AIType>('text')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(2048)
+  
+  // Filter models based on enabled providers in admin (client-side only to avoid hydration issues)
+  useEffect(() => {
+    const settings = getAdminSettings()
+    const filtered = TEXT_MODELS.filter(model => {
+      const isEnabled = settings.providers[model.provider]?.enabled ?? true // Default to true if not set
+      return isEnabled
+    })
+    setEnabledModels(filtered)
+    if (filtered.length > 0 && !filtered.find(m => m.id === selectedModel.id)) {
+      setSelectedModel(filtered[0])
+      setSelectedBrand(filtered[0].brandName || filtered[0].provider)
+    }
+  }, [])
   
   const chat = useChat({
     api: '/api/chat',
