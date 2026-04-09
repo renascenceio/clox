@@ -48,7 +48,8 @@ export function saveAdminSettings(settings: AdminSettings): void {
 
 export function isProviderEnabled(providerId: string): boolean {
   const settings = getAdminSettings()
-  return settings.providers[providerId]?.enabled ?? false
+  // Default to TRUE if not set - all providers enabled by default
+  return settings.providers[providerId]?.enabled ?? true
 }
 
 export function getProviderApiKey(providerId: string): string | undefined {
