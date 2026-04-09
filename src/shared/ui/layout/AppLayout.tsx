@@ -122,7 +122,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
               <Avatar seed="aslan@renascence.io" size={40} className="group-hover:scale-105 transition-transform shadow-brown-glow" />
               <div className="flex-grow min-w-0">
                  <div className="text-sm font-bold truncate text-label-primary">Aslan</div>
-                 <div className="text-[10px] font-bold text-brown dark:text-teal uppercase tracking-widest">Super Admin</div>
+                 <div className="text-[10px] font-bold text-brown dark:text-teal uppercase tracking-widest">Admin</div>
               </div>
               <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-secondary/60 dark:bg-surface-tertiary/60 rounded-hig-lg border border-separator/30">
                 <span className="text-xs font-bold text-teal-600 dark:text-teal-400">$12.40</span>

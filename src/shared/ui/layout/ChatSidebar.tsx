@@ -111,6 +111,9 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
 
   const handleDeleteChat = (id: string) => {
     saveChats(chats.filter(c => c.id !== id))
+    // Also clear chat history and settings from localStorage
+    localStorage.removeItem(`chat-history-${id}`)
+    localStorage.removeItem(`chat-settings-${id}`)
   }
 
   const handleDeleteFolder = (id: string) => {

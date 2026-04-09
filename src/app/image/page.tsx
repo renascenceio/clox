@@ -22,27 +22,52 @@ export default function ImagePage() {
   const [prompt, setPrompt] = useState('')
   const [generations, setGenerations] = useState<{ id: string; url: string; prompt: string; model: string; ratio: string }[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!prompt.trim() || isGenerating) return
 
     setIsGenerating(true)
-    // Mocking generation for now
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: prompt,
+          model: selectedModel.id,
+          ratio: selectedRatio,
+          quality: selectedQuality,
+          style: selectedStyle,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to generate image')
+      }
+
+      console.log('[v0] Image generated:', data.url)
+
       setGenerations([
         {
           id: Date.now().toString(),
-          url: `https://picsum.photos/seed/${Math.random()}/1024/1024`,
+          url: data.url,
           prompt,
           model: selectedModel.name,
           ratio: selectedRatio,
         },
         ...generations
       ])
-      setIsGenerating(false)
       setPrompt('')
-    }, 2000)
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to generate image'
+      console.error('[v0] Image generation error:', error)
+      setErrorMessage(errorMsg)
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   const handleAITypeChange = (type: AIType) => {
@@ -104,6 +129,57 @@ export default function ImagePage() {
   return (
     <AppLayout sidebar={sidebar} rightPanel={settingsPanel}>
       <div className="p-8 pb-64">
+        {/* Error Message */}
+        {errorMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mb-4 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-hig-lg flex items-center gap-3"
+          >
+            <svg className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">{errorMessage}</p>
+            </div>
+            <button
+              onClick={() => setErrorMessage('')}
+              className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
+
+        {/* Thinking Indicator */}
+        {isGenerating && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 flex justify-start"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full gradient-brown-teal flex items-center justify-center flex-shrink-0 shadow-brown-glow">
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div className="bg-surface-tertiary/60 dark:bg-surface/60 rounded-hig-xl px-4 py-3 border border-separator/30">
+                <div className="flex items-center gap-2 text-sm text-label-secondary">
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </div>
+                  <span className="text-xs font-medium text-label-tertiary ml-2">
+                    {selectedModel.name} is generating...
+                  </span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
         <motion.div
           variants={stagger}
           initial="initial"
