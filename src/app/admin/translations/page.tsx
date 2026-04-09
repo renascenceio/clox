@@ -31,25 +31,21 @@ export default function TranslationsPage() {
 
   // Load translations on mount and when language changes
   useEffect(() => {
-    loadTranslations()
-  }, [selectedLang])
-
-  const loadTranslations = () => {
     const langTranslations = getLanguageTranslations(selectedLang)
     setTranslations(langTranslations)
-  }
+  }, [selectedLang])
 
   const handleSave = (key: string, value: string) => {
     setTranslation(selectedLang, key, value)
     setEditingKey(null)
-    loadTranslations()
+    setTranslations(getLanguageTranslations(selectedLang))
     showSavedMessage('Translation saved!')
   }
 
   const handleDelete = (key: string) => {
     if (confirm(`Delete translation for "${key}"?`)) {
       deleteTranslation(selectedLang, key)
-      loadTranslations()
+      setTranslations(getLanguageTranslations(selectedLang))
       showSavedMessage('Translation deleted!')
     }
   }
@@ -60,7 +56,7 @@ export default function TranslationsPage() {
     setNewKey('')
     setNewValue('')
     setShowAddForm(false)
-    loadTranslations()
+    setTranslations(getLanguageTranslations(selectedLang))
     showSavedMessage('New translation added!')
   }
 
@@ -143,7 +139,6 @@ export default function TranslationsPage() {
 
   const progress = getTranslationProgress(selectedLang)
   const missingKeys = getMissingTranslations(selectedLang)
-  const englishKeys = Object.keys(DEFAULT_TRANSLATIONS['en'])
 
   // Filter translations based on search and missing filter
   const filteredKeys = (showMissingOnly ? missingKeys : Object.keys(translations))

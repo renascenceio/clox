@@ -28,7 +28,7 @@ interface ChatSidebarProps {
 const CHATS_KEY = 'clox_chats'
 const FOLDERS_KEY = 'clox_folders'
 
-export default function ChatSidebar({ children, activeChatId, onChatSelect }: ChatSidebarProps) {
+export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarProps) {
   const [search, setSearch] = useState('')
   const [chats, setChats] = useState<Chat[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
