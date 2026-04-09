@@ -118,21 +118,3 @@ export default function AppLayout({ children, sidebar, rightPanel, topBarContent
     </div>
   )
 }
-
-function NavTab({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
-  const isActive = typeof window !== 'undefined' && window.location.pathname === href
-  
-  return (
-    <a
-      href={href}
-      className={`flex items-center gap-2 px-4 py-2 rounded-hig-md font-semibold text-sm transition-all ${
-        isActive
-          ? 'bg-white text-brown shadow-hig border border-separator/50'
-          : 'text-label-secondary hover:text-label-primary hover:bg-white/50'
-      }`}
-    >
-      {icon}
-      <span>{label}</span>
-    </a>
-  )
-}

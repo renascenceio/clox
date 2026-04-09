@@ -4,21 +4,43 @@ import { useChat } from '@ai-sdk/react'
 import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
 import { useRouter } from 'next/navigation'
+import { getAdminSettings } from '@/lib/admin-settings'
 
 type AIType = 'text' | 'image' | 'video' | 'audio'
 
 export default function TextPage() {
   const router = useRouter()
-  const [selectedModel, setSelectedModel] = useState<typeof TEXT_MODELS[number]>(TEXT_MODELS[0])
+  const [adminSettings, setAdminSettings] = useState(getAdminSettings())
+  
+  // Filter models based on enabled providers in admin
+  const enabledModels = useMemo(() => {
+    const settings = getAdminSettings()
+    return TEXT_MODELS.filter(model => {
+      const isEnabled = settings.providers[model.provider]?.enabled ?? true // Default to true if not set
+      return isEnabled
+    })
+  }, [adminSettings])
+  
+  const [selectedModel, setSelectedModel] = useState<typeof TEXT_MODELS[number]>(enabledModels[0] || TEXT_MODELS[0])
   const [selectedBrand, setSelectedBrand] = useState<string>(selectedModel.brandName || selectedModel.provider)
   const [activeAIType, setActiveAIType] = useState<AIType>('text')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(2048)
+  
+  // Listen for admin settings changes
+  useEffect(() => {
+    const handleSettingsChange = () => {
+      setAdminSettings(getAdminSettings())
+    }
+    
+    window.addEventListener('admin-settings-changed', handleSettingsChange)
+    return () => window.removeEventListener('admin-settings-changed', handleSettingsChange)
+  }, [])
   
   const chat = useChat({
     api: '/api/chat',
@@ -34,13 +56,13 @@ export default function TextPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false } = chat as any
 
-  // Get unique brands and models for selected brand
-  const brands = Array.from(new Set(TEXT_MODELS.map(m => m.brandName || m.provider)))
-  const brandModels = TEXT_MODELS.filter(m => (m.brandName || m.provider) === selectedBrand)
+  // Get unique brands and models for selected brand (only from enabled models)
+  const brands = Array.from(new Set(enabledModels.map(m => m.brandName || m.provider)))
+  const brandModels = enabledModels.filter(m => (m.brandName || m.provider) === selectedBrand)
 
   const handleBrandChange = (brand: string) => {
     setSelectedBrand(brand)
-    const firstModel = TEXT_MODELS.find(m => (m.brandName || m.provider) === brand)
+    const firstModel = enabledModels.find(m => (m.brandName || m.provider) === brand)
     if (firstModel) {
       setSelectedModel(firstModel)
     }
