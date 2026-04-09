@@ -8,7 +8,7 @@ interface Model {
   provider: string
   category?: string
   type?: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 interface SelectOption {
