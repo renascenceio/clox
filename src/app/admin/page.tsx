@@ -61,7 +61,7 @@ const PROVIDER_CONFIG = {
   udio: { name: 'Udio (Music)', category: 'Audio AI', docs: 'https://udio.com', guide: 'Currently web-only, API coming soon', fields: { key: true, secret: false, url: false } },
 }
 
-type TabType = 'API Keys' | 'Users' | 'Settings' | 'Analytics'
+type TabType = 'API Keys' | 'Users' | 'Translations' | 'Settings' | 'Analytics'
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<TabType>('API Keys')
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
     ([, config]) => config.category === activeCategory
   )
 
-  const tabs: TabType[] = ['API Keys', 'Users', 'Settings', 'Analytics']
+  const tabs: TabType[] = ['API Keys', 'Users', 'Translations', 'Settings', 'Analytics']
 
   if (loading) {
     return (
@@ -360,6 +360,51 @@ export default function AdminDashboard() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'Translations' && (
+          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 p-6 shadow-float">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-brown-900 dark:text-brown-100">Translation Management</h2>
+                <p className="text-brown-600 dark:text-brown-400 mt-1">Manage app translations for all supported languages</p>
+              </div>
+              <button
+                onClick={() => router.push('/admin/translations')}
+                className="px-6 py-3 gradient-brown-teal text-white rounded-hig-xl font-bold shadow-brown-glow hover:scale-105 transition-transform"
+              >
+                Open Full Editor →
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {['en', 'es', 'fr', 'de', 'ja', 'zh', 'ko', 'ru'].map(lang => {
+                const langInfo: Record<string, { name: string; flag: string }> = {
+                  en: { name: 'English', flag: '🇺🇸' },
+                  es: { name: 'Spanish', flag: '🇪🇸' },
+                  fr: { name: 'French', flag: '🇫🇷' },
+                  de: { name: 'German', flag: '🇩🇪' },
+                  ja: { name: 'Japanese', flag: '🇯🇵' },
+                  zh: { name: 'Chinese', flag: '🇨🇳' },
+                  ko: { name: 'Korean', flag: '🇰🇷' },
+                  ru: { name: 'Russian', flag: '🇷🇺' },
+                }
+                return (
+                  <div
+                    key={lang}
+                    className="bg-brown-50 dark:bg-brown-900/30 rounded-hig-xl p-4 border border-brown-200 dark:border-brown-700"
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-2xl">{langInfo[lang].flag}</span>
+                      <span className="font-bold text-brown-900 dark:text-brown-100">{langInfo[lang].name}</span>
+                    </div>
+                    <div className="text-xs text-brown-600 dark:text-brown-400">
+                      {lang === 'en' ? 'Base language' : 'Click editor to manage'}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}

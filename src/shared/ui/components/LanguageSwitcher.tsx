@@ -1,17 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-
-const LANGUAGES = [
-  { code: 'en', label: 'English', flag: '🇺🇸' },
-  { code: 'es', label: 'Español', flag: '🇪🇸' },
-  { code: 'fr', label: 'Français', flag: '🇫🇷' },
-  { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
-  { code: 'ja', label: '日本語', flag: '🇯🇵' },
-  { code: 'zh', label: '中文', flag: '🇨🇳' },
-  { code: 'ko', label: '한국어', flag: '🇰🇷' },
-  { code: 'ru', label: 'Русский', flag: '🇷🇺' },
-]
+import { SUPPORTED_LANGUAGES, getCurrentLanguage, setCurrentLanguage, getTranslationProgress } from '@/lib/translations'
 
 export default function LanguageSwitcher() {
   const [mounted, setMounted] = useState(false)
@@ -20,23 +10,27 @@ export default function LanguageSwitcher() {
 
   useEffect(() => {
     setMounted(true)
-    const savedLang = localStorage.getItem('language') || 'en'
-    setCurrentLang(savedLang)
+    setCurrentLang(getCurrentLanguage())
+    
+    // Listen for language changes from other components
+    const handleLangChange = (e: CustomEvent) => {
+      setCurrentLang(e.detail.langCode)
+    }
+    window.addEventListener('language-changed', handleLangChange as EventListener)
+    return () => window.removeEventListener('language-changed', handleLangChange as EventListener)
   }, [])
 
   const changeLanguage = (langCode: string) => {
     setCurrentLang(langCode)
-    localStorage.setItem('language', langCode)
+    setCurrentLanguage(langCode)
     setIsOpen(false)
-    // Here you would typically trigger your i18n library to change language
-    // e.g., i18n.changeLanguage(langCode)
   }
 
   if (!mounted) {
     return <div className="w-10 h-10" /> // Placeholder to prevent layout shift
   }
 
-  const currentLanguage = LANGUAGES.find(lang => lang.code === currentLang) || LANGUAGES[0]
+  const currentLanguage = SUPPORTED_LANGUAGES.find(lang => lang.code === currentLang) || SUPPORTED_LANGUAGES[0]
 
   return (
     <div className="relative">
@@ -64,25 +58,33 @@ export default function LanguageSwitcher() {
               </div>
             </div>
             <div className="max-h-64 overflow-y-auto custom-scrollbar p-1">
-              {LANGUAGES.map((lang) => (
-                <button
-                  key={lang.code}
-                  onClick={() => changeLanguage(lang.code)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-hig-lg transition-all ${
-                    currentLang === lang.code
-                      ? 'bg-brown/10 dark:bg-teal/10 text-brown dark:text-teal border border-brown/20 dark:border-teal/20'
-                      : 'hover:bg-surface-tertiary dark:hover:bg-surface-tertiary/50 text-label-primary'
-                  }`}
-                >
-                  <span className="text-xl">{lang.flag}</span>
-                  <span className="text-sm font-medium">{lang.label}</span>
-                  {currentLang === lang.code && (
-                    <svg className="ml-auto w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </button>
-              ))}
+              {SUPPORTED_LANGUAGES.map((lang) => {
+                const progress = lang.code !== 'en' ? getTranslationProgress(lang.code) : null
+                return (
+                  <button
+                    key={lang.code}
+                    onClick={() => changeLanguage(lang.code)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-hig-lg transition-all ${
+                      currentLang === lang.code
+                        ? 'bg-brown/10 dark:bg-teal/10 text-brown dark:text-teal border border-brown/20 dark:border-teal/20'
+                        : 'hover:bg-surface-tertiary dark:hover:bg-surface-tertiary/50 text-label-primary'
+                    }`}
+                  >
+                    <span className="text-xl">{lang.flag}</span>
+                    <div className="flex-1 text-left">
+                      <span className="text-sm font-medium">{lang.label}</span>
+                      {progress && progress.percentage < 100 && (
+                        <div className="text-[10px] text-label-tertiary">{progress.percentage}% translated</div>
+                      )}
+                    </div>
+                    {currentLang === lang.code && (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </>
