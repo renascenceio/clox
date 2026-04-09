@@ -22,9 +22,9 @@ export default function TextPage() {
   const [activeAIType, setActiveAIType] = useState<AIType>('text')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.7)
-  const [maxTokens, setMaxTokens] = useState(2048)
+  const [maxTokens] = useState(2048)
   
-  // Filter models based on enabled providers in admin (client-side only to avoid hydration issues)
+  // Load saved model from localStorage on mount and filter models
   useEffect(() => {
     const settings = getAdminSettings()
     const filtered = TEXT_MODELS.filter(model => {
@@ -32,11 +32,24 @@ export default function TextPage() {
       return isEnabled
     })
     setEnabledModels(filtered)
+    
+    // Try to load saved model from localStorage
+    const savedModelId = localStorage.getItem('selectedTextModelId')
+    if (savedModelId) {
+      const savedModel = filtered.find(m => m.id === savedModelId)
+      if (savedModel) {
+        setSelectedModel(savedModel)
+        setSelectedBrand(savedModel.brandName || savedModel.provider)
+        return
+      }
+    }
+    
+    // Fallback to first enabled model if no saved model or saved model not found
     if (filtered.length > 0 && !filtered.find(m => m.id === selectedModel.id)) {
       setSelectedModel(filtered[0])
       setSelectedBrand(filtered[0].brandName || filtered[0].provider)
     }
-  }, [selectedModel.id])
+  }, [])
   
   // Get API key from admin settings - refreshed each render
   const [currentApiKey, setCurrentApiKey] = useState('')
@@ -82,6 +95,8 @@ export default function TextPage() {
     if (model) {
       setSelectedModel(model)
       setSelectedBrand(model.brandName || model.provider)
+      // Persist selected model to localStorage
+      localStorage.setItem('selectedTextModelId', model.id)
     }
   }
 
