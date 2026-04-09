@@ -11,28 +11,21 @@ export type AIProvider = 'openai' | 'anthropic' | 'google' | 'mistral'
  */
 const MODEL_ID_MAP: Record<string, string> = {
   // OpenAI
-  'gpt-5.4': 'gpt-4o',
-  'gpt-5-mini': 'gpt-4o-mini',
   'gpt-4o': 'gpt-4o',
   'gpt-4o-mini': 'gpt-4o-mini',
-  'o1': 'o1',
-  'o1-mini': 'o1-mini',
   
   // Anthropic
   'claude-opus-4.6': 'claude-sonnet-4-20250514',
   'claude-sonnet-4.6': 'claude-sonnet-4-20250514',
   'claude-haiku-4.5': 'claude-3-5-haiku-20241022',
-  'claude-3-5-sonnet-20240620': 'claude-3-5-sonnet-20241022',
-  'claude-3-5-haiku': 'claude-3-5-haiku-20241022',
   
-  // Google Gemini - Use actual Gemini model IDs
-  'gemini-live-2.5-flash-native-audio': 'gemini-2.0-flash',
+  // Google Gemini - 2.5 Flash is the working model
+  'gemini-2.5-flash': 'gemini-2.5-flash',
   'gemini-2.0-flash': 'gemini-2.0-flash',
   'gemini-1.5-pro': 'gemini-1.5-pro',
   
   // Mistral
   'mistral-large-latest': 'mistral-large-latest',
-  'mistral-medium': 'mistral-medium-latest',
 }
 
 /**
@@ -75,31 +68,20 @@ export function getModel(provider: AIProvider, modelId: string, apiKey?: string)
 }
 
 export const TEXT_MODELS = [
-  // OpenAI / ChatGPT
-  { id: 'gpt-5.4', name: 'GPT-5.4', version: 'GPT-5.4', provider: 'openai', brandName: 'ChatGPT' },
-  { id: 'gpt-5-mini', name: 'GPT-5 Mini', version: 'GPT-5 Mini', provider: 'openai', brandName: 'ChatGPT' },
+  // Google Gemini - 2.5 Flash is the tested working model
+  { id: 'gemini-2.5-flash', name: '2.5 Flash', version: '2.5 Flash', provider: 'google', brandName: 'Gemini' },
+  { id: 'gemini-2.0-flash', name: '2.0 Flash', version: '2.0 Flash', provider: 'google', brandName: 'Gemini' },
+  { id: 'gemini-1.5-pro', name: '1.5 Pro', version: '1.5 Pro', provider: 'google', brandName: 'Gemini' },
+  
+  // OpenAI ChatGPT
   { id: 'gpt-4o', name: 'GPT-4o', version: 'GPT-4o', provider: 'openai', brandName: 'ChatGPT' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', version: 'GPT-4o Mini', provider: 'openai', brandName: 'ChatGPT' },
-  { id: 'o1', name: 'o1', version: 'o1', provider: 'openai', brandName: 'ChatGPT' },
-  { id: 'o1-mini', name: 'o1 Mini', version: 'o1 Mini', provider: 'openai', brandName: 'ChatGPT' },
   
   // Anthropic Claude
   { id: 'claude-opus-4.6', name: 'Opus 4.6', version: 'Opus 4.6', provider: 'anthropic', brandName: 'Claude' },
   { id: 'claude-sonnet-4.6', name: 'Sonnet 4.6', version: 'Sonnet 4.6', provider: 'anthropic', brandName: 'Claude' },
   { id: 'claude-haiku-4.5', name: 'Haiku 4.5', version: 'Haiku 4.5', provider: 'anthropic', brandName: 'Claude' },
-  { id: 'claude-3-5-sonnet-20240620', name: '3.5 Sonnet', version: '3.5 Sonnet', provider: 'anthropic', brandName: 'Claude' },
-  { id: 'claude-3-5-haiku', name: '3.5 Haiku', version: '3.5 Haiku', provider: 'anthropic', brandName: 'Claude' },
-  
-  // Google Gemini
-  { id: 'gemini-live-2.5-flash-native-audio', name: '2.5 Flash', version: '2.5 Flash', provider: 'google', brandName: 'Gemini' },
-  { id: 'gemini-2.0-flash', name: '2.0 Flash', version: '2.0 Flash', provider: 'google', brandName: 'Gemini' },
-  { id: 'gemini-1.5-pro', name: '1.5 Pro', version: '1.5 Pro', provider: 'google', brandName: 'Gemini' },
-  
-  // Meta Llama
-  { id: 'llama-3.3-70b', name: '3.3 70B', version: '3.3 70B', provider: 'meta', brandName: 'Llama' },
-  { id: 'llama-3.2-90b', name: '3.2 90B', version: '3.2 90B', provider: 'meta', brandName: 'Llama' },
   
   // Mistral
   { id: 'mistral-large-latest', name: 'Large', version: 'Large', provider: 'mistral', brandName: 'Mistral AI' },
-  { id: 'mistral-medium', name: 'Medium', version: 'Medium', provider: 'mistral', brandName: 'Mistral AI' },
 ]
