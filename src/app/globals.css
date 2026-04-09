@@ -19,18 +19,18 @@
   }
 
   .dark {
-    --background: #1C1C1E;
+    --background: #0F0E0D;
     --foreground: #F5EFE7;
     
-    /* Dark mode with brown/teal accents (RGB values for alpha support) */
-    --surface: 44 44 46;
-    --surface-secondary: 28 28 30;
-    --surface-tertiary: 58 56 54;
+    /* FULLY DARK mode with brown/teal accents - NO WHITE ANYWHERE */
+    --surface: 28 26 24;
+    --surface-secondary: 15 14 13;
+    --surface-tertiary: 38 36 34;
     --label-primary: 245 239 231;
     --label-secondary: 180 166 150;
     --label-tertiary: 139 127 115;
-    --separator: 92 84 76;
-    --fill: 115 106 97;
+    --separator: 68 64 60;
+    --fill: 92 84 76;
   }
 }
 
@@ -67,13 +67,7 @@ body {
   }
 
   .glass-float {
-    @apply bg-white/90 backdrop-blur-[24px] border border-separator/30;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .glass-float {
-      @apply bg-black/70 backdrop-blur-[24px] border-white/10;
-    }
+    @apply bg-white/90 dark:bg-[#1C1A18]/95 backdrop-blur-[24px] border border-separator/30;
   }
 
   .gradient-brown-teal {
