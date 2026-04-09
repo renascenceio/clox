@@ -38,19 +38,24 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-secondary p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-surface-secondary via-white to-surface-secondary dark:from-surface-secondary dark:via-surface dark:to-surface-secondary p-4">
       <div className="w-full max-w-md">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold gradient-text mb-2">Clox Studio</h1>
-          <p className="text-sm text-label-tertiary">Admin Access</p>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="w-12 h-12 gradient-brown-teal rounded-hig-lg flex items-center justify-center shadow-brown-glow">
+              <span className="text-white font-bold text-xl">C</span>
+            </div>
+            <h1 className="text-4xl font-bold text-label-primary">Clox Studio</h1>
+          </div>
+          <p className="text-sm text-label-secondary font-semibold">Admin Access</p>
         </div>
 
         {/* Login Form */}
         <form onSubmit={handleLogin} className="glass-float rounded-hig-2xl p-8 space-y-6 shadow-float">
           <div>
-            <h2 className="text-2xl font-bold text-label-primary mb-2">Sign In</h2>
-            <p className="text-sm text-label-tertiary">Enter your credentials to access the admin dashboard</p>
+            <h2 className="text-2xl font-bold text-label-primary mb-2">Welcome Back</h2>
+            <p className="text-sm text-label-secondary">Enter your credentials to access the admin dashboard</p>
           </div>
 
           {error && (
@@ -70,7 +75,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full h-12 px-4 bg-surface border-2 border-separator/50 rounded-hig-xl text-base font-medium focus:ring-2 focus:ring-brown/20 focus:border-brown outline-none transition-all"
+                className="w-full h-12 px-4 bg-surface border-2 border-separator/50 rounded-hig-xl text-base font-medium text-label-primary placeholder:text-label-tertiary focus:ring-2 focus:ring-brown/20 focus:border-brown outline-none transition-all"
                 placeholder="admin@example.com"
               />
             </div>
@@ -85,7 +90,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full h-12 px-4 bg-surface border-2 border-separator/50 rounded-hig-xl text-base font-medium focus:ring-2 focus:ring-brown/20 focus:border-brown outline-none transition-all"
+                className="w-full h-12 px-4 bg-surface border-2 border-separator/50 rounded-hig-xl text-base font-medium text-label-primary placeholder:text-label-tertiary focus:ring-2 focus:ring-brown/20 focus:border-brown outline-none transition-all"
                 placeholder="••••••••"
               />
             </div>
@@ -94,9 +99,9 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full h-12 gradient-brown-teal text-white rounded-hig-xl font-bold shadow-float hover:shadow-hig-hover hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full h-14 gradient-brown-teal text-white rounded-hig-xl text-lg font-bold shadow-float hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Signing In...' : 'Sign In'}
+            {loading ? 'Signing In...' : 'Sign In to Dashboard'}
           </button>
 
           <div className="pt-4 border-t border-separator/30 text-center">
