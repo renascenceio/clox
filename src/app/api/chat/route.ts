@@ -27,7 +27,9 @@ export async function POST(req: Request) {
   if (providerConfig?.apiKey) {
     const envKey = `${provider.toUpperCase()}_API_KEY`
     process.env[envKey] = providerConfig.apiKey
-    console.log('[v0] Set environment variable:', envKey)
+    console.log('[v0] Set environment variable:', envKey, '- API key configured')
+  } else {
+    console.log('[v0] WARNING: No API key configured for provider:', provider, '- using default env var if available')
   }
 
   try {
