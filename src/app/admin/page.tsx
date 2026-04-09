@@ -4,15 +4,6 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
-interface APIKey {
-  id: string
-  provider: string
-  api_key: string | null
-  api_secret: string | null
-  base_url: string | null
-  enabled: boolean
-}
-
 const PROVIDER_CATEGORIES = {
   'Text AI': ['openai', 'anthropic', 'google', 'meta', 'mistral', 'xai', 'cohere', 'ai21', 'deepseek', 'qwen', 'zhipu', 'kimi', 'baidu'],
   'Image AI': ['stability', 'midjourney', 'openai', 'google', 'ideogram', 'recraft', 'playground', 'zhipu', 'alibaba', 'baidu', 'kuaishou'],
@@ -57,17 +48,11 @@ const PROVIDER_NAMES: Record<string, string> = {
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<string>('Text AI')
-  const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editingKey, setEditingKey] = useState<Record<string, { key: string; secret: string; url: string; enabled: boolean }>>({})
   const router = useRouter()
   const supabase = createClient()
-
-  useEffect(() => {
-    checkAuth()
-    loadAPIKeys()
-  }, [])
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -84,8 +69,6 @@ export default function AdminDashboard() {
         .order('provider')
 
       if (error) throw error
-      
-      setApiKeys(data || [])
       
       // Initialize editing state
       const initial: Record<string, { key: string; secret: string; url: string; enabled: boolean }> = {}
@@ -104,6 +87,12 @@ export default function AdminDashboard() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    checkAuth()
+    loadAPIKeys()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleSave = async (provider: string) => {
     setSaving(true)
