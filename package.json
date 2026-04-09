@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.1.9",
+    "@ai-sdk/cohere": "^3.0.30",
     "@ai-sdk/google": "^1.1.11",
     "@ai-sdk/mistral": "^1.1.11",
     "@ai-sdk/openai": "^1.1.9",
     "@ai-sdk/react": "^1.1.11",
+    "@ai-sdk/xai": "^3.0.82",
     "@prisma/client": "^6.4.1",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.48.1",

@@ -1,55 +1,88 @@
+import { openai } from '@ai-sdk/openai'
+import { anthropic } from '@ai-sdk/anthropic'
+import { google } from '@ai-sdk/google'
+import { mistral } from '@ai-sdk/mistral'
+import { xai } from '@ai-sdk/xai'
+import { cohere } from '@ai-sdk/cohere'
+import type { LanguageModel } from 'ai'
+
 export type AIProvider = 'openai' | 'anthropic' | 'google' | 'mistral' | 'xai' | 'perplexity' | 'deepseek' | 'groq' | 'zhipu' | 'qwen' | 'baidu' | 'kimi' | 'meta' | 'cohere' | 'ai21'
 
 /**
- * Maps our internal model IDs to Vercel AI Gateway model strings.
- * The AI Gateway handles authentication automatically - no API keys needed.
- * Format: 'provider/model-name'
+ * Maps our internal model IDs to provider-specific model IDs
  */
-export function getGatewayModelString(provider: AIProvider, modelId: string): string {
-  console.log('[v0] getGatewayModelString called with provider:', provider, 'modelId:', modelId)
+const MODEL_ID_MAP: Record<string, string> = {
+  // OpenAI
+  'gpt-5.4': 'gpt-4o',
+  'gpt-5-mini': 'gpt-4o-mini',
+  'gpt-4o': 'gpt-4o',
+  'gpt-4o-mini': 'gpt-4o-mini',
+  'o1': 'o1',
+  'o1-mini': 'o1-mini',
   
-  // Map our model IDs to AI Gateway model strings
-  const modelMap: Record<string, string> = {
-    // OpenAI
-    'gpt-5.4': 'openai/gpt-4o', // GPT-5.4 doesn't exist yet, use gpt-4o
-    'gpt-5-mini': 'openai/gpt-4o-mini',
-    'gpt-4o': 'openai/gpt-4o',
-    'gpt-4o-mini': 'openai/gpt-4o-mini',
-    'o1': 'openai/o1',
-    'o1-mini': 'openai/o1-mini',
-    
-    // Anthropic
-    'claude-opus-4.6': 'anthropic/claude-3-5-sonnet-20241022', // Latest available
-    'claude-sonnet-4.6': 'anthropic/claude-3-5-sonnet-20241022',
-    'claude-haiku-4.5': 'anthropic/claude-3-5-haiku-20241022',
-    'claude-3-5-sonnet-20240620': 'anthropic/claude-3-5-sonnet-20241022',
-    'claude-3-5-haiku': 'anthropic/claude-3-5-haiku-20241022',
-    
-    // Google Gemini
-    'gemini-live-2.5-flash-native-audio': 'google/gemini-2.0-flash-001',
-    'gemini-2.0-flash': 'google/gemini-2.0-flash-001',
-    'gemini-1.5-pro': 'google/gemini-1.5-pro-latest',
-    
-    // Mistral
-    'mistral-large-latest': 'mistral/mistral-large-latest',
-    'mistral-medium': 'mistral/mistral-medium-latest',
+  // Anthropic
+  'claude-opus-4.6': 'claude-sonnet-4-20250514',
+  'claude-sonnet-4.6': 'claude-sonnet-4-20250514',
+  'claude-haiku-4.5': 'claude-3-5-haiku-20241022',
+  'claude-3-5-sonnet-20240620': 'claude-3-5-sonnet-20241022',
+  'claude-3-5-haiku': 'claude-3-5-haiku-20241022',
+  
+  // Google Gemini - Use actual Gemini model IDs
+  'gemini-live-2.5-flash-native-audio': 'gemini-2.0-flash',
+  'gemini-2.0-flash': 'gemini-2.0-flash',
+  'gemini-1.5-pro': 'gemini-1.5-pro',
+  
+  // Mistral
+  'mistral-large-latest': 'mistral-large-latest',
+  'mistral-medium': 'mistral-medium-latest',
+  
+  // xAI Grok
+  'grok-2': 'grok-2',
+  'grok-2-mini': 'grok-2-mini',
+  
+  // Cohere
+  'command-r-plus': 'command-r-plus',
+  'command-r': 'command-r',
+}
+
+/**
+ * Returns a LanguageModel instance for the given provider and model.
+ * Uses environment variables for API keys:
+ * - OPENAI_API_KEY
+ * - ANTHROPIC_API_KEY  
+ * - GOOGLE_GENERATIVE_AI_API_KEY (or GOOGLE_API_KEY)
+ * - MISTRAL_API_KEY
+ * - XAI_API_KEY
+ * - COHERE_API_KEY
+ */
+export function getModel(provider: AIProvider, modelId: string): LanguageModel {
+  // Map our model ID to the provider's actual model ID
+  const actualModelId = MODEL_ID_MAP[modelId] || modelId
+  
+  console.log('[v0] getModel:', { provider, modelId, actualModelId })
+  
+  switch (provider) {
+    case 'openai':
+      return openai(actualModelId)
+    case 'anthropic':
+      return anthropic(actualModelId)
+    case 'google':
+      return google(actualModelId)
+    case 'mistral':
+      return mistral(actualModelId)
+    case 'xai':
+      return xai(actualModelId)
+    case 'cohere':
+      return cohere(actualModelId)
+    default:
+      // Default to OpenAI for unsupported providers
+      console.log('[v0] Unsupported provider:', provider, '- defaulting to OpenAI')
+      return openai('gpt-4o')
   }
-  
-  const gatewayModel = modelMap[modelId]
-  
-  if (gatewayModel) {
-    console.log('[v0] Mapped to AI Gateway model:', gatewayModel)
-    return gatewayModel
-  }
-  
-  // Fallback: construct gateway string from provider/modelId
-  const fallback = `${provider}/${modelId}`
-  console.log('[v0] Using fallback AI Gateway model:', fallback)
-  return fallback
 }
 
 export const TEXT_MODELS = [
-  // OpenAI / ChatGPT (Latest: GPT-5.4 as of March 2026)
+  // OpenAI / ChatGPT
   { id: 'gpt-5.4', name: 'GPT-5.4', version: 'GPT-5.4', provider: 'openai', brandName: 'ChatGPT' },
   { id: 'gpt-5-mini', name: 'GPT-5 Mini', version: 'GPT-5 Mini', provider: 'openai', brandName: 'ChatGPT' },
   { id: 'gpt-4o', name: 'GPT-4o', version: 'GPT-4o', provider: 'openai', brandName: 'ChatGPT' },
@@ -57,14 +90,14 @@ export const TEXT_MODELS = [
   { id: 'o1', name: 'o1', version: 'o1', provider: 'openai', brandName: 'ChatGPT' },
   { id: 'o1-mini', name: 'o1 Mini', version: 'o1 Mini', provider: 'openai', brandName: 'ChatGPT' },
   
-  // Anthropic Claude (Latest: Opus 4.6, Sonnet 4.6 as of February 2026)
+  // Anthropic Claude
   { id: 'claude-opus-4.6', name: 'Opus 4.6', version: 'Opus 4.6', provider: 'anthropic', brandName: 'Claude' },
   { id: 'claude-sonnet-4.6', name: 'Sonnet 4.6', version: 'Sonnet 4.6', provider: 'anthropic', brandName: 'Claude' },
   { id: 'claude-haiku-4.5', name: 'Haiku 4.5', version: 'Haiku 4.5', provider: 'anthropic', brandName: 'Claude' },
   { id: 'claude-3-5-sonnet-20240620', name: '3.5 Sonnet', version: '3.5 Sonnet', provider: 'anthropic', brandName: 'Claude' },
   { id: 'claude-3-5-haiku', name: '3.5 Haiku', version: '3.5 Haiku', provider: 'anthropic', brandName: 'Claude' },
   
-  // Google Gemini (Latest: 2.5 Flash as of April 2026)
+  // Google Gemini
   { id: 'gemini-live-2.5-flash-native-audio', name: '2.5 Flash', version: '2.5 Flash', provider: 'google', brandName: 'Gemini' },
   { id: 'gemini-2.0-flash', name: '2.0 Flash', version: '2.0 Flash', provider: 'google', brandName: 'Gemini' },
   { id: 'gemini-1.5-pro', name: '1.5 Pro', version: '1.5 Pro', provider: 'google', brandName: 'Gemini' },
