@@ -9,7 +9,7 @@ import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
 import { AUDIO_MODELS, AUDIO_DURATIONS, AUDIO_QUALITY } from '@/domains/audio-generation/services/audio-models'
 
 export default function AudioPage() {
-  const [selectedModel, setSelectedModel] = useState(AUDIO_MODELS[0])
+  const [selectedModel, setSelectedModel] = useState<typeof AUDIO_MODELS[number]>(AUDIO_MODELS[0])
   const [selectedDuration, setSelectedDuration] = useState(30)
   const [selectedQuality, setSelectedQuality] = useState('high')
   const [prompt, setPrompt] = useState('')
@@ -37,7 +37,7 @@ export default function AudioPage() {
       type="audio"
       models={AUDIO_MODELS}
       selectedModel={selectedModel}
-      onModelChange={setSelectedModel}
+      onModelChange={(model) => setSelectedModel(model as typeof AUDIO_MODELS[number])}
       durations={AUDIO_DURATIONS}
       selectedDuration={selectedDuration}
       onDurationChange={setSelectedDuration}
