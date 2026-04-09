@@ -110,10 +110,20 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
   }
 
   const handleDeleteChat = (id: string) => {
+    const chatToDelete = chats.find(c => c.id === id)
+    if (chatToDelete) {
+      // Move to deleted items instead of permanent deletion
+      const deletedItems = JSON.parse(localStorage.getItem('deleted-items') || '[]')
+      deletedItems.unshift({
+        id: chatToDelete.id,
+        title: chatToDelete.title,
+        type: chatToDelete.type,
+        model: chatToDelete.model,
+        deletedAt: Date.now(),
+      })
+      localStorage.setItem('deleted-items', JSON.stringify(deletedItems))
+    }
     saveChats(chats.filter(c => c.id !== id))
-    // Also clear chat history and settings from localStorage
-    localStorage.removeItem(`chat-history-${id}`)
-    localStorage.removeItem(`chat-settings-${id}`)
   }
 
   const handleDeleteFolder = (id: string) => {
