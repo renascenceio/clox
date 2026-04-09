@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   // Note: API key check removed - we'll let the provider handle missing keys with proper error messages
 
   console.log('[v0] Using provider:', provider, 'with model:', model)
-  console.log('[v0] Provider config:', { enabled: providerConfig.enabled, hasKey: !!providerConfig.apiKey })
+  console.log('[v0] Provider config:', { enabled: isEnabled, hasKey: !!providerConfig?.apiKey })
 
   // Set API key as environment variable so the model can use it
   if (providerConfig.apiKey) {
