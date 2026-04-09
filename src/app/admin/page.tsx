@@ -119,9 +119,16 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-surface-secondary dark:bg-surface">
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-white via-brown-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
+      {/* Animated Background Blobs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 -left-4 w-72 h-72 bg-brown/20 rounded-full mix-blend-multiply filter blur-xl animate-blob"></div>
+        <div className="absolute top-0 -right-4 w-72 h-72 bg-teal/20 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-brown-300/20 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-4000"></div>
+      </div>
+
       {/* Header */}
-      <div className="bg-white dark:bg-surface border-b border-separator/50">
+      <div className="relative z-10 bg-white/90 dark:bg-surface/90 backdrop-blur-xl border-b border-separator/50">
         <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold gradient-text">
@@ -139,7 +146,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="bg-white dark:bg-surface border-b border-separator/30">
+      <div className="relative z-10 bg-white/90 dark:bg-surface/90 backdrop-blur-xl border-b border-separator/30">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex gap-6 overflow-x-auto">
             {Object.keys(PROVIDER_CATEGORIES).map(category => (
@@ -160,7 +167,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {providersInTab.map(provider => {
             const values = apiKeys[provider] || { key: '', secret: '', url: '', enabled: false }
@@ -237,6 +244,32 @@ export default function AdminDashboard() {
           })}
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes blob {
+          0% {
+            transform: translate(0px, 0px) scale(1);
+          }
+          33% {
+            transform: translate(30px, -50px) scale(1.1);
+          }
+          66% {
+            transform: translate(-20px, 20px) scale(0.9);
+          }
+          100% {
+            transform: translate(0px, 0px) scale(1);
+          }
+        }
+        .animate-blob {
+          animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+          animation-delay: 4s;
+        }
+      `}</style>
     </div>
   )
 }
