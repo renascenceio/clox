@@ -20,13 +20,26 @@ export async function POST(req: Request) {
   }
 
   console.log('[v0] Using provider:', provider, 'with model:', model)
+  console.log('[v0] Provider config:', { enabled: providerConfig.enabled, hasKey: !!providerConfig.apiKey })
 
-  const result = await streamText({
-    model: getModel(provider as AIProvider, model),
-    messages: systemPrompt ? [{ role: 'system', content: systemPrompt }, ...messages] : messages,
-    temperature,
-    maxTokens,
-  })
+  // Set API key as environment variable so the model can use it
+  if (providerConfig.apiKey) {
+    const envKey = `${provider.toUpperCase()}_API_KEY`
+    process.env[envKey] = providerConfig.apiKey
+    console.log('[v0] Set environment variable:', envKey)
+  }
 
-  return result.toDataStreamResponse()
+  try {
+    const result = await streamText({
+      model: getModel(provider as AIProvider, model),
+      messages: systemPrompt ? [{ role: 'system', content: systemPrompt }, ...messages] : messages,
+      temperature,
+      maxTokens,
+    })
+
+    return result.toDataStreamResponse()
+  } catch (error) {
+    console.error('[v0] Error in chat API:', error)
+    return new Response(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`, { status: 500 })
+  }
 }

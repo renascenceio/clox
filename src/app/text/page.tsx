@@ -229,11 +229,11 @@ export default function TextPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`max-w-[85%] px-5 py-4 rounded-hig-xl text-sm leading-relaxed ${
+                <div className={`max-w-[85%] ${
                   m.role === 'user'
-                    ? 'gradient-brown-teal text-white shadow-brown-glow'
+                    ? 'px-5 py-4 rounded-hig-xl gradient-brown-teal text-white shadow-brown-glow'
                     : 'prose prose-sm max-w-none text-label-primary'
-                }`}>
+                } text-sm leading-relaxed`}>
                   <ReactMarkdown>{m.content}</ReactMarkdown>
                 </div>
               </motion.div>
