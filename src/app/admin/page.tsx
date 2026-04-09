@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
 const PROVIDER_CATEGORIES = {
   'Text AI': ['openai', 'anthropic', 'google', 'meta', 'mistral', 'xai', 'cohere', 'ai21', 'deepseek', 'qwen', 'zhipu', 'kimi', 'baidu'],
@@ -53,37 +54,47 @@ const PROVIDER_NAMES: Record<string, string> = {
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<string>('Text AI')
   const [apiKeys, setApiKeys] = useState<Record<string, { key: string; secret: string; url: string; enabled: boolean }>>({})
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
+  const supabase = createClient()
 
   useEffect(() => {
-    // Check if user is logged in
-    if (typeof window !== 'undefined') {
-      const session = localStorage.getItem('clox_admin_session')
-      if (!session) {
-        router.push('/auth/login')
-        return
-      }
+    checkAuthAndLoadKeys()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const checkAuthAndLoadKeys = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    if (!session) {
+      router.push('/auth/login')
+      return
     }
 
-    // Load saved API keys from localStorage
-    const saved = localStorage.getItem('clox_api_keys')
-    if (saved) {
-      try {
-        setApiKeys(JSON.parse(saved))
-      } catch (e) {
-        console.error('Error parsing saved keys:', e)
+    // Load from localStorage for now (can be migrated to Supabase table later)
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('clox_api_keys')
+      if (saved) {
+        try {
+          setApiKeys(JSON.parse(saved))
+        } catch (e) {
+          console.error('Error parsing saved keys:', e)
+        }
       }
     }
-  }, [router])
+    
+    setLoading(false)
+  }
 
   const handleSave = (provider: string) => {
-    // Save to localStorage
-    localStorage.setItem('clox_api_keys', JSON.stringify(apiKeys))
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('clox_api_keys', JSON.stringify(apiKeys))
+    }
     alert(`${PROVIDER_NAMES[provider] || provider} configuration saved successfully!`)
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('clox_admin_session')
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
     router.push('/auth/login')
   }
 
@@ -99,21 +110,28 @@ export default function AdminDashboard() {
 
   const providersInTab = PROVIDER_CATEGORIES[activeTab as keyof typeof PROVIDER_CATEGORIES] || []
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-surface-secondary flex items-center justify-center">
+        <div className="text-label-secondary">Loading...</div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen" style={{ background: '#F2F2F7' }}>
+    <div className="min-h-screen bg-surface-secondary dark:bg-surface">
       {/* Header */}
-      <div style={{ background: '#FFFFFF', borderBottom: '1px solid rgba(229, 229, 234, 0.5)' }}>
+      <div className="bg-white dark:bg-surface border-b border-separator/50">
         <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold" style={{ background: 'linear-gradient(135deg, #A2845E 0%, #5AC8C8 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <h1 className="text-2xl font-bold gradient-text">
               Clox Studio Admin
             </h1>
-            <p className="text-sm mt-1" style={{ color: '#8E8E93' }}>Manage AI Provider API Keys</p>
+            <p className="text-sm mt-1 text-label-tertiary">Manage AI Provider API Keys</p>
           </div>
           <button
             onClick={handleLogout}
-            className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95"
-            style={{ background: '#F2F2F7', border: '1px solid rgba(229, 229, 234, 0.8)', color: '#636366' }}
+            className="px-5 py-2.5 bg-surface-secondary dark:bg-surface-tertiary border border-separator rounded-hig-xl text-sm font-semibold text-label-secondary hover:text-label-primary hover:scale-105 active:scale-95 transition-all"
           >
             Sign Out
           </button>
@@ -121,18 +139,18 @@ export default function AdminDashboard() {
       </div>
 
       {/* Tab Navigation */}
-      <div style={{ background: '#FFFFFF', borderBottom: '1px solid rgba(229, 229, 234, 0.3)' }}>
+      <div className="bg-white dark:bg-surface border-b border-separator/30">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex gap-6 overflow-x-auto">
             {Object.keys(PROVIDER_CATEGORIES).map(category => (
               <button
                 key={category}
                 onClick={() => setActiveTab(category)}
-                className="px-4 py-4 text-sm font-bold transition-all whitespace-nowrap"
-                style={{
-                  borderBottom: activeTab === category ? '3px solid #A2845E' : '3px solid transparent',
-                  color: activeTab === category ? '#A2845E' : '#636366'
-                }}
+                className={`px-4 py-4 text-sm font-bold transition-all whitespace-nowrap border-b-[3px] ${
+                  activeTab === category 
+                    ? 'border-brown text-brown' 
+                    : 'border-transparent text-label-secondary hover:text-label-primary'
+                }`}
               >
                 {category}
               </button>
@@ -148,10 +166,10 @@ export default function AdminDashboard() {
             const values = apiKeys[provider] || { key: '', secret: '', url: '', enabled: false }
             
             return (
-              <div key={provider} className="rounded-3xl p-6 space-y-5 shadow-lg" style={{ background: '#FFFFFF', border: '1px solid rgba(229, 229, 234, 0.5)' }}>
+              <div key={provider} className="bg-white dark:bg-surface rounded-hig-3xl p-6 space-y-5 shadow-float border border-separator/50">
                 {/* Provider Header */}
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold" style={{ color: '#1C1C1E' }}>
+                  <h3 className="text-lg font-bold text-label-primary">
                     {PROVIDER_NAMES[provider] || provider}
                   </h3>
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -159,16 +177,15 @@ export default function AdminDashboard() {
                       type="checkbox"
                       checked={values.enabled}
                       onChange={(e) => updateField(provider, 'enabled', e.target.checked)}
-                      className="w-5 h-5 rounded cursor-pointer"
-                      style={{ accentColor: '#A2845E' }}
+                      className="w-5 h-5 rounded cursor-pointer accent-brown"
                     />
-                    <span className="text-xs font-semibold" style={{ color: '#636366' }}>Enabled</span>
+                    <span className="text-xs font-semibold text-label-secondary">Enabled</span>
                   </label>
                 </div>
 
                 {/* API Key Field */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#636366' }}>
+                  <label className="block text-xs font-bold text-label-secondary uppercase tracking-widest mb-2">
                     API Key
                   </label>
                   <input
@@ -176,14 +193,13 @@ export default function AdminDashboard() {
                     value={values.key}
                     onChange={(e) => updateField(provider, 'key', e.target.value)}
                     placeholder="sk-..."
-                    className="w-full h-12 px-4 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-opacity-20 transition-all"
-                    style={{ background: '#FFFFFF', border: '2px solid rgba(229, 229, 234, 0.8)', color: '#1C1C1E' }}
+                    className="w-full h-12 px-4 bg-white dark:bg-surface-tertiary border-2 border-separator rounded-hig-xl text-sm font-mono text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all"
                   />
                 </div>
 
                 {/* API Secret Field (optional) */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#636366' }}>
+                  <label className="block text-xs font-bold text-label-secondary uppercase tracking-widest mb-2">
                     API Secret (Optional)
                   </label>
                   <input
@@ -191,14 +207,13 @@ export default function AdminDashboard() {
                     value={values.secret}
                     onChange={(e) => updateField(provider, 'secret', e.target.value)}
                     placeholder="Optional secret key"
-                    className="w-full h-12 px-4 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-opacity-20 transition-all"
-                    style={{ background: '#FFFFFF', border: '2px solid rgba(229, 229, 234, 0.8)', color: '#1C1C1E' }}
+                    className="w-full h-12 px-4 bg-white dark:bg-surface-tertiary border-2 border-separator rounded-hig-xl text-sm font-mono text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all"
                   />
                 </div>
 
                 {/* Base URL Field (optional) */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#636366' }}>
+                  <label className="block text-xs font-bold text-label-secondary uppercase tracking-widest mb-2">
                     Base URL (Optional)
                   </label>
                   <input
@@ -206,16 +221,14 @@ export default function AdminDashboard() {
                     value={values.url}
                     onChange={(e) => updateField(provider, 'url', e.target.value)}
                     placeholder="https://api.example.com"
-                    className="w-full h-12 px-4 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-opacity-20 transition-all"
-                    style={{ background: '#FFFFFF', border: '2px solid rgba(229, 229, 234, 0.8)', color: '#1C1C1E' }}
+                    className="w-full h-12 px-4 bg-white dark:bg-surface-tertiary border-2 border-separator rounded-hig-xl text-sm font-mono text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all"
                   />
                 </div>
 
                 {/* Save Button */}
                 <button
                   onClick={() => handleSave(provider)}
-                  className="w-full h-12 text-white rounded-xl font-bold shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all"
-                  style={{ background: 'linear-gradient(135deg, #A2845E 0%, #5AC8C8 100%)', boxShadow: '0 8px 20px rgba(162, 132, 94, 0.3)' }}
+                  className="w-full h-12 gradient-brown-teal text-white rounded-hig-xl font-bold shadow-float hover:shadow-hig-hover hover:scale-105 active:scale-95 transition-all"
                 >
                   Save Configuration
                 </button>
