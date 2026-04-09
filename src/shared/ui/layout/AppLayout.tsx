@@ -1,5 +1,6 @@
 import { motion, Transition, Variants } from 'framer-motion'
 import { ReactNode } from 'react'
+import ThemeToggle from '@/shared/ui/components/ThemeToggle'
 
 export const spring: Transition = { type: "spring", stiffness: 380, damping: 30 }
 
@@ -98,6 +99,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
                  <span className="text-sm font-bold text-teal-600">$12.40</span>
                  <div className="w-2 h-2 bg-success rounded-full shadow-sm animate-pulse"></div>
               </div>
+              <ThemeToggle />
               <button className="w-9 h-9 rounded-hig-lg bg-surface-secondary/60 border border-separator/30 flex items-center justify-center hover:bg-surface hover:border-separator transition-all shadow-sm active:scale-90 text-label-secondary hover:text-label-primary">
                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />

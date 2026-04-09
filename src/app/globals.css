@@ -6,13 +6,31 @@
   :root {
     --background: #F2F2F7;
     --foreground: #1C1C1E;
+    
+    /* Light mode colors (RGB values for alpha support) */
+    --surface: 255 255 255;
+    --surface-secondary: 242 242 247;
+    --surface-tertiary: 250 250 250;
+    --label-primary: 28 28 30;
+    --label-secondary: 99 99 102;
+    --label-tertiary: 142 142 147;
+    --separator: 229 229 234;
+    --fill: 120 120 128;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --background: #000000;
-      --foreground: #FFFFFF;
-    }
+  .dark {
+    --background: #000000;
+    --foreground: #FFFFFF;
+    
+    /* Dark mode colors (RGB values for alpha support) */
+    --surface: 28 28 30;
+    --surface-secondary: 18 18 20;
+    --surface-tertiary: 44 44 46;
+    --label-primary: 255 255 255;
+    --label-secondary: 152 152 157;
+    --label-tertiary: 99 99 102;
+    --separator: 58 58 60;
+    --fill: 118 118 128;
   }
 }
 

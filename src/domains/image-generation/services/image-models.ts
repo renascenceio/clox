@@ -1,27 +1,47 @@
 export const IMAGE_MODELS = [
-  // Western AI
-  { id: 'dall-e-4', name: 'DALL-E 4', provider: 'openai', category: 'Western AI' },
-  { id: 'dall-e-3', name: 'DALL-E 3', provider: 'openai', category: 'Western AI' },
-  { id: 'midjourney-v7', name: 'Midjourney v7', provider: 'midjourney', category: 'Western AI' },
-  { id: 'midjourney-v6.1', name: 'Midjourney v6.1', provider: 'midjourney', category: 'Western AI' },
-  { id: 'stable-diffusion-3.5', name: 'SD 3.5 Large', provider: 'stability', category: 'Western AI' },
-  { id: 'stable-diffusion-xl', name: 'SDXL 1.0', provider: 'stability', category: 'Western AI' },
-  { id: 'flux-1.1-pro-ultra', name: 'FLUX.1.1 Pro Ultra', provider: 'black-forest-labs', category: 'Western AI' },
-  { id: 'flux-1-pro', name: 'FLUX.1 Pro', provider: 'black-forest-labs', category: 'Western AI' },
-  { id: 'flux-1-dev', name: 'FLUX.1 Dev', provider: 'black-forest-labs', category: 'Western AI' },
-  { id: 'imagen-3', name: 'Imagen 3', provider: 'google', category: 'Western AI' },
-  { id: 'ideogram-3.0', name: 'Ideogram 3.0', provider: 'ideogram', category: 'Western AI' },
-  { id: 'ideogram-2.0-turbo', name: 'Ideogram 2.0 Turbo', provider: 'ideogram', category: 'Western AI' },
-  { id: 'recraft-v3', name: 'Recraft V3', provider: 'recraft', category: 'Western AI' },
-  { id: 'playground-v3', name: 'Playground v3', provider: 'playground', category: 'Western AI' },
+  // DALL-E (OpenAI)
+  { id: 'dall-e-4', name: 'DALL-E 4', version: '4', provider: 'openai', brandName: 'DALL-E' },
+  { id: 'dall-e-3', name: 'DALL-E 3', version: '3', provider: 'openai', brandName: 'DALL-E' },
   
-  // Chinese AI
-  { id: 'cogview-3-plus', name: 'CogView-3 Plus', provider: 'zhipu', category: 'Chinese AI' },
-  { id: 'wanxiang-2.1', name: 'Wanxiang 2.1', provider: 'alibaba', category: 'Chinese AI' },
-  { id: 'tongyi-wanxiang', name: 'Tongyi Wanxiang', provider: 'alibaba', category: 'Chinese AI' },
-  { id: 'ernie-vilg-2.0', name: 'ERNIE-ViLG 2.0', provider: 'baidu', category: 'Chinese AI' },
-  { id: 'wenxin-yige', name: 'Wenxin Yige', provider: 'baidu', category: 'Chinese AI' },
-  { id: 'kolors', name: 'Kolors', provider: 'kuaishou', category: 'Chinese AI' },
+  // Midjourney
+  { id: 'midjourney-v7', name: 'v7', version: 'v7', provider: 'midjourney', brandName: 'Midjourney' },
+  { id: 'midjourney-v6.1', name: 'v6.1', version: 'v6.1', provider: 'midjourney', brandName: 'Midjourney' },
+  
+  // Stable Diffusion (Stability AI)
+  { id: 'stable-diffusion-3.5', name: '3.5 Large', version: '3.5 Large', provider: 'stability', brandName: 'Stable Diffusion' },
+  { id: 'stable-diffusion-xl', name: 'XL 1.0', version: 'XL 1.0', provider: 'stability', brandName: 'Stable Diffusion' },
+  
+  // FLUX (Black Forest Labs)
+  { id: 'flux-1.1-pro-ultra', name: '1.1 Pro Ultra', version: '1.1 Pro Ultra', provider: 'black-forest-labs', brandName: 'FLUX' },
+  { id: 'flux-1-pro', name: '1 Pro', version: '1 Pro', provider: 'black-forest-labs', brandName: 'FLUX' },
+  { id: 'flux-1-dev', name: '1 Dev', version: '1 Dev', provider: 'black-forest-labs', brandName: 'FLUX' },
+  
+  // Imagen (Google)
+  { id: 'imagen-3', name: 'Imagen 3', version: '3', provider: 'google', brandName: 'Imagen' },
+  
+  // Ideogram
+  { id: 'ideogram-3.0', name: '3.0', version: '3.0', provider: 'ideogram', brandName: 'Ideogram' },
+  { id: 'ideogram-2.0-turbo', name: '2.0 Turbo', version: '2.0 Turbo', provider: 'ideogram', brandName: 'Ideogram' },
+  
+  // Recraft
+  { id: 'recraft-v3', name: 'V3', version: 'V3', provider: 'recraft', brandName: 'Recraft' },
+  
+  // Playground
+  { id: 'playground-v3', name: 'v3', version: 'v3', provider: 'playground', brandName: 'Playground' },
+  
+  // CogView (Zhipu AI)
+  { id: 'cogview-3-plus', name: '3 Plus', version: '3 Plus', provider: 'zhipu', brandName: 'CogView' },
+  
+  // Wanxiang (Alibaba)
+  { id: 'wanxiang-2.1', name: '2.1', version: '2.1', provider: 'alibaba', brandName: 'Wanxiang' },
+  { id: 'tongyi-wanxiang', name: 'Tongyi', version: 'Tongyi', provider: 'alibaba', brandName: 'Wanxiang' },
+  
+  // ERNIE-ViLG (Baidu)
+  { id: 'ernie-vilg-2.0', name: '2.0', version: '2.0', provider: 'baidu', brandName: 'ERNIE-ViLG' },
+  { id: 'wenxin-yige', name: 'Yige', version: 'Yige', provider: 'baidu', brandName: 'Wenxin' },
+  
+  // Kolors (Kuaishou)
+  { id: 'kolors', name: 'Kolors', version: 'v1', provider: 'kuaishou', brandName: 'Kolors' },
 ]
 
 export const ASPECT_RATIOS = [

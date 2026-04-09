@@ -1,24 +1,40 @@
 export const AUDIO_MODELS = [
-  // Text-to-Speech / Voice
-  { id: 'elevenlabs-turbo-v2.5', name: 'ElevenLabs Turbo v2.5', provider: 'elevenlabs', category: 'Western AI', type: 'voice' },
-  { id: 'elevenlabs-multilingual-v2', name: 'ElevenLabs Multilingual v2', provider: 'elevenlabs', category: 'Western AI', type: 'voice' },
-  { id: 'openai-tts-1-hd', name: 'OpenAI TTS HD', provider: 'openai', category: 'Western AI', type: 'voice' },
-  { id: 'openai-tts-1', name: 'OpenAI TTS', provider: 'openai', category: 'Western AI', type: 'voice' },
-  { id: 'google-wavenet', name: 'Google WaveNet', provider: 'google', category: 'Western AI', type: 'voice' },
-  { id: 'azure-neural-tts', name: 'Azure Neural TTS', provider: 'microsoft', category: 'Western AI', type: 'voice' },
-  { id: 'play.ht-3.0', name: 'Play.ht 3.0', provider: 'playht', category: 'Western AI', type: 'voice' },
+  // ElevenLabs (Text-to-Speech)
+  { id: 'elevenlabs-turbo-v2.5', name: 'Turbo v2.5', version: 'Turbo v2.5', provider: 'elevenlabs', brandName: 'ElevenLabs', type: 'voice' },
+  { id: 'elevenlabs-multilingual-v2', name: 'Multilingual v2', version: 'Multilingual v2', provider: 'elevenlabs', brandName: 'ElevenLabs', type: 'voice' },
   
-  // Music Generation
-  { id: 'suno-v4', name: 'Suno v4', provider: 'suno', category: 'Western AI', type: 'music' },
-  { id: 'suno-v3.5', name: 'Suno v3.5', provider: 'suno', category: 'Western AI', type: 'music' },
-  { id: 'udio-v2', name: 'Udio v2', provider: 'udio', category: 'Western AI', type: 'music' },
-  { id: 'udio-v1.5', name: 'Udio v1.5', provider: 'udio', category: 'Western AI', type: 'music' },
-  { id: 'musiclm', name: 'MusicLM', provider: 'google', category: 'Western AI', type: 'music' },
-  { id: 'stable-audio-2', name: 'Stable Audio 2', provider: 'stability', category: 'Western AI', type: 'music' },
+  // OpenAI TTS
+  { id: 'openai-tts-1-hd', name: 'TTS HD', version: 'TTS-1-HD', provider: 'openai', brandName: 'OpenAI TTS', type: 'voice' },
+  { id: 'openai-tts-1', name: 'TTS Standard', version: 'TTS-1', provider: 'openai', brandName: 'OpenAI TTS', type: 'voice' },
   
-  // Chinese AI
-  { id: 'fish-speech-1.5', name: 'Fish Speech 1.5', provider: 'fishaudio', category: 'Chinese AI', type: 'voice' },
-  { id: 'chatglm-audio', name: 'ChatGLM Audio', provider: 'zhipu', category: 'Chinese AI', type: 'voice' },
+  // Google WaveNet
+  { id: 'google-wavenet', name: 'WaveNet', version: 'WaveNet', provider: 'google', brandName: 'Google Cloud TTS', type: 'voice' },
+  
+  // Azure Neural TTS (Microsoft)
+  { id: 'azure-neural-tts', name: 'Neural TTS', version: 'Neural', provider: 'microsoft', brandName: 'Azure TTS', type: 'voice' },
+  
+  // Play.ht
+  { id: 'play.ht-3.0', name: '3.0', version: '3.0', provider: 'playht', brandName: 'Play.ht', type: 'voice' },
+  
+  // Suno (Music Generation)
+  { id: 'suno-v4', name: 'v4', version: 'v4', provider: 'suno', brandName: 'Suno', type: 'music' },
+  { id: 'suno-v3.5', name: 'v3.5', version: 'v3.5', provider: 'suno', brandName: 'Suno', type: 'music' },
+  
+  // Udio (Music Generation)
+  { id: 'udio-v2', name: 'v2', version: 'v2', provider: 'udio', brandName: 'Udio', type: 'music' },
+  { id: 'udio-v1.5', name: 'v1.5', version: 'v1.5', provider: 'udio', brandName: 'Udio', type: 'music' },
+  
+  // MusicLM (Google)
+  { id: 'musiclm', name: 'MusicLM', version: 'v1', provider: 'google', brandName: 'MusicLM', type: 'music' },
+  
+  // Stable Audio (Stability AI)
+  { id: 'stable-audio-2', name: 'Audio 2', version: '2', provider: 'stability', brandName: 'Stable Audio', type: 'music' },
+  
+  // Fish Speech (FishAudio)
+  { id: 'fish-speech-1.5', name: '1.5', version: '1.5', provider: 'fishaudio', brandName: 'Fish Speech', type: 'voice' },
+  
+  // ChatGLM Audio (Zhipu AI)
+  { id: 'chatglm-audio', name: 'Audio', version: 'v1', provider: 'zhipu', brandName: 'ChatGLM Audio', type: 'voice' },
 ]
 
 export const VOICE_STYLES = [
