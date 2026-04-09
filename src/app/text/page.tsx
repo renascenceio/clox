@@ -232,7 +232,7 @@ export default function TextPage() {
                 <div className={`max-w-[85%] px-5 py-4 rounded-hig-xl text-sm leading-relaxed ${
                   m.role === 'user'
                     ? 'gradient-brown-teal text-white shadow-brown-glow'
-                    : 'glass-float shadow-hig prose prose-sm max-w-none text-label-primary'
+                    : 'prose prose-sm max-w-none text-label-primary'
                 }`}>
                   <ReactMarkdown>{m.content}</ReactMarkdown>
                 </div>
@@ -242,7 +242,7 @@ export default function TextPage() {
         </div>
 
         {/* Message Input with Integrated Tabs - Fixed at bottom */}
-        <div className="fixed bottom-0 left-[284px] right-[368px] p-6 bg-gradient-to-t from-surface-secondary/95 via-surface-secondary/90 to-transparent dark:from-[#1C1C1E]/95 dark:via-[#1C1C1E]/90 dark:to-transparent backdrop-blur-sm pointer-events-none">
+        <div className="fixed bottom-0 left-[304px] right-[368px] p-6 bg-gradient-to-t from-surface-secondary/95 via-surface-secondary/90 to-transparent dark:from-surface-secondary/95 dark:via-surface-secondary/90 dark:to-transparent backdrop-blur-sm pointer-events-none">
           <div className="max-w-4xl mx-auto pointer-events-auto">
             {/* Tabbed Message Input Box */}
             <div className="glass-float rounded-hig-2xl shadow-float overflow-hidden border border-separator/50">

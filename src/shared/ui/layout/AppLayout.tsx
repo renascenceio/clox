@@ -31,29 +31,32 @@ interface AppLayoutProps {
 export default function AppLayout({ children, sidebar, rightPanel, topBarContent }: AppLayoutProps) {
   return (
     <div className="flex h-screen relative bg-gradient-to-br from-surface-secondary via-surface-tertiary to-surface-secondary text-label-primary font-sans selection:bg-teal/20 overflow-hidden p-6 gap-6">
-      {/* Subtle Animated Background Blobs - Less intrusive for app */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40 dark:opacity-50">
-        <div className="absolute top-20 -left-10 w-96 h-96 bg-brown/15 dark:bg-brown-400/10 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob-slow"></div>
-        <div className="absolute top-40 -right-10 w-96 h-96 bg-teal/15 dark:bg-teal-400/10 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob-slow [animation-delay:3s]"></div>
-        <div className="absolute bottom-20 left-1/3 w-96 h-96 bg-brown-300/15 dark:bg-brown-500/10 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob-slow [animation-delay:6s]"></div>
+      {/* Visible Animated Background Blobs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 -left-10 w-[500px] h-[500px] bg-brown/20 dark:bg-brown-400/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow opacity-60 dark:opacity-70"></div>
+        <div className="absolute top-40 -right-10 w-[500px] h-[500px] bg-teal/20 dark:bg-teal-400/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow [animation-delay:3s] opacity-60 dark:opacity-70"></div>
+        <div className="absolute bottom-20 left-1/3 w-[500px] h-[500px] bg-brown-300/20 dark:bg-brown-500/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow [animation-delay:6s] opacity-60 dark:opacity-70"></div>
       </div>
-      {/* Floating Left Sidebar (260px) */}
-      <aside className="w-[260px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
-        <div className="h-16 border-b border-separator/50 flex items-center px-6">
-           <div className="w-8 h-8 gradient-brown-teal rounded-hig-lg flex items-center justify-center mr-3 shadow-brown-glow">
-             <span className="text-white font-bold text-sm">C</span>
+      {/* Floating Left Sidebar (280px) - Improved Design */}
+      <aside className="w-[280px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
+        <div className="h-20 border-b border-separator/50 flex items-center px-6 bg-gradient-to-br from-brown/5 to-teal/5 dark:from-brown/10 dark:to-teal/10">
+           <div className="w-10 h-10 gradient-brown-teal rounded-hig-xl flex items-center justify-center mr-3 shadow-brown-glow">
+             <span className="text-white font-bold text-lg">C</span>
            </div>
-           <span className="font-bold text-base tracking-tight">Clox Studio</span>
+           <div>
+             <div className="font-bold text-lg tracking-tight">Clox Studio</div>
+             <div className="text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-widest">AI Platform</div>
+           </div>
         </div>
-        <div className="flex-grow overflow-y-auto custom-scrollbar">
+        <div className="flex-grow overflow-y-auto custom-scrollbar p-4">
           {sidebar}
         </div>
-        <div className="p-4 border-t border-separator/50">
-           <div className="flex items-center gap-3 p-2.5 bg-surface rounded-hig-xl border border-separator shadow-sm group cursor-pointer hover:shadow-hig-hover transition-all active:scale-95">
-              <Avatar seed="aslan@renascence.io" size={36} className="group-hover:scale-105 transition-transform shadow-teal-glow" />
+        <div className="p-4 border-t border-separator/50 bg-surface-secondary/30 dark:bg-surface-tertiary/30">
+           <div className="flex items-center gap-3 p-3 bg-surface-tertiary dark:bg-surface rounded-hig-xl border border-separator shadow-sm group cursor-pointer hover:shadow-hig-hover transition-all active:scale-95 hover:border-brown dark:hover:border-teal">
+              <Avatar seed="aslan@renascence.io" size={40} className="group-hover:scale-105 transition-transform shadow-brown-glow" />
               <div className="flex-grow min-w-0">
-                 <div className="text-xs font-bold truncate">Aslan Renascence</div>
-                 <div className="text-[9px] font-bold text-brown uppercase tracking-widest">Super Admin</div>
+                 <div className="text-sm font-bold truncate text-label-primary">Aslan</div>
+                 <div className="text-[10px] font-bold text-brown dark:text-teal uppercase tracking-widest">Super Admin</div>
               </div>
            </div>
         </div>

@@ -8,12 +8,17 @@ import { useState } from 'react'
 import { IMAGE_MODELS, ASPECT_RATIOS, QUALITY_LEVELS, STYLE_PRESETS } from '@/domains/image-generation/services/image-models'
 import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
+
+type AIType = 'text' | 'image' | 'video' | 'audio'
 
 export default function ImagePage() {
+  const router = useRouter()
   const [selectedModel, setSelectedModel] = useState<typeof IMAGE_MODELS[number]>(IMAGE_MODELS[0])
   const [selectedRatio, setSelectedRatio] = useState('1:1')
   const [selectedQuality, setSelectedQuality] = useState('hd')
   const [selectedStyle, setSelectedStyle] = useState('photorealistic')
+  const [activeAIType, setActiveAIType] = useState<AIType>('image')
   const [prompt, setPrompt] = useState('')
   const [generations, setGenerations] = useState<{ id: string; url: string; prompt: string; model: string; ratio: string }[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
@@ -38,6 +43,36 @@ export default function ImagePage() {
       setIsGenerating(false)
       setPrompt('')
     }, 2000)
+  }
+
+  const handleAITypeChange = (type: AIType) => {
+    setActiveAIType(type)
+    if (type !== 'image') {
+      router.push(`/${type}`)
+    }
+  }
+
+  const aiTypeIcons = {
+    text: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+      </svg>
+    ),
+    image: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+    video: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      </svg>
+    ),
+    audio: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+      </svg>
+    ),
   }
 
   const settingsPanel = (
@@ -68,7 +103,7 @@ export default function ImagePage() {
 
   return (
     <AppLayout sidebar={sidebar} rightPanel={settingsPanel}>
-      <div className="p-8 pb-40">
+      <div className="p-8 pb-64">
         <motion.div
           variants={stagger}
           initial="initial"
@@ -81,7 +116,7 @@ export default function ImagePage() {
                 key={gen.id}
                 variants={cardVariant}
                 layout
-                className="relative group bg-surface border border-separator rounded-2xl overflow-hidden shadow-sm hover:shadow-hig transition-all break-inside-avoid"
+                className="relative group bg-surface dark:bg-surface-tertiary border border-separator rounded-2xl overflow-hidden shadow-sm hover:shadow-hig transition-all break-inside-avoid"
               >
                 <div className="relative aspect-square w-full">
                   <Image
@@ -107,25 +142,60 @@ export default function ImagePage() {
           </AnimatePresence>
         </motion.div>
 
-        <div className="fixed bottom-0 left-[284px] right-[344px] p-6 bg-gradient-to-t from-surface-secondary via-surface-secondary/90 to-transparent z-20 pointer-events-none">
-          <div className="max-w-3xl mx-auto pointer-events-auto">
-            <form onSubmit={handleGenerate} className="relative group">
-              <div className="flex glass-float rounded-hig-2xl shadow-float overflow-hidden focus-within:ring-2 focus-within:ring-brown/20 transition-all">
-                <input
+        {/* Message Input with Integrated Tabs - Fixed at bottom */}
+        <div className="fixed bottom-0 left-[304px] right-[368px] p-6 bg-gradient-to-t from-surface-secondary/95 via-surface-secondary/90 to-transparent dark:from-surface-secondary/95 dark:via-surface-secondary/90 dark:to-transparent backdrop-blur-sm pointer-events-none">
+          <div className="max-w-4xl mx-auto pointer-events-auto">
+            {/* Tabbed Message Input Box */}
+            <div className="glass-float rounded-hig-2xl shadow-float overflow-hidden border border-separator/50">
+              {/* AI Type Tabs - Integrated into message box */}
+              <div className="flex items-center border-b border-separator/30 bg-surface-secondary/40 dark:bg-[#2C2C2E]/40 backdrop-blur-sm">
+                {(['text', 'image', 'video', 'audio'] as AIType[]).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => handleAITypeChange(type)}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-bold text-xs uppercase tracking-wider transition-all border-b-2 ${
+                      activeAIType === type
+                        ? 'border-brown dark:border-teal bg-white dark:bg-[#2C2C2E] text-brown dark:text-teal'
+                        : 'border-transparent text-label-tertiary hover:text-label-primary hover:bg-white/30 dark:hover:bg-[#2C2C2E]/30'
+                    }`}
+                  >
+                    {aiTypeIcons[type]}
+                    <span>{type}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Message Input Form */}
+              <form onSubmit={handleGenerate} className="relative">
+                <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Describe the image you want to create..."
-                  className="flex-grow p-5 bg-transparent outline-none text-sm font-medium placeholder:text-label-tertiary"
+                  placeholder={`Describe the ${activeAIType} you want to create...`}
+                  className="w-full min-h-[80px] max-h-[240px] p-6 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
+                  rows={1}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      const formEvent = new Event('submit', { cancelable: true }) as unknown as React.FormEvent<HTMLFormElement>;
+                      handleGenerate(formEvent)
+                    }
+                  }}
                 />
                 <button
                   type="submit"
-                  disabled={isGenerating || !prompt.trim()}
-                  className="px-8 gradient-brown-teal text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:shadow-brown-glow"
+                  disabled={isGenerating || !prompt?.trim()}
+                  className="absolute right-4 bottom-4 w-12 h-12 flex items-center justify-center gradient-brown-teal text-white rounded-hig-xl shadow-brown-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
                 >
-                  {isGenerating ? 'Generating...' : 'Generate'}
+                  <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 3.33331V12.6666M8 3.33331L4 7.33331M8 3.33331L12 7.33331" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </button>
-              </div>
-            </form>
+              </form>
+            </div>
+            
+            <div className="text-center text-xs text-label-tertiary font-medium mt-3">
+              ⌘+Enter to generate • {activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode
+            </div>
           </div>
         </div>
       </div>
