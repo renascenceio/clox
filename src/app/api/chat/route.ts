@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   console.log('[v0] Provider config:', { enabled: isEnabled, hasKey: !!providerConfig?.apiKey })
 
   // Set API key as environment variable so the model can use it
-  if (providerConfig.apiKey) {
+  if (providerConfig?.apiKey) {
     const envKey = `${provider.toUpperCase()}_API_KEY`
     process.env[envKey] = providerConfig.apiKey
     console.log('[v0] Set environment variable:', envKey)
