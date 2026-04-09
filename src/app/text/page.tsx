@@ -2,7 +2,7 @@
 
 import { useChat } from '@ai-sdk/react'
 import AppLayout from '@/shared/ui/layout/AppLayout'
-import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
+import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -23,7 +23,13 @@ export default function TextPage() {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(2048)
-  const [activeChatId] = useState('initial-prompt')
+  const [activeChatId, setActiveChatId] = useState(() => {
+    // Load from localStorage or use default
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('activeChatId') || 'default-chat'
+    }
+    return 'default-chat'
+  })
   
   // Load saved model from localStorage on mount and filter models
   useEffect(() => {
@@ -64,6 +70,7 @@ export default function TextPage() {
   }, [selectedModel.provider])
 
   const chat = useChat({
+    id: activeChatId, // Unique ID for this chat session
     api: '/api/chat',
     body: {
       model: selectedModel.id,
@@ -85,6 +92,10 @@ export default function TextPage() {
     },
   })
 
+  // Extract chat properties early so they can be used in useEffect dependencies
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false, setMessages } = chat as any
+
   // Save chat history to localStorage whenever messages change
   useEffect(() => {
     if (chat.messages && chat.messages.length > 0) {
@@ -93,22 +104,22 @@ export default function TextPage() {
     }
   }, [chat.messages, activeChatId])
 
-  // Load chat history from localStorage when component mounts or chat ID changes
+  // Load chat history from localStorage when chat ID changes
   useEffect(() => {
     const savedHistory = localStorage.getItem(`chat-history-${activeChatId}`)
-    if (savedHistory) {
+    if (savedHistory && setMessages) {
       try {
-        const messages = JSON.parse(savedHistory)
-        console.log('[v0] Loading chat history for:', activeChatId, 'messages:', messages.length)
-        // The useChat hook will load messages from localStorage if available
+        const savedMessages = JSON.parse(savedHistory)
+        console.log('[v0] Loading chat history for:', activeChatId, 'messages:', savedMessages.length)
+        setMessages(savedMessages)
       } catch (e) {
         console.error('[v0] Failed to parse chat history:', e)
       }
+    } else if (setMessages) {
+      // Clear messages for new chat
+      setMessages([])
     }
-  }, [activeChatId])
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false } = chat as any
+  }, [activeChatId, setMessages])
 
   // Get unique brands and models for selected brand (only from enabled models)
   const brands = Array.from(new Set(enabledModels.map(m => m.brandName || m.provider)))
@@ -131,12 +142,15 @@ export default function TextPage() {
     }
   }
 
+  // Handle chat selection from sidebar
+  const handleChatSelect = (chatId: string) => {
+    console.log('[v0] Chat selected:', chatId)
+    setActiveChatId(chatId)
+    localStorage.setItem('activeChatId', chatId)
+  }
+
   const sidebar = (
-    <ChatSidebar>
-       <SidebarItem id="initial-prompt" title="Initial prompt..." active />
-       <SidebarItem id="refining-code" title="Refining the code" />
-       <SidebarItem id="marketing-ideas" title="Marketing ideas" />
-    </ChatSidebar>
+    <ChatSidebar activeChatId={activeChatId} onChatSelect={handleChatSelect} />
   )
 
   const aiTypeIcons = {
@@ -272,10 +286,10 @@ export default function TextPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`max-w-[85%] text-sm leading-relaxed ${
+                <div className={`max-w-[85%] ${
                   m.role === 'user'
-                    ? 'text-brown dark:text-teal font-semibold'
-                    : 'prose prose-sm max-w-none text-label-primary'
+                    ? 'text-brown dark:text-teal font-semibold text-sm leading-relaxed'
+                    : 'prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-surface-tertiary dark:prose-pre:bg-surface prose-pre:p-4 prose-pre:rounded-lg prose-code:text-brown dark:prose-code:text-teal prose-code:bg-surface-tertiary/50 dark:prose-code:bg-surface/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-headings:text-label-primary prose-strong:text-label-primary prose-a:text-brown dark:prose-a:text-teal prose-a:no-underline hover:prose-a:underline'
                 }`}>
                   <ReactMarkdown>{m.content}</ReactMarkdown>
                 </div>
@@ -344,8 +358,8 @@ export default function TextPage() {
                 <textarea
                   value={input}
                   onChange={handleInputChange}
-                  placeholder={`Message ${activeAIType} AI...\n\n⌘+Enter to send • ${activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode`}
-                  className="w-full min-h-[80px] max-h-[240px] p-6 pl-16 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary whitespace-pre-wrap"
+                  placeholder={`Message ${activeAIType} AI... (⌘+Enter to send • ${activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode)`}
+                  className="w-full min-h-[80px] max-h-[240px] p-6 pl-16 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
                   rows={1}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -376,10 +390,6 @@ export default function TextPage() {
                   </svg>
                 </button>
               </form>
-            </div>
-            
-            <div className="text-center text-xs text-label-tertiary font-medium mt-3">
-              ⌘+Enter to send • {activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode
             </div>
           </div>
         </div>

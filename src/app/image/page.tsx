@@ -192,10 +192,6 @@ export default function ImagePage() {
                 </button>
               </form>
             </div>
-            
-            <div className="text-center text-xs text-label-tertiary font-medium mt-3">
-              ⌘+Enter to generate • {activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode
-            </div>
           </div>
         </div>
       </div>
