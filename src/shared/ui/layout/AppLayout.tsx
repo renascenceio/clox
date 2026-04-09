@@ -29,7 +29,13 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutProps) {
   return (
-    <div className="flex h-screen bg-gradient-to-br from-surface-secondary via-surface-tertiary to-surface-secondary text-label-primary font-sans selection:bg-teal/20 overflow-hidden p-6 gap-6">
+    <div className="flex h-screen relative bg-gradient-to-br from-surface-secondary via-surface-tertiary to-surface-secondary text-label-primary font-sans selection:bg-teal/20 overflow-hidden p-6 gap-6">
+      {/* Subtle Animated Background Blobs - Less intrusive for app */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
+        <div className="absolute top-20 -left-10 w-96 h-96 bg-brown/10 dark:bg-brown/5 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow"></div>
+        <div className="absolute top-40 -right-10 w-96 h-96 bg-teal/10 dark:bg-teal/5 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow animation-delay-3000"></div>
+        <div className="absolute bottom-20 left-1/3 w-96 h-96 bg-brown-300/10 dark:bg-brown-300/5 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow animation-delay-6000"></div>
+      </div>
       {/* Floating Left Sidebar (260px) */}
       <aside className="w-[260px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
         <div className="h-16 border-b border-separator/50 flex items-center px-6">
@@ -124,6 +130,29 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
           {rightPanel}
         </motion.aside>
       )}
+
+      <style jsx>{`
+        @keyframes blob-slow {
+          0%, 100% {
+            transform: translate(0px, 0px) scale(1);
+          }
+          33% {
+            transform: translate(40px, -60px) scale(1.15);
+          }
+          66% {
+            transform: translate(-30px, 30px) scale(0.85);
+          }
+        }
+        .animate-blob-slow {
+          animation: blob-slow 15s infinite;
+        }
+        .animation-delay-3000 {
+          animation-delay: 3s;
+        }
+        .animation-delay-6000 {
+          animation-delay: 6s;
+        }
+      `}</style>
     </div>
   )
 }
