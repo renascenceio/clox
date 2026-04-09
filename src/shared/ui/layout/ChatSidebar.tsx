@@ -191,17 +191,17 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
         <div className="space-y-1">
           <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest flex justify-between items-center">
             <span>Recent Activity</span>
-            {filteredChats.length > 0 && (
-              <span className="text-label-tertiary">{filteredChats.length}</span>
+            {filteredChats.filter(c => c.type !== 'project').length > 0 && (
+              <span className="text-label-tertiary">{filteredChats.filter(c => c.type !== 'project').length}</span>
             )}
           </div>
           <div className="space-y-0.5">
-            {filteredChats.length === 0 ? (
+            {filteredChats.filter(c => c.type !== 'project').length === 0 ? (
               <div className="px-3 py-4 text-xs text-label-tertiary text-center">
                 No chats yet. Click + New to start.
               </div>
             ) : (
-              filteredChats.map(chat => (
+              filteredChats.filter(c => c.type !== 'project').map(chat => (
                 <SidebarItem
                   key={chat.id}
                   id={chat.id}
@@ -221,6 +221,34 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
             )}
           </div>
         </div>
+
+        {/* Projects */}
+        {filteredChats.filter(c => c.type === 'project').length > 0 && (
+          <div className="space-y-1">
+            <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest">
+              Projects
+            </div>
+            <div className="space-y-0.5">
+              {filteredChats.filter(c => c.type === 'project').map(project => (
+                <SidebarItem
+                  key={project.id}
+                  id={project.id}
+                  title={project.title}
+                  model="Project"
+                  active={project.id === activeChatId}
+                  isEditing={editingId === project.id}
+                  editingTitle={editingTitle}
+                  onEditingTitleChange={setEditingTitle}
+                  onStartEdit={() => startEditing(project.id, project.title)}
+                  onSaveEdit={() => handleRename(project.id, editingTitle, 'chat')}
+                  onCancelEdit={() => setEditingId(null)}
+                  onDelete={() => handleDeleteChat(project.id)}
+                  onClick={() => onChatSelect?.(project.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Folders */}
         {folders.length > 0 && (

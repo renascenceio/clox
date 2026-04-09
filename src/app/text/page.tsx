@@ -272,10 +272,10 @@ export default function TextPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`max-w-[85%] text-sm leading-relaxed ${
+                <div className={`max-w-[85%] ${
                   m.role === 'user'
-                    ? 'text-brown dark:text-teal font-semibold'
-                    : 'prose prose-sm max-w-none text-label-primary'
+                    ? 'text-brown dark:text-teal font-semibold text-sm leading-relaxed'
+                    : 'prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-surface-tertiary dark:prose-pre:bg-surface prose-pre:p-4 prose-pre:rounded-lg prose-code:text-brown dark:prose-code:text-teal prose-code:bg-surface-tertiary/50 dark:prose-code:bg-surface/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-headings:text-label-primary prose-strong:text-label-primary prose-a:text-brown dark:prose-a:text-teal prose-a:no-underline hover:prose-a:underline'
                 }`}>
                   <ReactMarkdown>{m.content}</ReactMarkdown>
                 </div>
@@ -344,8 +344,8 @@ export default function TextPage() {
                 <textarea
                   value={input}
                   onChange={handleInputChange}
-                  placeholder={`Message ${activeAIType} AI...\n\n⌘+Enter to send • ${activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode`}
-                  className="w-full min-h-[80px] max-h-[240px] p-6 pl-16 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary whitespace-pre-wrap"
+                  placeholder={`Message ${activeAIType} AI... (⌘+Enter to send • ${activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode)`}
+                  className="w-full min-h-[80px] max-h-[240px] p-6 pl-16 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
                   rows={1}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
