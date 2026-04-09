@@ -22,7 +22,7 @@ export default function TextPage() {
   const [activeAIType, setActiveAIType] = useState<AIType>('text')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.7)
-  const [maxTokens] = useState(2048)
+  const [maxTokens, setMaxTokens] = useState(2048)
   
   // Load saved model from localStorage on mount and filter models
   useEffect(() => {
