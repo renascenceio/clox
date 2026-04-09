@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import Image from 'next/image'
 
 interface AvatarProps {
   seed?: string
@@ -26,12 +27,13 @@ export default function Avatar({ seed = 'default', size = 40, className = '' }: 
   }, [seed, size])
 
   return (
-    <img
+    <Image
       src={avatarUrl}
       alt={`Avatar for ${seed}`}
       width={size}
       height={size}
       className={`rounded-full ${className}`}
+      unoptimized
     />
   )
 }

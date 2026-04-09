@@ -4,15 +4,6 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
-interface APIKey {
-  id: string
-  provider: string
-  api_key: string | null
-  api_secret: string | null
-  base_url: string | null
-  enabled: boolean
-}
-
 const PROVIDER_CATEGORIES = {
   'Text AI': ['openai', 'anthropic', 'google', 'meta', 'mistral', 'xai', 'cohere', 'ai21', 'deepseek', 'qwen', 'zhipu', 'kimi', 'baidu'],
   'Image AI': ['stability', 'midjourney', 'openai', 'google', 'ideogram', 'recraft', 'playground', 'zhipu', 'alibaba', 'baidu', 'kuaishou'],
