@@ -83,7 +83,7 @@ export default function AdminDashboard() {
   const [activeCategory, setActiveCategory] = useState<string>('Text AI')
   const [apiKeys, setApiKeys] = useState<Record<string, { key: string; secret: string; url: string; enabled: boolean }>>({})
   const [loading, setLoading] = useState(true)
-  const [users, setUsers] = useState<Array<{ id: string; email?: string; created_at: string }>>([])
+  const [users, setUsers] = useState<Array<{ id: string; email?: string; created_at: string; email_confirmed_at?: string }>>([])
   const router = useRouter()
   const supabase = createClient()
 
