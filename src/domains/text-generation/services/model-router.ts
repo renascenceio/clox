@@ -1,7 +1,7 @@
-import { openai } from '@ai-sdk/openai'
-import { anthropic } from '@ai-sdk/anthropic'
-import { google } from '@ai-sdk/google'
-import { mistral } from '@ai-sdk/mistral'
+import { createOpenAI } from '@ai-sdk/openai'
+import { createAnthropic } from '@ai-sdk/anthropic'
+import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { createMistral } from '@ai-sdk/mistral'
 import type { LanguageModel } from 'ai'
 
 export type AIProvider = 'openai' | 'anthropic' | 'google' | 'mistral'
@@ -20,7 +20,7 @@ const MODEL_ID_MAP: Record<string, string> = {
   'claude-haiku-4.5': 'claude-3-5-haiku-20241022',
   
   // Google Gemini - 2.5 Flash is the working model
-  'gemini-2.5-flash': 'gemini-2.5-flash',
+  'gemini-2.5-flash': 'gemini-2.5-flash-preview-04-17',
   'gemini-2.0-flash': 'gemini-2.0-flash',
   'gemini-1.5-pro': 'gemini-1.5-pro',
   
@@ -30,7 +30,7 @@ const MODEL_ID_MAP: Record<string, string> = {
 
 /**
  * Returns a LanguageModel instance for the given provider and model.
- * Sets API key from admin settings (passed from client) as environment variable.
+ * Uses factory functions to inject API key at runtime.
  */
 export function getModel(provider: AIProvider, modelId: string, apiKey?: string): LanguageModel {
   // Map our model ID to the provider's actual model ID
@@ -38,31 +38,30 @@ export function getModel(provider: AIProvider, modelId: string, apiKey?: string)
   
   console.log('[v0] getModel:', { provider, modelId, actualModelId, hasApiKey: !!apiKey })
   
-  // Set API key as environment variable so provider SDKs can use it
-  if (apiKey) {
-    if (provider === 'openai') {
-      process.env.OPENAI_API_KEY = apiKey
-    } else if (provider === 'anthropic') {
-      process.env.ANTHROPIC_API_KEY = apiKey
-    } else if (provider === 'google') {
-      process.env.GOOGLE_GENERATIVE_AI_API_KEY = apiKey
-    } else if (provider === 'mistral') {
-      process.env.MISTRAL_API_KEY = apiKey
-    }
+  if (!apiKey) {
+    throw new Error(`No API key provided for provider: ${provider}`)
   }
   
   switch (provider) {
-    case 'openai':
+    case 'openai': {
+      const openai = createOpenAI({ apiKey })
       return openai(actualModelId)
-    case 'anthropic':
+    }
+    case 'anthropic': {
+      const anthropic = createAnthropic({ apiKey })
       return anthropic(actualModelId)
-    case 'google':
+    }
+    case 'google': {
+      const google = createGoogleGenerativeAI({ apiKey })
       return google(actualModelId)
-    case 'mistral':
+    }
+    case 'mistral': {
+      const mistral = createMistral({ apiKey })
       return mistral(actualModelId)
+    }
     default:
-      // Default to OpenAI for unsupported providers
       console.log('[v0] Unsupported provider:', provider, '- defaulting to OpenAI')
+      const openai = createOpenAI({ apiKey })
       return openai('gpt-4o')
   }
 }
