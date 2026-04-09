@@ -83,7 +83,7 @@ export default function AdminDashboard() {
   const [activeCategory, setActiveCategory] = useState<string>('Text AI')
   const [apiKeys, setApiKeys] = useState<Record<string, { key: string; secret: string; url: string; enabled: boolean }>>({})
   const [loading, setLoading] = useState(true)
-  const [users, setUsers] = useState<any[]>([])
+  const [users, setUsers] = useState<Array<{ id: string; email?: string; created_at: string; email_confirmed_at?: string }>>([])
   const router = useRouter()
   const supabase = createClient()
 
@@ -145,7 +145,7 @@ export default function AdminDashboard() {
 
   const categories = ['Text AI', 'Image AI', 'Video AI', 'Audio AI']
   const providersInCategory = Object.entries(PROVIDER_CONFIG).filter(
-    ([_, config]) => config.category === activeCategory
+    ([, config]) => config.category === activeCategory
   )
 
   if (loading) {

@@ -23,66 +23,64 @@ export function getModel(provider: AIProvider, modelId: string): LanguageModel {
 }
 
 export const TEXT_MODELS = [
-  // OpenAI
-  { id: 'gpt-5-mini', name: 'GPT-5 Mini', provider: 'openai', category: 'Western AI' },
-  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', category: 'Western AI' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', category: 'Western AI' },
-  { id: 'o1', name: 'OpenAI o1', provider: 'openai', category: 'Western AI' },
-  { id: 'o1-mini', name: 'OpenAI o1 Mini', provider: 'openai', category: 'Western AI' },
+  // OpenAI / ChatGPT
+  { id: 'gpt-5-mini', name: 'GPT-5 Mini', version: 'GPT-5 Mini', provider: 'openai', brandName: 'ChatGPT' },
+  { id: 'gpt-4o', name: 'GPT-4o', version: 'GPT-4o', provider: 'openai', brandName: 'ChatGPT' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', version: 'GPT-4o Mini', provider: 'openai', brandName: 'ChatGPT' },
+  { id: 'o1', name: 'o1', version: 'o1', provider: 'openai', brandName: 'ChatGPT' },
+  { id: 'o1-mini', name: 'o1 Mini', version: 'o1 Mini', provider: 'openai', brandName: 'ChatGPT' },
   
-  // Anthropic
-  { id: 'claude-opus-4.6', name: 'Claude Opus 4.6', provider: 'anthropic', category: 'Western AI' },
-  { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', provider: 'anthropic', category: 'Western AI' },
-  { id: 'claude-3-5-haiku', name: 'Claude 3.5 Haiku', provider: 'anthropic', category: 'Western AI' },
+  // Anthropic Claude
+  { id: 'claude-opus-4.6', name: 'Opus 4.6', version: 'Opus 4.6', provider: 'anthropic', brandName: 'Claude' },
+  { id: 'claude-3-5-sonnet-20240620', name: '3.5 Sonnet', version: '3.5 Sonnet', provider: 'anthropic', brandName: 'Claude' },
+  { id: 'claude-3-5-haiku', name: '3.5 Haiku', version: '3.5 Haiku', provider: 'anthropic', brandName: 'Claude' },
   
-  // Google
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', provider: 'google', category: 'Western AI' },
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'google', category: 'Western AI' },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'google', category: 'Western AI' },
+  // Google Gemini
+  { id: 'gemini-3-flash', name: '3 Flash', version: '3 Flash', provider: 'google', brandName: 'Gemini' },
+  { id: 'gemini-2.0-flash', name: '2.0 Flash', version: '2.0 Flash', provider: 'google', brandName: 'Gemini' },
+  { id: 'gemini-1.5-pro', name: '1.5 Pro', version: '1.5 Pro', provider: 'google', brandName: 'Gemini' },
   
-  // Meta
-  { id: 'llama-3.3-70b', name: 'Llama 3.3 70B', provider: 'meta', category: 'Western AI' },
-  { id: 'llama-3.2-90b', name: 'Llama 3.2 90B', provider: 'meta', category: 'Western AI' },
+  // Meta Llama
+  { id: 'llama-3.3-70b', name: '3.3 70B', version: '3.3 70B', provider: 'meta', brandName: 'Llama' },
+  { id: 'llama-3.2-90b', name: '3.2 90B', version: '3.2 90B', provider: 'meta', brandName: 'Llama' },
   
   // Mistral
-  { id: 'mistral-large-latest', name: 'Mistral Large', provider: 'mistral', category: 'Western AI' },
-  { id: 'mistral-medium', name: 'Mistral Medium', provider: 'mistral', category: 'Western AI' },
+  { id: 'mistral-large-latest', name: 'Large', version: 'Large', provider: 'mistral', brandName: 'Mistral AI' },
+  { id: 'mistral-medium', name: 'Medium', version: 'Medium', provider: 'mistral', brandName: 'Mistral AI' },
   
-  // xAI
-  { id: 'grok-2', name: 'Grok 2', provider: 'xai', category: 'Western AI' },
-  { id: 'grok-2-mini', name: 'Grok 2 Mini', provider: 'xai', category: 'Western AI' },
+  // xAI Grok
+  { id: 'grok-2', name: 'Grok 2', version: 'Grok 2', provider: 'xai', brandName: 'Grok' },
+  { id: 'grok-2-mini', name: 'Grok 2 Mini', version: 'Grok 2 Mini', provider: 'xai', brandName: 'Grok' },
   
   // Cohere
-  { id: 'command-r-plus', name: 'Command R+', provider: 'cohere', category: 'Western AI' },
-  { id: 'command-r', name: 'Command R', provider: 'cohere', category: 'Western AI' },
+  { id: 'command-r-plus', name: 'Command R+', version: 'Command R+', provider: 'cohere', brandName: 'Cohere' },
+  { id: 'command-r', name: 'Command R', version: 'Command R', provider: 'cohere', brandName: 'Cohere' },
   
-  // AI21
-  { id: 'jamba-1.5-large', name: 'Jamba 1.5 Large', provider: 'ai21', category: 'Western AI' },
-  
-  // === CHINESE AI MODELS ===
+  // AI21 Labs
+  { id: 'jamba-1.5-large', name: 'Jamba 1.5 Large', version: 'Jamba 1.5 Large', provider: 'ai21', brandName: 'AI21 Labs' },
   
   // DeepSeek
-  { id: 'deepseek-v4', name: 'DeepSeek V4', provider: 'deepseek', category: 'Chinese AI' },
-  { id: 'deepseek-r1', name: 'DeepSeek R1', provider: 'deepseek', category: 'Chinese AI' },
-  { id: 'deepseek-coder-v2', name: 'DeepSeek Coder V2', provider: 'deepseek', category: 'Chinese AI' },
+  { id: 'deepseek-v4', name: 'V4', version: 'V4', provider: 'deepseek', brandName: 'DeepSeek' },
+  { id: 'deepseek-r1', name: 'R1', version: 'R1', provider: 'deepseek', brandName: 'DeepSeek' },
+  { id: 'deepseek-coder-v2', name: 'Coder V2', version: 'Coder V2', provider: 'deepseek', brandName: 'DeepSeek' },
   
   // Qwen (Alibaba)
-  { id: 'qwen-3.5-turbo', name: 'Qwen 3.5 Turbo', provider: 'qwen', category: 'Chinese AI' },
-  { id: 'qwen-3.5-plus', name: 'Qwen 3.5 Plus', provider: 'qwen', category: 'Chinese AI' },
-  { id: 'qwen-max', name: 'Qwen Max', provider: 'qwen', category: 'Chinese AI' },
-  { id: 'qwen-coder-turbo', name: 'Qwen Coder Turbo', provider: 'qwen', category: 'Chinese AI' },
+  { id: 'qwen-3.5-turbo', name: '3.5 Turbo', version: '3.5 Turbo', provider: 'qwen', brandName: 'Qwen' },
+  { id: 'qwen-3.5-plus', name: '3.5 Plus', version: '3.5 Plus', provider: 'qwen', brandName: 'Qwen' },
+  { id: 'qwen-max', name: 'Max', version: 'Max', provider: 'qwen', brandName: 'Qwen' },
+  { id: 'qwen-coder-turbo', name: 'Coder Turbo', version: 'Coder Turbo', provider: 'qwen', brandName: 'Qwen' },
   
   // GLM (Zhipu AI)
-  { id: 'glm-5-plus', name: 'GLM-5 Plus', provider: 'zhipu', category: 'Chinese AI' },
-  { id: 'glm-4-plus', name: 'GLM-4 Plus', provider: 'zhipu', category: 'Chinese AI' },
-  { id: 'glm-4-air', name: 'GLM-4 Air', provider: 'zhipu', category: 'Chinese AI' },
+  { id: 'glm-5-plus', name: '5 Plus', version: '5 Plus', provider: 'zhipu', brandName: 'GLM' },
+  { id: 'glm-4-plus', name: '4 Plus', version: '4 Plus', provider: 'zhipu', brandName: 'GLM' },
+  { id: 'glm-4-air', name: '4 Air', version: '4 Air', provider: 'zhipu', brandName: 'GLM' },
   
   // Kimi (Moonshot AI)
-  { id: 'kimi-k2.5', name: 'Kimi K2.5', provider: 'kimi', category: 'Chinese AI' },
-  { id: 'moonshot-v1-128k', name: 'Moonshot V1 128K', provider: 'kimi', category: 'Chinese AI' },
+  { id: 'kimi-k2.5', name: 'K2.5', version: 'K2.5', provider: 'kimi', brandName: 'Kimi' },
+  { id: 'moonshot-v1-128k', name: 'V1 128K', version: 'V1 128K', provider: 'kimi', brandName: 'Kimi' },
   
-  // Baidu
-  { id: 'ernie-4.5-turbo', name: 'ERNIE 4.5 Turbo', provider: 'baidu', category: 'Chinese AI' },
-  { id: 'ernie-4.0', name: 'ERNIE 4.0', provider: 'baidu', category: 'Chinese AI' },
-  { id: 'ernie-3.5', name: 'ERNIE 3.5', provider: 'baidu', category: 'Chinese AI' },
+  // Baidu ERNIE
+  { id: 'ernie-4.5-turbo', name: '4.5 Turbo', version: '4.5 Turbo', provider: 'baidu', brandName: 'ERNIE' },
+  { id: 'ernie-4.0', name: '4.0', version: '4.0', provider: 'baidu', brandName: 'ERNIE' },
+  { id: 'ernie-3.5', name: '3.5', version: '3.5', provider: 'baidu', brandName: 'ERNIE' },
 ]
