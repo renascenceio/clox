@@ -23,7 +23,7 @@ export default function TextPage() {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(2048)
-  const [activeChatId, setActiveChatId] = useState('initial-prompt')
+  const [activeChatId] = useState('initial-prompt')
   
   // Load saved model from localStorage on mount and filter models
   useEffect(() => {
