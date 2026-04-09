@@ -37,7 +37,7 @@ const MODEL_ID_MAP: Record<string, string> = {
 
 /**
  * Returns a LanguageModel instance for the given provider and model.
- * Accepts API key directly from admin settings (passed from client).
+ * Sets API key from admin settings (passed from client) as environment variable.
  */
 export function getModel(provider: AIProvider, modelId: string, apiKey?: string): LanguageModel {
   // Map our model ID to the provider's actual model ID
@@ -45,20 +45,32 @@ export function getModel(provider: AIProvider, modelId: string, apiKey?: string)
   
   console.log('[v0] getModel:', { provider, modelId, actualModelId, hasApiKey: !!apiKey })
   
+  // Set API key as environment variable so provider SDKs can use it
+  if (apiKey) {
+    if (provider === 'openai') {
+      process.env.OPENAI_API_KEY = apiKey
+    } else if (provider === 'anthropic') {
+      process.env.ANTHROPIC_API_KEY = apiKey
+    } else if (provider === 'google') {
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY = apiKey
+    } else if (provider === 'mistral') {
+      process.env.MISTRAL_API_KEY = apiKey
+    }
+  }
+  
   switch (provider) {
     case 'openai':
-      return openai(actualModelId, { apiKey: apiKey || process.env.OPENAI_API_KEY })
+      return openai(actualModelId)
     case 'anthropic':
-      return anthropic(actualModelId, { apiKey: apiKey || process.env.ANTHROPIC_API_KEY })
+      return anthropic(actualModelId)
     case 'google':
-      // Google SDK uses GOOGLE_GENERATIVE_AI_API_KEY
-      return google(actualModelId, { apiKey: apiKey || process.env.GOOGLE_GENERATIVE_AI_API_KEY })
+      return google(actualModelId)
     case 'mistral':
-      return mistral(actualModelId, { apiKey: apiKey || process.env.MISTRAL_API_KEY })
+      return mistral(actualModelId)
     default:
       // Default to OpenAI for unsupported providers
       console.log('[v0] Unsupported provider:', provider, '- defaulting to OpenAI')
-      return openai('gpt-4o', { apiKey: apiKey || process.env.OPENAI_API_KEY })
+      return openai('gpt-4o')
   }
 }
 
