@@ -27,7 +27,7 @@ export default function TextPage() {
       type="text"
       models={TEXT_MODELS}
       selectedModel={selectedModel}
-      onModelChange={(model) => setSelectedModel(model as typeof TEXT_MODELS[number])}
+      onModelChange={setSelectedModel}
     />
   )
 
