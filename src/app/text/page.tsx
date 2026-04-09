@@ -2,7 +2,7 @@
 
 import { useChat } from '@ai-sdk/react'
 import AppLayout from '@/shared/ui/layout/AppLayout'
-import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
+import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -23,7 +23,13 @@ export default function TextPage() {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(2048)
-  const [activeChatId] = useState('initial-prompt')
+  const [activeChatId, setActiveChatId] = useState(() => {
+    // Load from localStorage or use default
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('activeChatId') || 'default-chat'
+    }
+    return 'default-chat'
+  })
   
   // Load saved model from localStorage on mount and filter models
   useEffect(() => {
@@ -64,6 +70,7 @@ export default function TextPage() {
   }, [selectedModel.provider])
 
   const chat = useChat({
+    id: activeChatId, // Unique ID for this chat session
     api: '/api/chat',
     body: {
       model: selectedModel.id,
@@ -93,22 +100,25 @@ export default function TextPage() {
     }
   }, [chat.messages, activeChatId])
 
-  // Load chat history from localStorage when component mounts or chat ID changes
+  // Load chat history from localStorage when chat ID changes
   useEffect(() => {
     const savedHistory = localStorage.getItem(`chat-history-${activeChatId}`)
-    if (savedHistory) {
+    if (savedHistory && setMessages) {
       try {
-        const messages = JSON.parse(savedHistory)
-        console.log('[v0] Loading chat history for:', activeChatId, 'messages:', messages.length)
-        // The useChat hook will load messages from localStorage if available
+        const savedMessages = JSON.parse(savedHistory)
+        console.log('[v0] Loading chat history for:', activeChatId, 'messages:', savedMessages.length)
+        setMessages(savedMessages)
       } catch (e) {
         console.error('[v0] Failed to parse chat history:', e)
       }
+    } else if (setMessages) {
+      // Clear messages for new chat
+      setMessages([])
     }
-  }, [activeChatId])
+  }, [activeChatId, setMessages])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false } = chat as any
+  const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false, setMessages } = chat as any
 
   // Get unique brands and models for selected brand (only from enabled models)
   const brands = Array.from(new Set(enabledModels.map(m => m.brandName || m.provider)))
@@ -131,12 +141,15 @@ export default function TextPage() {
     }
   }
 
+  // Handle chat selection from sidebar
+  const handleChatSelect = (chatId: string) => {
+    console.log('[v0] Chat selected:', chatId)
+    setActiveChatId(chatId)
+    localStorage.setItem('activeChatId', chatId)
+  }
+
   const sidebar = (
-    <ChatSidebar>
-       <SidebarItem id="initial-prompt" title="Initial prompt..." active />
-       <SidebarItem id="refining-code" title="Refining the code" />
-       <SidebarItem id="marketing-ideas" title="Marketing ideas" />
-    </ChatSidebar>
+    <ChatSidebar activeChatId={activeChatId} onChatSelect={handleChatSelect} />
   )
 
   const aiTypeIcons = {
