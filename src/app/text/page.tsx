@@ -110,9 +110,9 @@ export default function TextPage() {
 
   const sidebar = (
     <ChatSidebar>
-       <SidebarItem title="Initial prompt..." active />
-       <SidebarItem title="Refining the code" />
-       <SidebarItem title="Marketing ideas" />
+       <SidebarItem id="initial-prompt" title="Initial prompt..." active />
+       <SidebarItem id="refining-code" title="Refining the code" />
+       <SidebarItem id="marketing-ideas" title="Marketing ideas" />
     </ChatSidebar>
   )
 
