@@ -45,7 +45,7 @@ export default function ImagePage() {
       type="image"
       models={IMAGE_MODELS}
       selectedModel={selectedModel}
-      onModelChange={setSelectedModel}
+      onModelChange={(model) => setSelectedModel(model as typeof IMAGE_MODELS[number])}
       aspectRatios={ASPECT_RATIOS}
       selectedAspectRatio={selectedRatio}
       onAspectRatioChange={setSelectedRatio}
