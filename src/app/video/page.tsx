@@ -6,13 +6,12 @@ import UnifiedControlsPanel from '@/shared/ui/layout/UnifiedControlsPanel'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
-import { VIDEO_MODELS, VIDEO_ASPECT_RATIOS, VIDEO_DURATIONS, VIDEO_RESOLUTIONS } from '@/domains/video-generation/services/video-models'
+import { VIDEO_MODELS, VIDEO_ASPECT_RATIOS, VIDEO_DURATIONS } from '@/domains/video-generation/services/video-models'
 
 export default function VideoPage() {
   const [selectedModel, setSelectedModel] = useState(VIDEO_MODELS[0])
   const [selectedRatio, setSelectedRatio] = useState('16:9')
   const [selectedDuration, setSelectedDuration] = useState(5)
-  const [selectedResolution, setSelectedResolution] = useState('1080p')
   const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [videos, setVideos] = useState<{ id: string; url: string; prompt: string; model: string }[]>([])
@@ -45,8 +44,6 @@ export default function VideoPage() {
       durations={VIDEO_DURATIONS}
       selectedDuration={selectedDuration}
       onDurationChange={setSelectedDuration}
-      resolution={selectedResolution}
-      onResolutionChange={setSelectedResolution}
     />
   )
 

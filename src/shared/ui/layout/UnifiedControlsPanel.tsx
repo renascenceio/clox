@@ -36,10 +36,6 @@ interface UnifiedControlsPanelProps {
   durations?: SelectOption[]
   selectedDuration?: number
   onDurationChange?: (duration: number) => void
-  
-  // Additional controls
-  resolution?: string
-  onResolutionChange?: (resolution: string) => void
 }
 
 export default function UnifiedControlsPanel({
@@ -59,8 +55,6 @@ export default function UnifiedControlsPanel({
   durations,
   selectedDuration,
   onDurationChange,
-  resolution,
-  onResolutionChange,
 }: UnifiedControlsPanelProps) {
   const [activeCategory, setActiveCategory] = useState<string>('all')
   
