@@ -4,7 +4,7 @@ import { useChat } from '@ai-sdk/react'
 import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
 import { useRouter } from 'next/navigation'
@@ -36,7 +36,7 @@ export default function TextPage() {
       setSelectedModel(filtered[0])
       setSelectedBrand(filtered[0].brandName || filtered[0].provider)
     }
-  }, [])
+  }, [selectedModel.id])
   
   const chat = useChat({
     api: '/api/chat',
