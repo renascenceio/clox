@@ -1,22 +1,38 @@
 export const VIDEO_MODELS = [
-  // Western AI
-  { id: 'sora-turbo', name: 'Sora Turbo', provider: 'openai', category: 'Western AI', maxDuration: 60 },
-  { id: 'sora', name: 'Sora', provider: 'openai', category: 'Western AI', maxDuration: 20 },
-  { id: 'runway-gen-4-turbo', name: 'Gen-4 Turbo', provider: 'runway', category: 'Western AI', maxDuration: 10 },
-  { id: 'runway-gen-3-alpha', name: 'Gen-3 Alpha', provider: 'runway', category: 'Western AI', maxDuration: 10 },
-  { id: 'luma-dream-machine-2', name: 'Dream Machine 2', provider: 'luma', category: 'Western AI', maxDuration: 5 },
-  { id: 'luma-dream-machine', name: 'Dream Machine', provider: 'luma', category: 'Western AI', maxDuration: 5 },
-  { id: 'pika-2.0', name: 'Pika 2.0', provider: 'pika', category: 'Western AI', maxDuration: 6 },
-  { id: 'pika-1.5', name: 'Pika 1.5', provider: 'pika', category: 'Western AI', maxDuration: 3 },
-  { id: 'haiper-2.0', name: 'Haiper 2.0', provider: 'haiper', category: 'Western AI', maxDuration: 6 },
-  { id: 'stability-video', name: 'Stable Video Diffusion', provider: 'stability', category: 'Western AI', maxDuration: 4 },
+  // Sora (OpenAI)
+  { id: 'sora-turbo', name: 'Turbo', version: 'Turbo', provider: 'openai', brandName: 'Sora', maxDuration: 60 },
+  { id: 'sora', name: 'Standard', version: 'Standard', provider: 'openai', brandName: 'Sora', maxDuration: 20 },
   
-  // Chinese AI
-  { id: 'kling-2.0', name: 'Kling 2.0', provider: 'kuaishou', category: 'Chinese AI', maxDuration: 10 },
-  { id: 'kling-1.5', name: 'Kling 1.5', provider: 'kuaishou', category: 'Chinese AI', maxDuration: 5 },
-  { id: 'cogvideo-x', name: 'CogVideoX', provider: 'zhipu', category: 'Chinese AI', maxDuration: 6 },
-  { id: 'pixverse-v3', name: 'PixVerse V3', provider: 'pixverse', category: 'Chinese AI', maxDuration: 4 },
-  { id: 'vidu-1.5', name: 'Vidu 1.5', provider: 'shengshu', category: 'Chinese AI', maxDuration: 8 },
+  // Runway
+  { id: 'runway-gen-4-turbo', name: 'Gen-4 Turbo', version: 'Gen-4 Turbo', provider: 'runway', brandName: 'Runway', maxDuration: 10 },
+  { id: 'runway-gen-3-alpha', name: 'Gen-3 Alpha', version: 'Gen-3 Alpha', provider: 'runway', brandName: 'Runway', maxDuration: 10 },
+  
+  // Luma Dream Machine
+  { id: 'luma-dream-machine-2', name: 'Dream Machine 2', version: '2', provider: 'luma', brandName: 'Luma AI', maxDuration: 5 },
+  { id: 'luma-dream-machine', name: 'Dream Machine', version: '1', provider: 'luma', brandName: 'Luma AI', maxDuration: 5 },
+  
+  // Pika
+  { id: 'pika-2.0', name: '2.0', version: '2.0', provider: 'pika', brandName: 'Pika', maxDuration: 6 },
+  { id: 'pika-1.5', name: '1.5', version: '1.5', provider: 'pika', brandName: 'Pika', maxDuration: 3 },
+  
+  // Haiper
+  { id: 'haiper-2.0', name: '2.0', version: '2.0', provider: 'haiper', brandName: 'Haiper', maxDuration: 6 },
+  
+  // Stable Video Diffusion (Stability AI)
+  { id: 'stability-video', name: 'Video Diffusion', version: '1.0', provider: 'stability', brandName: 'Stable Video', maxDuration: 4 },
+  
+  // Kling (Kuaishou)
+  { id: 'kling-2.0', name: '2.0', version: '2.0', provider: 'kuaishou', brandName: 'Kling', maxDuration: 10 },
+  { id: 'kling-1.5', name: '1.5', version: '1.5', provider: 'kuaishou', brandName: 'Kling', maxDuration: 5 },
+  
+  // CogVideo (Zhipu AI)
+  { id: 'cogvideo-x', name: 'CogVideoX', version: 'X', provider: 'zhipu', brandName: 'CogVideo', maxDuration: 6 },
+  
+  // PixVerse
+  { id: 'pixverse-v3', name: 'V3', version: 'V3', provider: 'pixverse', brandName: 'PixVerse', maxDuration: 4 },
+  
+  // Vidu (Shengshu)
+  { id: 'vidu-1.5', name: '1.5', version: '1.5', provider: 'shengshu', brandName: 'Vidu', maxDuration: 8 },
 ]
 
 export const VIDEO_RESOLUTIONS = [

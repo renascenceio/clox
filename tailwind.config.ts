@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: 'class',
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/shared/**/*.{js,ts,jsx,tsx,mdx}",
@@ -36,17 +37,17 @@ const config: Config = {
           900: "#113C3C",
         },
         surface: {
-          DEFAULT: "#FFFFFF",
-          secondary: "#F2F2F7",
-          tertiary: "#FAFAFA",
+          DEFAULT: "rgb(var(--surface) / <alpha-value>)",
+          secondary: "rgb(var(--surface-secondary) / <alpha-value>)",
+          tertiary: "rgb(var(--surface-tertiary) / <alpha-value>)",
         },
         label: {
-          primary: "#1C1C1E",
-          secondary: "#636366",
-          tertiary: "#8E8E93",
+          primary: "rgb(var(--label-primary) / <alpha-value>)",
+          secondary: "rgb(var(--label-secondary) / <alpha-value>)",
+          tertiary: "rgb(var(--label-tertiary) / <alpha-value>)",
         },
-        separator: "#E5E5EA",
-        fill: "rgba(120, 120, 128, 0.2)",
+        separator: "rgb(var(--separator) / <alpha-value>)",
+        fill: "rgba(var(--fill) / <alpha-value>)",
         destructive: "#FF3B30",
         success: "#34C759",
         warning: "#FF9500",

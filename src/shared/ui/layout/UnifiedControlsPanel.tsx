@@ -6,6 +6,8 @@ interface Model {
   id: string
   name: string
   provider: string
+  brandName?: string
+  version?: string
   category?: string
   type?: string
   [key: string]: unknown
@@ -58,12 +60,20 @@ export default function UnifiedControlsPanel({
   selectedDuration,
   onDurationChange,
 }: UnifiedControlsPanelProps) {
-  const [activeCategory, setActiveCategory] = useState<string>('all')
+  const [selectedBrand, setSelectedBrand] = useState<string>(selectedModel.brandName || selectedModel.provider)
   
-  const categories = ['all', ...Array.from(new Set(models.map(m => m.category || 'Other')))]
-  const filteredModels = activeCategory === 'all' 
-    ? models 
-    : models.filter(m => m.category === activeCategory)
+  // Get unique brands
+  const brands = Array.from(new Set(models.map(m => m.brandName || m.provider)))
+  const brandModels = models.filter(m => (m.brandName || m.provider) === selectedBrand)
+  
+  const handleBrandChange = (brand: string) => {
+    setSelectedBrand(brand)
+    // Auto-select first model of this brand
+    const firstModel = models.find(m => (m.brandName || m.provider) === brand)
+    if (firstModel) {
+      onModelChange(firstModel)
+    }
+  }
 
   return (
     <div className="h-full flex flex-col bg-surface">
@@ -85,40 +95,42 @@ export default function UnifiedControlsPanel({
             AI Model
           </label>
           
-          {/* Category Filter */}
-          <div className="flex gap-2 flex-wrap">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`px-3 py-1.5 rounded-hig-md text-xs font-semibold transition-all ${
-                  activeCategory === cat
-                    ? 'bg-brown text-white shadow-brown-glow'
-                    : 'bg-surface-secondary text-label-secondary hover:bg-fill border border-separator/50'
-                }`}
-              >
-                {cat === 'all' ? 'All Models' : cat}
-              </button>
-            ))}
+          {/* Brand/Provider Dropdown */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-label-tertiary">Brand</label>
+            <select
+              value={selectedBrand}
+              onChange={(e) => handleBrandChange(e.target.value)}
+              className="w-full h-12 px-4 bg-surface border-2 border-separator/50 rounded-hig-xl text-base font-bold focus:ring-2 focus:ring-brown/20 focus:border-brown outline-none transition-all"
+            >
+              {brands.map(brand => (
+                <option key={brand} value={brand}>
+                  {brand}
+                </option>
+              ))}
+            </select>
           </div>
           
-          {/* Model Dropdown */}
-          <select
-            value={selectedModel.id}
-            onChange={(e) => onModelChange(filteredModels.find(m => m.id === e.target.value)!)}
-            className="w-full h-11 px-4 bg-fill border border-separator/30 rounded-hig-lg text-sm font-medium focus:ring-2 focus:ring-brown/20 focus:border-brown/30 outline-none transition-all"
-          >
-            {filteredModels.map(model => (
-              <option key={model.id} value={model.id}>
-                {model.name} • {model.provider}
-              </option>
-            ))}
-          </select>
+          {/* Version Dropdown */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-label-tertiary">Version</label>
+            <select
+              value={selectedModel.id}
+              onChange={(e) => onModelChange(brandModels.find(m => m.id === e.target.value)!)}
+              className="w-full h-12 px-4 bg-surface border-2 border-separator/50 rounded-hig-xl text-base font-bold focus:ring-2 focus:ring-teal/20 focus:border-teal outline-none transition-all"
+            >
+              {brandModels.map(model => (
+                <option key={model.id} value={model.id}>
+                  {model.version || model.name}
+                </option>
+              ))}
+            </select>
+          </div>
           
-          <div className="flex items-center gap-2 px-3 py-2 bg-brown-50 border border-brown-200 rounded-hig-lg">
-            <div className="w-2 h-2 bg-brown rounded-full"></div>
-            <span className="text-xs text-brown-700 font-semibold">
-              {selectedModel.provider}
+          <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-brown-50 to-teal-50 border border-brown-200 rounded-hig-xl">
+            <div className="w-2 h-2 bg-brown rounded-full animate-pulse"></div>
+            <span className="text-xs text-brown-700 font-bold">
+              {selectedBrand} • {selectedModel.version || selectedModel.name}
             </span>
           </div>
         </div>
@@ -134,7 +146,7 @@ export default function UnifiedControlsPanel({
                 <button
                   key={ratio.value}
                   onClick={() => onAspectRatioChange(ratio.value as string)}
-                  className={`h-11 rounded-hig-lg border text-xs font-semibold flex items-center justify-center transition-all ${
+                  className={`h-11 rounded-hig-xl border text-xs font-semibold flex items-center justify-center transition-all ${
                     selectedAspectRatio === ratio.value
                       ? 'bg-teal-50 border-teal-500 text-teal-700 shadow-teal-glow'
                       : 'bg-surface border-separator hover:border-teal-300 hover:bg-teal-50/50'
@@ -158,7 +170,7 @@ export default function UnifiedControlsPanel({
                 <button
                   key={quality.value}
                   onClick={() => onQualityChange(quality.value as string)}
-                  className={`h-11 rounded-hig-lg border text-xs font-semibold transition-all ${
+                  className={`h-11 rounded-hig-xl border text-xs font-semibold transition-all ${
                     selectedQuality === quality.value
                       ? 'bg-brown-50 border-brown-500 text-brown-700 shadow-brown-glow'
                       : 'bg-surface border-separator hover:border-brown-300 hover:bg-brown-50/50'
@@ -182,7 +194,7 @@ export default function UnifiedControlsPanel({
                 <button
                   key={style.value}
                   onClick={() => onStyleChange(style.value as string)}
-                  className={`h-10 rounded-hig-lg border text-xs font-semibold transition-all ${
+                  className={`h-10 rounded-hig-xl border text-xs font-semibold transition-all ${
                     selectedStyle === style.value
                       ? 'bg-teal-50 border-teal-500 text-teal-700'
                       : 'bg-surface border-separator hover:border-teal-300'
@@ -206,7 +218,7 @@ export default function UnifiedControlsPanel({
                 <button
                   key={duration.value}
                   onClick={() => onDurationChange(duration.value as number)}
-                  className={`h-11 rounded-hig-lg border text-xs font-semibold transition-all ${
+                  className={`h-11 rounded-hig-xl border text-xs font-semibold transition-all ${
                     selectedDuration === duration.value
                       ? 'bg-brown-50 border-brown-500 text-brown-700 shadow-brown-glow'
                       : 'bg-surface border-separator hover:border-brown-300 hover:bg-brown-50/50'
@@ -221,7 +233,7 @@ export default function UnifiedControlsPanel({
 
         {/* Advanced Settings Expandable */}
         <details className="group">
-          <summary className="flex items-center justify-between cursor-pointer list-none px-4 py-3 bg-surface-secondary rounded-hig-lg border border-separator/30 hover:bg-fill transition-all">
+          <summary className="flex items-center justify-between cursor-pointer list-none px-4 py-3 bg-surface-secondary rounded-hig-xl border border-separator/30 hover:bg-fill transition-all">
             <span className="text-xs font-bold text-label-primary">Advanced Settings</span>
             <svg 
               className="w-4 h-4 text-label-tertiary group-open:rotate-180 transition-transform" 
@@ -312,14 +324,14 @@ export default function UnifiedControlsPanel({
               <input 
                 type="number" 
                 placeholder="Random"
-                className="w-full h-10 px-3 bg-fill border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 outline-none"
+                className="w-full h-10 px-3 bg-fill border border-separator/30 rounded-hig-xl text-xs focus:ring-2 focus:ring-brown/20 outline-none"
               />
             </div>
           </div>
         </details>
 
         {/* Cost Estimate */}
-        <div className="p-4 bg-gradient-to-br from-brown-50 to-teal-50 border border-brown-200 rounded-hig-xl">
+        <div className="p-4 bg-gradient-to-br from-brown-50 to-teal-50 border border-brown-200 rounded-hig-2xl">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-label-secondary uppercase tracking-widest">Est. Cost</span>
             <span className="text-lg font-bold text-brown">$0.05</span>
@@ -332,10 +344,10 @@ export default function UnifiedControlsPanel({
 
       {/* Footer Actions */}
       <div className="p-6 border-t border-separator/50 space-y-3">
-        <button className="w-full h-11 gradient-brown-teal text-white rounded-hig-xl font-bold shadow-float hover:shadow-hig-hover hover:scale-105 active:scale-95 transition-all">
+        <button className="w-full h-11 gradient-brown-teal text-white rounded-hig-2xl font-bold shadow-float hover:shadow-hig-hover hover:scale-105 active:scale-95 transition-all">
           Apply Settings
         </button>
-        <button className="w-full h-10 bg-surface-secondary border border-separator/30 rounded-hig-lg text-sm font-semibold text-label-secondary hover:bg-fill transition-all">
+        <button className="w-full h-10 bg-surface-secondary border border-separator/30 rounded-hig-xl text-sm font-semibold text-label-secondary hover:bg-fill transition-all">
           Reset to Defaults
         </button>
       </div>
