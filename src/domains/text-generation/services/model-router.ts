@@ -1,36 +1,51 @@
-import { openai } from '@ai-sdk/openai'
-import { anthropic } from '@ai-sdk/anthropic'
-import { google } from '@ai-sdk/google'
-import { mistral } from '@ai-sdk/mistral'
-import type { LanguageModel } from 'ai'
-
 export type AIProvider = 'openai' | 'anthropic' | 'google' | 'mistral' | 'xai' | 'perplexity' | 'deepseek' | 'groq' | 'zhipu' | 'qwen' | 'baidu' | 'kimi' | 'meta' | 'cohere' | 'ai21'
 
-export function getModel(provider: AIProvider, modelId: string): LanguageModel {
-  console.log('[v0] getModel called with provider:', provider, 'modelId:', modelId)
+/**
+ * Maps our internal model IDs to Vercel AI Gateway model strings.
+ * The AI Gateway handles authentication automatically - no API keys needed.
+ * Format: 'provider/model-name'
+ */
+export function getGatewayModelString(provider: AIProvider, modelId: string): string {
+  console.log('[v0] getGatewayModelString called with provider:', provider, 'modelId:', modelId)
   
-  switch (provider) {
-    case 'openai':
-      return openai(modelId)
-    case 'anthropic':
-      return anthropic(modelId)
-    case 'google':
-      // Map our model IDs to actual Gemini API model names
-      const geminiModelMap: Record<string, string> = {
-        'gemini-live-2.5-flash-native-audio': 'gemini-2.0-flash-exp',
-        'gemini-2.0-flash': 'gemini-2.0-flash-exp',
-        'gemini-1.5-pro': 'gemini-1.5-pro-latest',
-      }
-      const geminiModel = geminiModelMap[modelId] || modelId
-      console.log('[v0] Using Gemini model:', geminiModel)
-      return google(geminiModel)
-    case 'mistral':
-      return mistral(modelId)
-    // Add other providers as needed
-    default:
-      console.log('[v0] Unknown provider, defaulting to OpenAI GPT-4o')
-      return openai('gpt-4o')
+  // Map our model IDs to AI Gateway model strings
+  const modelMap: Record<string, string> = {
+    // OpenAI
+    'gpt-5.4': 'openai/gpt-4o', // GPT-5.4 doesn't exist yet, use gpt-4o
+    'gpt-5-mini': 'openai/gpt-4o-mini',
+    'gpt-4o': 'openai/gpt-4o',
+    'gpt-4o-mini': 'openai/gpt-4o-mini',
+    'o1': 'openai/o1',
+    'o1-mini': 'openai/o1-mini',
+    
+    // Anthropic
+    'claude-opus-4.6': 'anthropic/claude-3-5-sonnet-20241022', // Latest available
+    'claude-sonnet-4.6': 'anthropic/claude-3-5-sonnet-20241022',
+    'claude-haiku-4.5': 'anthropic/claude-3-5-haiku-20241022',
+    'claude-3-5-sonnet-20240620': 'anthropic/claude-3-5-sonnet-20241022',
+    'claude-3-5-haiku': 'anthropic/claude-3-5-haiku-20241022',
+    
+    // Google Gemini
+    'gemini-live-2.5-flash-native-audio': 'google/gemini-2.0-flash-001',
+    'gemini-2.0-flash': 'google/gemini-2.0-flash-001',
+    'gemini-1.5-pro': 'google/gemini-1.5-pro-latest',
+    
+    // Mistral
+    'mistral-large-latest': 'mistral/mistral-large-latest',
+    'mistral-medium': 'mistral/mistral-medium-latest',
   }
+  
+  const gatewayModel = modelMap[modelId]
+  
+  if (gatewayModel) {
+    console.log('[v0] Mapped to AI Gateway model:', gatewayModel)
+    return gatewayModel
+  }
+  
+  // Fallback: construct gateway string from provider/modelId
+  const fallback = `${provider}/${modelId}`
+  console.log('[v0] Using fallback AI Gateway model:', fallback)
+  return fallback
 }
 
 export const TEXT_MODELS = [
