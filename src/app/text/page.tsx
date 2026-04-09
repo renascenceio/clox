@@ -38,6 +38,12 @@ export default function TextPage() {
     }
   }, [selectedModel.id])
   
+  // Get API key from admin settings for the selected provider
+  const getApiKeyForProvider = () => {
+    const settings = getAdminSettings()
+    return settings.providers[selectedModel.provider]?.apiKey || ''
+  }
+
   const chat = useChat({
     api: '/api/chat',
     body: {
@@ -46,6 +52,7 @@ export default function TextPage() {
       systemPrompt,
       temperature,
       maxTokens,
+      apiKey: getApiKeyForProvider(),
     },
     onError: (error) => {
       console.error('[v0] Chat API error:', error)

@@ -47,37 +47,32 @@ const MODEL_ID_MAP: Record<string, string> = {
 
 /**
  * Returns a LanguageModel instance for the given provider and model.
- * Uses environment variables for API keys:
- * - OPENAI_API_KEY
- * - ANTHROPIC_API_KEY  
- * - GOOGLE_GENERATIVE_AI_API_KEY (or GOOGLE_API_KEY)
- * - MISTRAL_API_KEY
- * - XAI_API_KEY
- * - COHERE_API_KEY
+ * Accepts API key directly from admin settings (passed from client).
  */
-export function getModel(provider: AIProvider, modelId: string): LanguageModel {
+export function getModel(provider: AIProvider, modelId: string, apiKey?: string): LanguageModel {
   // Map our model ID to the provider's actual model ID
   const actualModelId = MODEL_ID_MAP[modelId] || modelId
   
-  console.log('[v0] getModel:', { provider, modelId, actualModelId })
+  console.log('[v0] getModel:', { provider, modelId, actualModelId, hasApiKey: !!apiKey })
   
   switch (provider) {
     case 'openai':
-      return openai(actualModelId)
+      return openai(actualModelId, { apiKey: apiKey || process.env.OPENAI_API_KEY })
     case 'anthropic':
-      return anthropic(actualModelId)
+      return anthropic(actualModelId, { apiKey: apiKey || process.env.ANTHROPIC_API_KEY })
     case 'google':
-      return google(actualModelId)
+      // Google SDK uses GOOGLE_GENERATIVE_AI_API_KEY
+      return google(actualModelId, { apiKey: apiKey || process.env.GOOGLE_GENERATIVE_AI_API_KEY })
     case 'mistral':
-      return mistral(actualModelId)
+      return mistral(actualModelId, { apiKey: apiKey || process.env.MISTRAL_API_KEY })
     case 'xai':
-      return xai(actualModelId)
+      return xai(actualModelId, { apiKey: apiKey || process.env.XAI_API_KEY })
     case 'cohere':
-      return cohere(actualModelId)
+      return cohere(actualModelId, { apiKey: apiKey || process.env.COHERE_API_KEY })
     default:
       // Default to OpenAI for unsupported providers
       console.log('[v0] Unsupported provider:', provider, '- defaulting to OpenAI')
-      return openai('gpt-4o')
+      return openai('gpt-4o', { apiKey: apiKey || process.env.OPENAI_API_KEY })
   }
 }
 
