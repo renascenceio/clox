@@ -7,17 +7,28 @@ import type { LanguageModel } from 'ai'
 export type AIProvider = 'openai' | 'anthropic' | 'google' | 'mistral' | 'xai' | 'perplexity' | 'deepseek' | 'groq' | 'zhipu' | 'qwen' | 'baidu' | 'kimi' | 'meta' | 'cohere' | 'ai21'
 
 export function getModel(provider: AIProvider, modelId: string): LanguageModel {
+  console.log('[v0] getModel called with provider:', provider, 'modelId:', modelId)
+  
   switch (provider) {
     case 'openai':
       return openai(modelId)
     case 'anthropic':
       return anthropic(modelId)
     case 'google':
-      return google(modelId)
+      // Map our model IDs to actual Gemini API model names
+      const geminiModelMap: Record<string, string> = {
+        'gemini-live-2.5-flash-native-audio': 'gemini-2.0-flash-exp',
+        'gemini-2.0-flash': 'gemini-2.0-flash-exp',
+        'gemini-1.5-pro': 'gemini-1.5-pro-latest',
+      }
+      const geminiModel = geminiModelMap[modelId] || modelId
+      console.log('[v0] Using Gemini model:', geminiModel)
+      return google(geminiModel)
     case 'mistral':
       return mistral(modelId)
     // Add other providers as needed
     default:
+      console.log('[v0] Unknown provider, defaulting to OpenAI GPT-4o')
       return openai('gpt-4o')
   }
 }
