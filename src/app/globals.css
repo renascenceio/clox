@@ -47,6 +47,24 @@ body {
   .glass {
     @apply bg-white/80 backdrop-blur-xl border border-white/20;
   }
+
+  .glass-float {
+    @apply bg-white/90 backdrop-blur-[24px] border border-separator/30;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .glass-float {
+      @apply bg-black/70 backdrop-blur-[24px] border-white/10;
+    }
+  }
+
+  .gradient-brown-teal {
+    background: linear-gradient(135deg, #A2845E 0%, #5AC8C8 100%);
+  }
+
+  .gradient-teal-brown {
+    background: linear-gradient(135deg, #5AC8C8 0%, #A2845E 100%);
+  }
 }
 
 .prose pre {
@@ -54,5 +72,6 @@ body {
 }
 
 .prose code {
-  @apply text-primary font-mono !important;
+  @apply font-mono !important;
+  color: #6F5938 !important;
 }

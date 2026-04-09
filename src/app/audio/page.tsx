@@ -2,11 +2,16 @@
 
 import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
+import UnifiedControlsPanel from '@/shared/ui/layout/UnifiedControlsPanel'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
+import { AUDIO_MODELS, AUDIO_DURATIONS, AUDIO_QUALITY } from '@/domains/audio-generation/services/audio-models'
 
 export default function AudioPage() {
+  const [selectedModel, setSelectedModel] = useState<typeof AUDIO_MODELS[number]>(AUDIO_MODELS[0])
+  const [selectedDuration, setSelectedDuration] = useState(30)
+  const [selectedQuality, setSelectedQuality] = useState('high')
   const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [audios, setAudios] = useState<{ id: string; url: string; prompt: string; model: string }[]>([])
@@ -28,23 +33,18 @@ export default function AudioPage() {
   }
 
   const settingsPanel = (
-    <div className="p-6 space-y-8">
-      <div className="space-y-4">
-        <label className="text-[11px] font-bold text-label-secondary uppercase tracking-tight">Model</label>
-        <select className="w-full h-10 px-3 bg-fill border-none rounded-lg text-sm outline-none">
-          <option>ElevenLabs v3</option>
-          <option>Stable Audio 2.0</option>
-          <option>Suno v4</option>
-        </select>
-      </div>
-      <div className="space-y-4">
-        <label className="text-[11px] font-bold text-label-secondary uppercase tracking-tight">Quality</label>
-        <div className="grid grid-cols-2 gap-2">
-           <button className="h-10 rounded-lg bg-primary/10 border border-primary text-primary text-xs">Standard</button>
-           <button className="h-10 rounded-lg bg-surface border border-separator text-xs">Lossless</button>
-        </div>
-      </div>
-    </div>
+    <UnifiedControlsPanel
+      type="audio"
+      models={AUDIO_MODELS}
+      selectedModel={selectedModel}
+      onModelChange={(model) => setSelectedModel(model as typeof AUDIO_MODELS[number])}
+      durations={AUDIO_DURATIONS}
+      selectedDuration={selectedDuration}
+      onDurationChange={setSelectedDuration}
+      qualityLevels={AUDIO_QUALITY}
+      selectedQuality={selectedQuality}
+      onQualityChange={setSelectedQuality}
+    />
   )
 
   const sidebar = (
@@ -82,16 +82,16 @@ export default function AudioPage() {
            </AnimatePresence>
         </motion.div>
 
-        <div className="fixed bottom-0 left-60 right-[280px] p-6 bg-gradient-to-t from-surface-secondary via-surface-secondary/90 to-transparent z-20">
-          <div className="max-w-3xl mx-auto">
-             <form onSubmit={handleGenerate} className="flex bg-surface border border-separator rounded-2xl shadow-hig overflow-hidden">
+        <div className="fixed bottom-0 left-[284px] right-[344px] p-6 bg-gradient-to-t from-surface-secondary via-surface-secondary/90 to-transparent z-20 pointer-events-none">
+          <div className="max-w-3xl mx-auto pointer-events-auto">
+             <form onSubmit={handleGenerate} className="flex glass-float rounded-hig-2xl shadow-float overflow-hidden focus-within:ring-2 focus-within:ring-brown/20">
                 <input
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="Describe your sound or enter text for TTS..."
-                  className="flex-grow p-4 bg-transparent outline-none text-sm"
+                  className="flex-grow p-5 bg-transparent outline-none text-sm font-medium placeholder:text-label-tertiary"
                 />
-                <button className="px-6 bg-primary text-white text-sm font-medium disabled:opacity-50" disabled={isGenerating}>
+                <button className="px-8 gradient-brown-teal text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-brown-glow transition-all" disabled={isGenerating}>
                   {isGenerating ? 'Synthesizing...' : 'Generate Audio'}
                 </button>
              </form>
