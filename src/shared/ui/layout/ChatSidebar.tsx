@@ -8,10 +8,20 @@ interface ChatSidebarProps {
 export default function ChatSidebar({ children }: ChatSidebarProps) {
   const [search, setSearch] = useState('')
 
+  const handleNewChat = () => {
+    // Clear localStorage to reset recent activity
+    localStorage.removeItem('clox_recent_chats')
+    // Reload the page to clear state
+    window.location.reload()
+  }
+
   return (
-    <div className="flex flex-col h-full bg-surface">
+    <div className="flex flex-col h-full bg-surface dark:bg-surface-secondary">
       <div className="p-5 space-y-4">
-        <button className="w-full h-11 gradient-brown-teal text-white rounded-hig-xl font-bold transition-all shadow-brown-glow hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2">
+        <button 
+          onClick={handleNewChat}
+          className="w-full h-11 gradient-brown-teal text-white rounded-hig-xl font-bold transition-all shadow-brown-glow hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+        >
           <span className="text-lg">+</span> New Chat
         </button>
 
@@ -100,17 +110,42 @@ export function SidebarItem({ title, model, active }: { title: string; model?: s
 }
 
 function FolderItem({ title, count }: { title: string; count: number }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
   return (
-    <div className="group px-3 py-2 rounded-hig-lg cursor-pointer transition-all hover:bg-fill flex items-center justify-between">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <svg className="w-4 h-4 text-label-tertiary group-hover:text-brown transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-        </svg>
-        <span className="text-sm font-medium text-label-primary truncate">{title}</span>
+    <div>
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="group px-3 py-2 rounded-hig-lg cursor-pointer transition-all hover:bg-fill dark:hover:bg-surface-tertiary flex items-center justify-between"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <svg 
+            className={`w-3 h-3 text-label-tertiary group-hover:text-brown dark:group-hover:text-teal transition-all ${isExpanded ? 'rotate-90' : ''}`} 
+            fill="none" 
+            viewBox="0 0 24 24" 
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
+          </svg>
+          <svg className="w-4 h-4 text-label-tertiary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </svg>
+          <span className="text-sm font-medium text-label-primary truncate">{title}</span>
+        </div>
+        <span className="text-[10px] font-bold text-label-secondary/40 group-hover:text-teal dark:group-hover:text-brown transition-colors">
+          {count}
+        </span>
       </div>
-      <span className="text-[10px] font-bold text-label-secondary/40 group-hover:text-teal transition-colors">
-        {count}
-      </span>
+      {isExpanded && (
+        <div className="ml-6 mt-1 space-y-0.5">
+          <div className="px-3 py-1.5 text-xs text-label-secondary hover:text-label-primary cursor-pointer transition-colors">
+            Chat item 1
+          </div>
+          <div className="px-3 py-1.5 text-xs text-label-secondary hover:text-label-primary cursor-pointer transition-colors">
+            Chat item 2
+          </div>
+        </div>
+      )}
     </div>
   )
 }

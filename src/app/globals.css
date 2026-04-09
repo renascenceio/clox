@@ -71,7 +71,7 @@ body {
   }
 
   .gradient-brown-teal {
-    background: linear-gradient(135deg, #A2845E 0%, #5AC8C8 100%);
+    background: linear-gradient(135deg, #6B5635 0%, #8B6F47 45%, #A2845E 70%, #5AC8C8 100%);
   }
 
   .gradient-teal-brown {
