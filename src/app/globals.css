@@ -72,5 +72,6 @@ body {
 }
 
 .prose code {
-  @apply text-brown-700 font-mono !important;
+  @apply font-mono !important;
+  color: #6F5938 !important;
 }
