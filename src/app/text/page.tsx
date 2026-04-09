@@ -23,7 +23,7 @@ export default function TextPage() {
       const isEnabled = settings.providers[model.provider]?.enabled ?? true // Default to true if not set
       return isEnabled
     })
-  }, [adminSettings])
+  }, [])
   
   const [selectedModel, setSelectedModel] = useState<typeof TEXT_MODELS[number]>(enabledModels[0] || TEXT_MODELS[0])
   const [selectedBrand, setSelectedBrand] = useState<string>(selectedModel.brandName || selectedModel.provider)
@@ -68,20 +68,12 @@ export default function TextPage() {
 
   // Get unique brands and models for selected brand (only from enabled models)
   const brands = Array.from(new Set(enabledModels.map(m => m.brandName || m.provider)))
-  const brandModels = enabledModels.filter(m => (m.brandName || m.provider) === selectedBrand)
-
-  const handleBrandChange = (brand: string) => {
-    setSelectedBrand(brand)
-    const firstModel = enabledModels.find(m => (m.brandName || m.provider) === brand)
-    if (firstModel) {
-      setSelectedModel(firstModel)
-    }
-  }
 
   const handleModelChange = (modelId: string) => {
-    const model = brandModels.find(m => m.id === modelId)
+    const model = enabledModels.find(m => m.id === modelId)
     if (model) {
       setSelectedModel(model)
+      setSelectedBrand(model.brandName || model.provider)
     }
   }
 
