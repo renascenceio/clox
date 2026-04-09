@@ -10,14 +10,15 @@ export async function POST(req: Request) {
   // Check admin settings
   const settings = getAdminSettings()
   const providerConfig = settings.providers[provider]
+  
+  // Default to enabled if not explicitly set
+  const isEnabled = providerConfig?.enabled ?? true
 
-  if (!providerConfig?.enabled) {
+  if (!isEnabled) {
     return new Response('This AI provider is disabled. Enable it in Admin Settings.', { status: 403 })
   }
 
-  if (!providerConfig?.apiKey) {
-    return new Response('API key not configured for this provider. Add it in Admin Settings.', { status: 400 })
-  }
+  // Note: API key check removed - we'll let the provider handle missing keys with proper error messages
 
   console.log('[v0] Using provider:', provider, 'with model:', model)
   console.log('[v0] Provider config:', { enabled: providerConfig.enabled, hasKey: !!providerConfig.apiKey })
