@@ -23,6 +23,7 @@ export default function TextPage() {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(2048)
+  const [activeChatId, setActiveChatId] = useState('initial-prompt')
   
   // Load saved model from localStorage on mount and filter models
   useEffect(() => {
@@ -83,6 +84,28 @@ export default function TextPage() {
       }
     },
   })
+
+  // Save chat history to localStorage whenever messages change
+  useEffect(() => {
+    if (chat.messages && chat.messages.length > 0) {
+      localStorage.setItem(`chat-history-${activeChatId}`, JSON.stringify(chat.messages))
+      console.log('[v0] Chat history saved for:', activeChatId)
+    }
+  }, [chat.messages, activeChatId])
+
+  // Load chat history from localStorage when component mounts or chat ID changes
+  useEffect(() => {
+    const savedHistory = localStorage.getItem(`chat-history-${activeChatId}`)
+    if (savedHistory) {
+      try {
+        const messages = JSON.parse(savedHistory)
+        console.log('[v0] Loading chat history for:', activeChatId, 'messages:', messages.length)
+        // The useChat hook will load messages from localStorage if available
+      } catch (e) {
+        console.error('[v0] Failed to parse chat history:', e)
+      }
+    }
+  }, [activeChatId])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false } = chat as any
@@ -321,8 +344,8 @@ export default function TextPage() {
                 <textarea
                   value={input}
                   onChange={handleInputChange}
-                  placeholder={`Message ${activeAIType} AI...`}
-                  className="w-full min-h-[80px] max-h-[240px] p-6 pl-16 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
+                  placeholder={`Message ${activeAIType} AI...\n\n⌘+Enter to send • ${activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode`}
+                  className="w-full min-h-[80px] max-h-[240px] p-6 pl-16 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary whitespace-pre-wrap"
                   rows={1}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {

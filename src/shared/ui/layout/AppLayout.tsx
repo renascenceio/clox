@@ -78,14 +78,20 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
                    <button 
                      onClick={() => {
                        setShowWorkspaceMenu(false)
-                       // Handle create new workspace
+                       // Create new workspace and add to list
+                       const newWorkspaceId = `workspace-${Date.now()}`
+                       localStorage.setItem('workspaces', JSON.stringify([
+                         ...JSON.parse(localStorage.getItem('workspaces') || '[]'),
+                         { id: newWorkspaceId, name: 'New Workspace', created: new Date().toISOString() }
+                       ]))
+                       console.log('[v0] Workspace created:', newWorkspaceId)
                      }}
                      className="w-full px-4 py-2.5 text-left text-sm font-medium text-brown dark:text-teal hover:bg-surface-tertiary dark:hover:bg-surface transition-colors rounded-hig-lg flex items-center gap-3"
                    >
                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                      </svg>
-                     Create New Workspace
+                     + New Workspace
                    </button>
                  </div>
                </div>
