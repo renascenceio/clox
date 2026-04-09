@@ -1,6 +1,7 @@
 'use client'
 
 import AppLayout from '@/shared/ui/layout/AppLayout'
+import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect } from 'react'
 
@@ -85,7 +86,7 @@ export default function DeletedPage() {
   }
 
   return (
-    <AppLayout>
+    <AppLayout sidebar={<ChatSidebar />}>
       <div className="p-8 max-w-4xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-label-primary mb-2">Deleted Items</h1>
