@@ -102,25 +102,31 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
           {sidebar}
         </div>
         <div className="p-4 border-t border-separator/50 bg-surface-secondary/30 dark:bg-surface-tertiary/30 space-y-3">
-           {/* Credits, Language & Theme */}
-           <div className="flex items-center justify-between">
-             <div className="flex items-center gap-2 bg-surface-tertiary/60 dark:bg-surface/60 px-3 py-2 rounded-hig-lg border border-separator/30">
-               <span className="text-[10px] font-bold text-label-tertiary uppercase tracking-widest">Credits</span>
-               <span className="text-xs font-bold text-teal-600 dark:text-teal-400">$12.40</span>
-               <div className="w-1.5 h-1.5 bg-success rounded-full shadow-sm animate-pulse"></div>
-             </div>
-             <div className="flex items-center gap-2">
-               <LanguageSwitcher />
-               <ThemeToggle />
-             </div>
+           {/* Gallery, Language & Theme Icons */}
+           <div className="flex items-center justify-center gap-2">
+             <a 
+               href="/gallery" 
+               className="p-2 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group"
+               title="Gallery"
+             >
+               <svg className="w-4 h-4 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+               </svg>
+             </a>
+             <LanguageSwitcher />
+             <ThemeToggle />
            </div>
            
-           {/* User Profile */}
+           {/* User Profile with Credits */}
            <div className="flex items-center gap-3 p-3 bg-surface-tertiary dark:bg-surface rounded-hig-xl border border-separator shadow-sm group cursor-pointer hover:shadow-hig-hover transition-all active:scale-95 hover:border-brown dark:hover:border-teal">
               <Avatar seed="aslan@renascence.io" size={40} className="group-hover:scale-105 transition-transform shadow-brown-glow" />
               <div className="flex-grow min-w-0">
                  <div className="text-sm font-bold truncate text-label-primary">Aslan</div>
                  <div className="text-[10px] font-bold text-brown dark:text-teal uppercase tracking-widest">Super Admin</div>
+              </div>
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-secondary/60 dark:bg-surface-tertiary/60 rounded-hig-lg border border-separator/30">
+                <span className="text-xs font-bold text-teal-600 dark:text-teal-400">$12.40</span>
+                <div className="w-1.5 h-1.5 bg-success rounded-full shadow-sm animate-pulse"></div>
               </div>
            </div>
         </div>

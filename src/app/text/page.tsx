@@ -30,6 +30,39 @@ export default function TextPage() {
     }
     return 'default-chat'
   })
+
+  // Load chat-specific settings when activeChatId changes
+  useEffect(() => {
+    const savedSettings = localStorage.getItem(`chat-settings-${activeChatId}`)
+    if (savedSettings) {
+      try {
+        const settings = JSON.parse(savedSettings)
+        if (settings.modelId) {
+          const model = TEXT_MODELS.find(m => m.id === settings.modelId)
+          if (model) {
+            setSelectedModel(model)
+            setSelectedBrand(model.brandName || model.provider)
+          }
+        }
+        if (settings.systemPrompt !== undefined) setSystemPrompt(settings.systemPrompt)
+        if (settings.temperature !== undefined) setTemperature(settings.temperature)
+        if (settings.maxTokens !== undefined) setMaxTokens(settings.maxTokens)
+      } catch (e) {
+        console.error('[v0] Failed to load chat settings:', e)
+      }
+    }
+  }, [activeChatId])
+
+  // Save chat-specific settings when they change
+  useEffect(() => {
+    const settings = {
+      modelId: selectedModel.id,
+      systemPrompt,
+      temperature,
+      maxTokens,
+    }
+    localStorage.setItem(`chat-settings-${activeChatId}`, JSON.stringify(settings))
+  }, [activeChatId, selectedModel.id, systemPrompt, temperature, maxTokens])
   
   // Load saved model from localStorage on mount and filter models
   useEffect(() => {
