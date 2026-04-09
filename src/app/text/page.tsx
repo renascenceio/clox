@@ -7,10 +7,15 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
+import { useRouter } from 'next/navigation'
+
+type AIType = 'text' | 'image' | 'video' | 'audio'
 
 export default function TextPage() {
+  const router = useRouter()
   const [selectedModel, setSelectedModel] = useState<typeof TEXT_MODELS[number]>(TEXT_MODELS[0])
-  const [selectedBrand, setSelectedBrand] = useState<string>(selectedModel.brandName ||selectedModel.provider)
+  const [selectedBrand, setSelectedBrand] = useState<string>(selectedModel.brandName || selectedModel.provider)
+  const [activeAIType, setActiveAIType] = useState<AIType>('text')
   
   const chat = useChat({
     api: '/api/chat',
@@ -42,6 +47,14 @@ export default function TextPage() {
     }
   }
 
+  const handleAITypeChange = (type: AIType) => {
+    setActiveAIType(type)
+    // Navigate to the respective page
+    if (type !== 'text') {
+      router.push(`/${type}`)
+    }
+  }
+
   const sidebar = (
     <ChatSidebar>
        <SidebarItem title="Initial prompt..." active />
@@ -49,6 +62,29 @@ export default function TextPage() {
        <SidebarItem title="Marketing ideas" />
     </ChatSidebar>
   )
+
+  const aiTypeIcons = {
+    text: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+      </svg>
+    ),
+    image: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+    video: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      </svg>
+    ),
+    audio: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+      </svg>
+    ),
+  }
 
   return (
     <AppLayout 
@@ -61,7 +97,7 @@ export default function TextPage() {
             <select
               value={selectedBrand}
               onChange={(e) => handleBrandChange(e.target.value)}
-              className="h-9 px-3 bg-white dark:bg-surface border-2 border-separator rounded-hig-lg text-sm font-bold text-label-primary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all"
+              className="h-9 px-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-bold text-label-primary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all"
             >
               {brands.map(brand => (
                 <option key={brand} value={brand}>{brand}</option>
@@ -75,7 +111,7 @@ export default function TextPage() {
             <select
               value={selectedModel.id}
               onChange={(e) => handleModelChange(e.target.value)}
-              className="h-9 px-3 bg-white dark:bg-surface border-2 border-separator rounded-hig-lg text-sm font-bold text-label-primary focus:outline-none focus:ring-2 focus:ring-teal/20 focus:border-teal transition-all"
+              className="h-9 px-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-bold text-label-primary focus:outline-none focus:ring-2 focus:ring-teal/20 focus:border-teal transition-all"
             >
               {brandModels.map(model => (
                 <option key={model.id} value={model.id}>
@@ -95,7 +131,7 @@ export default function TextPage() {
         </div>
       }
     >
-      <div className="flex flex-col h-full max-w-4xl mx-auto px-4 pt-10 pb-32">
+      <div className="flex flex-col h-full max-w-4xl mx-auto px-4 pt-10 pb-40">
         <div className="flex-grow space-y-8">
           <AnimatePresence initial={false}>
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
@@ -109,7 +145,7 @@ export default function TextPage() {
                 <div className={`max-w-[85%] px-5 py-4 rounded-hig-xl text-sm leading-relaxed ${
                   m.role === 'user'
                     ? 'gradient-brown-teal text-white shadow-brown-glow'
-                    : 'glass-float shadow-hig prose prose-sm max-w-none'
+                    : 'glass-float shadow-hig prose prose-sm max-w-none text-label-primary'
                 }`}>
                   <ReactMarkdown>{m.content}</ReactMarkdown>
                 </div>
@@ -118,14 +154,34 @@ export default function TextPage() {
           </AnimatePresence>
         </div>
 
+        {/* Message Input Area with Tabs - Fixed at bottom */}
         <div className="fixed bottom-0 left-[284px] right-24 p-6 bg-gradient-to-t from-surface-secondary via-surface-secondary/90 to-transparent pointer-events-none">
-          <div className="max-w-4xl mx-auto pointer-events-auto">
+          <div className="max-w-4xl mx-auto pointer-events-auto space-y-3">
+            {/* AI Type Tabs - Above message input */}
+            <div className="flex items-center gap-2 bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl p-1.5 rounded-hig-xl border border-separator/50 shadow-sm w-fit">
+              {(['text', 'image', 'video', 'audio'] as AIType[]).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => handleAITypeChange(type)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-hig-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                    activeAIType === type
+                      ? 'gradient-brown-teal text-white shadow-brown-glow'
+                      : 'text-label-secondary hover:text-label-primary hover:bg-surface-secondary'
+                  }`}
+                >
+                  {aiTypeIcons[type]}
+                  <span>{type}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Message Input Box */}
             <form onSubmit={handleSubmit} className="relative group">
               <textarea
                 value={input}
                 onChange={handleInputChange}
                 placeholder="Message..."
-                className="w-full min-h-[56px] max-h-[200px] p-5 pr-14 glass-float rounded-hig-2xl shadow-float focus:ring-2 focus:ring-brown/20 outline-none resize-none transition-all font-medium placeholder:text-label-tertiary"
+                className="w-full min-h-[56px] max-h-[200px] p-5 pr-14 glass-float rounded-hig-2xl shadow-float focus:ring-2 focus:ring-brown/20 outline-none resize-none transition-all font-medium placeholder:text-label-tertiary text-label-primary"
                 rows={1}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -145,8 +201,9 @@ export default function TextPage() {
                 </svg>
               </button>
             </form>
-            <div className="mt-3 text-center text-xs text-label-tertiary font-medium">
-              Cmd+Enter to send
+            
+            <div className="text-center text-xs text-label-tertiary font-medium">
+              Cmd+Enter to send • {activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode active
             </div>
           </div>
         </div>
