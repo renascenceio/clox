@@ -70,7 +70,38 @@ const config: Config = {
       },
       backdropBlur: {
         'hig': '24px',
-      }
+      },
+      keyframes: {
+        blob: {
+          '0%': {
+            transform: 'translate(0px, 0px) scale(1)',
+          },
+          '33%': {
+            transform: 'translate(30px, -50px) scale(1.1)',
+          },
+          '66%': {
+            transform: 'translate(-20px, 20px) scale(0.9)',
+          },
+          '100%': {
+            transform: 'translate(0px, 0px) scale(1)',
+          },
+        },
+        'blob-slow': {
+          '0%, 100%': {
+            transform: 'translate(0px, 0px) scale(1)',
+          },
+          '33%': {
+            transform: 'translate(40px, -60px) scale(1.15)',
+          },
+          '66%': {
+            transform: 'translate(-30px, 30px) scale(0.85)',
+          },
+        },
+      },
+      animation: {
+        blob: 'blob 7s infinite',
+        'blob-slow': 'blob-slow 15s infinite',
+      },
     },
   },
   plugins: [],
