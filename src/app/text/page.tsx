@@ -38,11 +38,16 @@ export default function TextPage() {
     }
   }, [selectedModel.id])
   
-  // Get API key from admin settings for the selected provider
-  const getApiKeyForProvider = () => {
+  // Get API key from admin settings - refreshed each render
+  const [currentApiKey, setCurrentApiKey] = useState('')
+  
+  // Refresh API key when provider changes or on mount
+  useEffect(() => {
     const settings = getAdminSettings()
-    return settings.providers[selectedModel.provider]?.apiKey || ''
-  }
+    const key = settings.providers[selectedModel.provider]?.apiKey || ''
+    setCurrentApiKey(key)
+    console.log('[v0] API key loaded for provider:', selectedModel.provider, 'hasKey:', !!key)
+  }, [selectedModel.provider])
 
   const chat = useChat({
     api: '/api/chat',
@@ -52,7 +57,7 @@ export default function TextPage() {
       systemPrompt,
       temperature,
       maxTokens,
-      apiKey: getApiKeyForProvider(),
+      apiKey: currentApiKey,
     },
     onError: (error) => {
       console.error('[v0] Chat API error:', error)
