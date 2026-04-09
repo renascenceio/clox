@@ -10,6 +10,15 @@ interface Chat {
   createdAt: number
   type: 'chat' | 'project'
   folderId?: string
+  projectId?: string // For chats that belong to a project
+}
+
+interface ProjectSettings {
+  id: string
+  systemPrompt: string
+  temperature: number
+  maxTokens: number
+  modelId: string
 }
 
 interface Folder {
@@ -35,6 +44,15 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
   const [showNewMenu, setShowNewMenu] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const [showProjectSettings, setShowProjectSettings] = useState<string | null>(null)
+  const [projectSettings, setProjectSettings] = useState<ProjectSettings>({
+    id: '',
+    systemPrompt: '',
+    temperature: 0.7,
+    maxTokens: 2048,
+    modelId: 'gemini-2.5-flash'
+  })
+  const [showMoveMenu, setShowMoveMenu] = useState<string | null>(null)
 
   // Load chats and folders from localStorage
   useEffect(() => {
@@ -117,9 +135,42 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
     setEditingTitle(currentTitle)
   }
 
-  // Filter chats by search
+  // Move chat to project or remove from project
+  const moveChatToProject = (chatId: string, projectId: string | undefined) => {
+    saveChats(chats.map(c => c.id === chatId ? { ...c, projectId, folderId: undefined } : c))
+    setShowMoveMenu(null)
+  }
+
+  // Open project settings
+  const openProjectSettings = (projectId: string) => {
+    const savedSettings = localStorage.getItem(`project-settings-${projectId}`)
+    if (savedSettings) {
+      setProjectSettings(JSON.parse(savedSettings))
+    } else {
+      setProjectSettings({
+        id: projectId,
+        systemPrompt: '',
+        temperature: 0.7,
+        maxTokens: 2048,
+        modelId: 'gemini-2.5-flash'
+      })
+    }
+    setShowProjectSettings(projectId)
+  }
+
+  // Save project settings
+  const saveProjectSettings = () => {
+    localStorage.setItem(`project-settings-${projectSettings.id}`, JSON.stringify(projectSettings))
+    setShowProjectSettings(null)
+  }
+
+  // Get chats that belong to a project
+  const getChatsByProject = (projectId: string) => 
+    chats.filter(c => c.projectId === projectId && c.type === 'chat')
+
+  // Filter chats by search - exclude chats in folders or projects
   const filteredChats = chats.filter(c => 
-    c.title.toLowerCase().includes(search.toLowerCase()) && !c.folderId
+    c.title.toLowerCase().includes(search.toLowerCase()) && !c.folderId && !c.projectId
   )
 
   const getChatsByFolder = (folderId: string) => 
@@ -216,6 +267,9 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
                   onCancelEdit={() => setEditingId(null)}
                   onDelete={() => handleDeleteChat(chat.id)}
                   onClick={() => onChatSelect?.(chat.id)}
+                  projects={chats.filter(c => c.type === 'project').map(p => ({ id: p.id, title: p.title }))}
+                  onMoveToProject={(projectId) => moveChatToProject(chat.id, projectId)}
+                  currentProjectId={chat.projectId}
                 />
               ))
             )}
@@ -228,23 +282,63 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
             <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest">
               Projects
             </div>
-            <div className="space-y-0.5">
+            <div className="space-y-2">
               {filteredChats.filter(c => c.type === 'project').map(project => (
-                <SidebarItem
-                  key={project.id}
-                  id={project.id}
-                  title={project.title}
-                  model="Project"
-                  active={project.id === activeChatId}
-                  isEditing={editingId === project.id}
-                  editingTitle={editingTitle}
-                  onEditingTitleChange={setEditingTitle}
-                  onStartEdit={() => startEditing(project.id, project.title)}
-                  onSaveEdit={() => handleRename(project.id, editingTitle, 'chat')}
-                  onCancelEdit={() => setEditingId(null)}
-                  onDelete={() => handleDeleteChat(project.id)}
-                  onClick={() => onChatSelect?.(project.id)}
-                />
+                <div key={project.id} className="space-y-0.5">
+                  <div className="flex items-center gap-1">
+                    <div className="flex-1">
+                      <SidebarItem
+                        id={project.id}
+                        title={project.title}
+                        model="Project"
+                        active={project.id === activeChatId}
+                        isEditing={editingId === project.id}
+                        editingTitle={editingTitle}
+                        onEditingTitleChange={setEditingTitle}
+                        onStartEdit={() => startEditing(project.id, project.title)}
+                        onSaveEdit={() => handleRename(project.id, editingTitle, 'chat')}
+                        onCancelEdit={() => setEditingId(null)}
+                        onDelete={() => handleDeleteChat(project.id)}
+                        onClick={() => onChatSelect?.(project.id)}
+                      />
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openProjectSettings(project.id)
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-surface-tertiary dark:hover:bg-surface text-label-tertiary hover:text-brown dark:hover:text-teal transition-colors"
+                      title="Project Settings"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </button>
+                  </div>
+                  {/* Chats within this project */}
+                  {getChatsByProject(project.id).length > 0 && (
+                    <div className="ml-4 pl-3 border-l border-separator/30 space-y-0.5">
+                      {getChatsByProject(project.id).map(chat => (
+                        <SidebarItem
+                          key={chat.id}
+                          id={chat.id}
+                          title={chat.title}
+                          model={chat.model}
+                          active={chat.id === activeChatId}
+                          isEditing={editingId === chat.id}
+                          editingTitle={editingTitle}
+                          onEditingTitleChange={setEditingTitle}
+                          onStartEdit={() => startEditing(chat.id, chat.title)}
+                          onSaveEdit={() => handleRename(chat.id, editingTitle, 'chat')}
+                          onCancelEdit={() => setEditingId(null)}
+                          onDelete={() => handleDeleteChat(chat.id)}
+                          onClick={() => onChatSelect?.(chat.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -291,6 +385,89 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
           </a>
         </div>
       </div>
+
+      {/* Project Settings Modal */}
+      {showProjectSettings && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowProjectSettings(null)}>
+          <div className="bg-surface-secondary dark:bg-[#2C2C2E] rounded-hig-2xl border border-separator shadow-float w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-separator">
+              <h3 className="text-lg font-bold text-label-primary">Project Settings</h3>
+              <p className="text-xs text-label-tertiary mt-1">Configure default settings for this project</p>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* System Prompt */}
+              <div>
+                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">System Prompt</label>
+                <textarea
+                  value={projectSettings.systemPrompt}
+                  onChange={(e) => setProjectSettings(prev => ({ ...prev, systemPrompt: e.target.value }))}
+                  placeholder="Enter a system prompt for this project..."
+                  className="w-full h-24 p-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-sm outline-none focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 resize-none"
+                />
+              </div>
+              {/* Temperature */}
+              <div>
+                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">
+                  Temperature: {projectSettings.temperature}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value={projectSettings.temperature}
+                  onChange={(e) => setProjectSettings(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))}
+                  className="w-full accent-brown dark:accent-teal"
+                />
+              </div>
+              {/* Max Tokens */}
+              <div>
+                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">
+                  Max Tokens: {projectSettings.maxTokens}
+                </label>
+                <input
+                  type="range"
+                  min="256"
+                  max="8192"
+                  step="256"
+                  value={projectSettings.maxTokens}
+                  onChange={(e) => setProjectSettings(prev => ({ ...prev, maxTokens: parseInt(e.target.value) }))}
+                  className="w-full accent-brown dark:accent-teal"
+                />
+              </div>
+              {/* Model Selection */}
+              <div>
+                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">Default Model</label>
+                <select
+                  value={projectSettings.modelId}
+                  onChange={(e) => setProjectSettings(prev => ({ ...prev, modelId: e.target.value }))}
+                  className="w-full p-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-sm outline-none focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20"
+                >
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                  <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="gpt-4o-mini">GPT-4o Mini</option>
+                  <option value="claude-opus-4.6">Claude Opus 4.6</option>
+                </select>
+              </div>
+            </div>
+            <div className="p-6 border-t border-separator flex justify-end gap-3">
+              <button
+                onClick={() => setShowProjectSettings(null)}
+                className="px-4 py-2 text-sm font-bold text-label-primary hover:bg-surface-tertiary dark:hover:bg-surface rounded-hig-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveProjectSettings}
+                className="px-4 py-2 text-sm font-bold gradient-brown-teal text-white rounded-hig-lg shadow-brown-glow hover:scale-105 transition-transform"
+              >
+                Save Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -308,6 +485,9 @@ interface SidebarItemProps {
   onCancelEdit?: () => void
   onDelete?: () => void
   onClick?: () => void
+  projects?: { id: string; title: string }[]
+  onMoveToProject?: (projectId: string | undefined) => void
+  currentProjectId?: string
 }
 
 export function SidebarItem({ 
@@ -321,8 +501,12 @@ export function SidebarItem({
   onSaveEdit,
   onCancelEdit,
   onDelete,
-  onClick 
+  onClick,
+  projects,
+  onMoveToProject,
+  currentProjectId
 }: SidebarItemProps) {
+  const [showMoveMenu, setShowMoveMenu] = useState(false)
   return (
     <motion.div
       whileHover={{ x: 4 }}
@@ -357,6 +541,42 @@ export function SidebarItem({
       </div>
       {!isEditing && (
         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+          {projects && projects.length > 0 && onMoveToProject && (
+            <div className="relative">
+              <button 
+                onClick={(e) => { e.stopPropagation(); setShowMoveMenu(!showMoveMenu); }}
+                className="w-5 h-5 rounded-md hover:bg-surface-tertiary dark:hover:bg-surface flex items-center justify-center text-xs text-label-secondary transition-colors"
+                title="Move to Project"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+              </button>
+              {showMoveMenu && (
+                <div className="absolute right-0 top-full mt-1 w-40 bg-surface-secondary dark:bg-[#2C2C2E] rounded-hig-lg border border-separator shadow-float z-50 overflow-hidden">
+                  {currentProjectId && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMoveToProject(undefined); setShowMoveMenu(false); }}
+                      className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors text-label-secondary"
+                    >
+                      Remove from Project
+                    </button>
+                  )}
+                  {projects.map(project => (
+                    <button
+                      key={project.id}
+                      onClick={(e) => { e.stopPropagation(); onMoveToProject(project.id); setShowMoveMenu(false); }}
+                      className={`w-full px-3 py-2 text-left text-xs font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors ${
+                        currentProjectId === project.id ? 'text-brown dark:text-teal' : 'text-label-primary'
+                      }`}
+                    >
+                      {project.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <button 
             onClick={(e) => { e.stopPropagation(); onStartEdit?.(); }}
             className="w-5 h-5 rounded-md hover:bg-surface-tertiary dark:hover:bg-surface flex items-center justify-center text-xs text-label-secondary transition-colors"
