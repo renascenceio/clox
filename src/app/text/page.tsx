@@ -14,7 +14,6 @@ type AIType = 'text' | 'image' | 'video' | 'audio'
 
 export default function TextPage() {
   const router = useRouter()
-  const [adminSettings, setAdminSettings] = useState(getAdminSettings())
   
   // Filter models based on enabled providers in admin
   const enabledModels = useMemo(() => {
@@ -31,16 +30,6 @@ export default function TextPage() {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(2048)
-  
-  // Listen for admin settings changes
-  useEffect(() => {
-    const handleSettingsChange = () => {
-      setAdminSettings(getAdminSettings())
-    }
-    
-    window.addEventListener('admin-settings-changed', handleSettingsChange)
-    return () => window.removeEventListener('admin-settings-changed', handleSettingsChange)
-  }, [])
   
   const chat = useChat({
     api: '/api/chat',
