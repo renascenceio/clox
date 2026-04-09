@@ -130,43 +130,37 @@ export default function TextPage() {
         <span className="font-bold text-sm">Settings</span>
       </div>
       <div className="flex-grow overflow-y-auto custom-scrollbar p-6 space-y-6">
-        {/* Brand Selector */}
-        <div className="space-y-2">
-          <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">AI Brand</label>
-          <select
-            value={selectedBrand}
-            onChange={(e) => handleBrandChange(e.target.value)}
-            className="w-full h-10 px-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-semibold text-label-primary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all"
-          >
-            {brands.map(brand => (
-              <option key={brand} value={brand}>{brand}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Model Version Selector */}
-        <div className="space-y-2">
-          <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">Model Version</label>
+        {/* AI Model Header - Match Image Format */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-label-primary">AI Model</h3>
+            <div className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-pulse"></div>
+          </div>
+          
+          {/* Model Selector */}
           <select
             value={selectedModel.id}
             onChange={(e) => handleModelChange(e.target.value)}
-            className="w-full h-10 px-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-semibold text-label-primary focus:outline-none focus:ring-2 focus:ring-teal/20 focus:border-teal transition-all"
+            className="w-full h-11 px-4 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-bold text-label-primary focus:outline-none focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown dark:focus:border-teal transition-all"
           >
-            {brandModels.map(model => (
-              <option key={model.id} value={model.id}>
-                {model.version || model.name}
-              </option>
-            ))}
+            {brands.map(brand => {
+              const modelsForBrand = enabledModels.filter(m => (m.brandName || m.provider) === brand)
+              return (
+                <optgroup key={brand} label={brand}>
+                  {modelsForBrand.map(model => (
+                    <option key={model.id} value={model.id}>
+                      {model.version || model.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )
+            })}
           </select>
-        </div>
 
-        {/* Current Model Badge */}
-        <div className="p-4 bg-gradient-to-r from-brown-50 to-teal-50 dark:from-brown-900/20 dark:to-teal-900/20 border border-brown-200 dark:border-brown-700 rounded-hig-xl">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-2 h-2 bg-brown rounded-full animate-pulse"></div>
-            <span className="text-xs text-brown-700 dark:text-brown-300 font-bold uppercase tracking-wider">Active Model</span>
+          {/* Current Selection Badge */}
+          <div className="px-3 py-2 bg-brown-50 dark:bg-brown-900/20 border border-brown-200 dark:border-brown-700 rounded-hig-lg">
+            <p className="text-xs font-bold text-brown-700 dark:text-brown-300">{selectedBrand} • {selectedModel.version || selectedModel.name}</p>
           </div>
-          <p className="text-sm font-bold text-brown-900 dark:text-brown-100">{selectedBrand} • {selectedModel.version || selectedModel.name}</p>
         </div>
 
         {/* System Prompt */}
