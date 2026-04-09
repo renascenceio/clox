@@ -19,18 +19,18 @@
   }
 
   .dark {
-    --background: #000000;
-    --foreground: #FFFFFF;
+    --background: #1C1C1E;
+    --foreground: #F5EFE7;
     
-    /* Dark mode colors (RGB values for alpha support) */
-    --surface: 28 28 30;
-    --surface-secondary: 18 18 20;
-    --surface-tertiary: 44 44 46;
-    --label-primary: 255 255 255;
-    --label-secondary: 152 152 157;
-    --label-tertiary: 99 99 102;
-    --separator: 58 58 60;
-    --fill: 118 118 128;
+    /* Dark mode with brown/teal accents (RGB values for alpha support) */
+    --surface: 44 44 46;
+    --surface-secondary: 28 28 30;
+    --surface-tertiary: 58 56 54;
+    --label-primary: 245 239 231;
+    --label-secondary: 180 166 150;
+    --label-tertiary: 139 127 115;
+    --separator: 92 84 76;
+    --fill: 115 106 97;
   }
 }
 
