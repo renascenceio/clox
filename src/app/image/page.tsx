@@ -95,9 +95,9 @@ export default function ImagePage() {
 
   const sidebar = (
     <ChatSidebar>
-       <SidebarItem title="Futuristic city" active />
-       <SidebarItem title="Cyberpunk cat" />
-       <SidebarItem title="Minimalist logo" />
+       <SidebarItem id="futuristic-city" title="Futuristic city" active />
+       <SidebarItem id="cyberpunk-cat" title="Cyberpunk cat" />
+       <SidebarItem id="minimalist-logo" title="Minimalist logo" />
     </ChatSidebar>
   )
 
