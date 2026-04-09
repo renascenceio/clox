@@ -92,6 +92,10 @@ export default function TextPage() {
     },
   })
 
+  // Extract chat properties early so they can be used in useEffect dependencies
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false, setMessages } = chat as any
+
   // Save chat history to localStorage whenever messages change
   useEffect(() => {
     if (chat.messages && chat.messages.length > 0) {
@@ -116,9 +120,6 @@ export default function TextPage() {
       setMessages([])
     }
   }, [activeChatId, setMessages])
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false, setMessages } = chat as any
 
   // Get unique brands and models for selected brand (only from enabled models)
   const brands = Array.from(new Set(enabledModels.map(m => m.brandName || m.provider)))
