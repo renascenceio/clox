@@ -118,7 +118,7 @@ export default function TranslationsPage() {
           showSavedMessage('Imported translations for all languages!')
         }
         
-        loadTranslations()
+        setTranslations(getLanguageTranslations(selectedLang))
       } catch (error) {
         console.error('Failed to import:', error)
         alert('Failed to import translations. Please check the file format.')

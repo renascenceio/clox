@@ -49,7 +49,7 @@ export default function TextPage() {
       setSelectedModel(filtered[0])
       setSelectedBrand(filtered[0].brandName || filtered[0].provider)
     }
-  }, [])
+  }, [selectedModel.id])
   
   // Get API key from admin settings - refreshed each render
   const [currentApiKey, setCurrentApiKey] = useState('')
