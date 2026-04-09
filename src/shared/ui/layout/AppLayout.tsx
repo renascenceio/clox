@@ -32,10 +32,10 @@ export default function AppLayout({ children, sidebar, rightPanel, topBarContent
   return (
     <div className="flex h-screen relative bg-gradient-to-br from-surface-secondary via-surface-tertiary to-surface-secondary text-label-primary font-sans selection:bg-teal/20 overflow-hidden p-6 gap-6">
       {/* Subtle Animated Background Blobs - Less intrusive for app */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
-        <div className="absolute top-20 -left-10 w-96 h-96 bg-brown/10 dark:bg-brown/5 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow"></div>
-        <div className="absolute top-40 -right-10 w-96 h-96 bg-teal/10 dark:bg-teal/5 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow [animation-delay:3s]"></div>
-        <div className="absolute bottom-20 left-1/3 w-96 h-96 bg-brown-300/10 dark:bg-brown-300/5 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow [animation-delay:6s]"></div>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40 dark:opacity-50">
+        <div className="absolute top-20 -left-10 w-96 h-96 bg-brown/15 dark:bg-brown-400/10 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob-slow"></div>
+        <div className="absolute top-40 -right-10 w-96 h-96 bg-teal/15 dark:bg-teal-400/10 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob-slow [animation-delay:3s]"></div>
+        <div className="absolute bottom-20 left-1/3 w-96 h-96 bg-brown-300/15 dark:bg-brown-500/10 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob-slow [animation-delay:6s]"></div>
       </div>
       {/* Floating Left Sidebar (260px) */}
       <aside className="w-[260px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
@@ -63,39 +63,13 @@ export default function AppLayout({ children, sidebar, rightPanel, topBarContent
       <main className="flex-grow flex flex-col min-w-0 relative z-10 gap-6">
         {/* Floating Top Navigation */}
         <nav className="glass-float rounded-hig-2xl shadow-float flex items-center px-8 h-16 justify-between flex-shrink-0">
-           <div className="flex items-center gap-8">
-              {/* Modern Segmented Control for Generator Types */}
-              <div className="flex items-center gap-2 bg-surface-secondary/60 p-1.5 rounded-hig-lg border border-separator/30">
-                 <NavTab href="/text" label="Text" icon={
-                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                   </svg>
-                 } />
-                 <NavTab href="/image" label="Image" icon={
-                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                   </svg>
-                 } />
-                 <NavTab href="/video" label="Video" icon={
-                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                   </svg>
-                 } />
-                 <NavTab href="/audio" label="Audio" icon={
-                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                   </svg>
-                 } />
-              </div>
-              
-              <div className="h-6 w-[1px] bg-separator/50"></div>
-              
+           <div className="flex items-center gap-4">
               <a href="/gallery" className="text-sm font-semibold text-label-secondary hover:text-brown transition-all flex items-center gap-2 hover:scale-105 active:scale-95">
                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                  </svg>
                  <span>Gallery</span>
-                 <span className="px-2 py-0.5 bg-brown-100 text-brown-700 rounded-md text-xs font-bold border border-brown-200">42</span>
+                 <span className="px-2 py-0.5 bg-brown-100 dark:bg-brown-900/40 text-brown-700 dark:text-brown-300 rounded-md text-xs font-bold border border-brown-200 dark:border-brown-700">42</span>
               </a>
            </div>
 

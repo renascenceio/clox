@@ -16,12 +16,18 @@ export default function TextPage() {
   const [selectedModel, setSelectedModel] = useState<typeof TEXT_MODELS[number]>(TEXT_MODELS[0])
   const [selectedBrand, setSelectedBrand] = useState<string>(selectedModel.brandName || selectedModel.provider)
   const [activeAIType, setActiveAIType] = useState<AIType>('text')
+  const [systemPrompt, setSystemPrompt] = useState('')
+  const [temperature, setTemperature] = useState(0.7)
+  const [maxTokens, setMaxTokens] = useState(2048)
   
   const chat = useChat({
     api: '/api/chat',
     body: {
       model: selectedModel.id,
       provider: selectedModel.provider,
+      systemPrompt,
+      temperature,
+      maxTokens,
     }
   })
 
@@ -86,52 +92,111 @@ export default function TextPage() {
     ),
   }
 
-  return (
-    <AppLayout 
-      sidebar={sidebar}
-      topBarContent={
-        <div className="flex items-center gap-4">
-          {/* Brand Selector */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">Brand</label>
-            <select
-              value={selectedBrand}
-              onChange={(e) => handleBrandChange(e.target.value)}
-              className="h-9 px-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-bold text-label-primary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all"
-            >
-              {brands.map(brand => (
-                <option key={brand} value={brand}>{brand}</option>
-              ))}
-            </select>
-          </div>
+  const rightPanel = (
+    <div className="flex flex-col h-full">
+      <div className="h-16 border-b border-separator/50 flex items-center px-6">
+        <span className="font-bold text-sm">Settings</span>
+      </div>
+      <div className="flex-grow overflow-y-auto custom-scrollbar p-6 space-y-6">
+        {/* Brand Selector */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">AI Brand</label>
+          <select
+            value={selectedBrand}
+            onChange={(e) => handleBrandChange(e.target.value)}
+            className="w-full h-10 px-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-semibold text-label-primary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all"
+          >
+            {brands.map(brand => (
+              <option key={brand} value={brand}>{brand}</option>
+            ))}
+          </select>
+        </div>
 
-          {/* Model Version Selector */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">Version</label>
-            <select
-              value={selectedModel.id}
-              onChange={(e) => handleModelChange(e.target.value)}
-              className="h-9 px-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-bold text-label-primary focus:outline-none focus:ring-2 focus:ring-teal/20 focus:border-teal transition-all"
-            >
-              {brandModels.map(model => (
-                <option key={model.id} value={model.id}>
-                  {model.version || model.name}
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Model Version Selector */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">Model Version</label>
+          <select
+            value={selectedModel.id}
+            onChange={(e) => handleModelChange(e.target.value)}
+            className="w-full h-10 px-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-semibold text-label-primary focus:outline-none focus:ring-2 focus:ring-teal/20 focus:border-teal transition-all"
+          >
+            {brandModels.map(model => (
+              <option key={model.id} value={model.id}>
+                {model.version || model.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
-          {/* Current Model Indicator */}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-brown-50 to-teal-50 dark:from-brown-900/20 dark:to-teal-900/20 border border-brown-200 dark:border-brown-700 rounded-hig-lg">
+        {/* Current Model Badge */}
+        <div className="p-4 bg-gradient-to-r from-brown-50 to-teal-50 dark:from-brown-900/20 dark:to-teal-900/20 border border-brown-200 dark:border-brown-700 rounded-hig-xl">
+          <div className="flex items-center gap-2 mb-1">
             <div className="w-2 h-2 bg-brown rounded-full animate-pulse"></div>
-            <span className="text-xs text-brown-700 dark:text-brown-300 font-bold">
-              {selectedBrand} • {selectedModel.version || selectedModel.name}
-            </span>
+            <span className="text-xs text-brown-700 dark:text-brown-300 font-bold uppercase tracking-wider">Active Model</span>
+          </div>
+          <p className="text-sm font-bold text-brown-900 dark:text-brown-100">{selectedBrand} • {selectedModel.version || selectedModel.name}</p>
+        </div>
+
+        {/* System Prompt */}
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">System Prompt</label>
+          <textarea
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            placeholder="You are a helpful assistant..."
+            className="w-full min-h-[100px] p-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all resize-none"
+            rows={4}
+          />
+        </div>
+
+        {/* Temperature */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">Temperature</label>
+            <span className="text-sm font-bold text-brown">{temperature}</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="2"
+            step="0.1"
+            value={temperature}
+            onChange={(e) => setTemperature(parseFloat(e.target.value))}
+            className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-brown"
+          />
+          <div className="flex justify-between text-xs text-label-tertiary">
+            <span>Precise</span>
+            <span>Creative</span>
           </div>
         </div>
-      }
-    >
-      <div className="flex flex-col h-full max-w-4xl mx-auto px-4 pt-10 pb-40">
+
+        {/* Max Tokens */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">Max Tokens</label>
+            <span className="text-sm font-bold text-teal-600">{maxTokens}</span>
+          </div>
+          <input
+            type="range"
+            min="256"
+            max="8192"
+            step="256"
+            value={maxTokens}
+            onChange={(e) => setMaxTokens(parseInt(e.target.value))}
+            className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-teal"
+          />
+          <div className="flex justify-between text-xs text-label-tertiary">
+            <span>256</span>
+            <span>8192</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <AppLayout sidebar={sidebar} rightPanel={rightPanel}>
+      <div className="flex flex-col h-full max-w-4xl mx-auto px-4 pt-10 pb-48">
         <div className="flex-grow space-y-8">
           <AnimatePresence initial={false}>
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
@@ -154,56 +219,59 @@ export default function TextPage() {
           </AnimatePresence>
         </div>
 
-        {/* Message Input Area with Tabs - Fixed at bottom */}
-        <div className="fixed bottom-0 left-[284px] right-24 p-6 bg-gradient-to-t from-surface-secondary via-surface-secondary/90 to-transparent pointer-events-none">
-          <div className="max-w-4xl mx-auto pointer-events-auto space-y-3">
-            {/* AI Type Tabs - Above message input */}
-            <div className="flex items-center gap-2 bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl p-1.5 rounded-hig-xl border border-separator/50 shadow-sm w-fit">
-              {(['text', 'image', 'video', 'audio'] as AIType[]).map((type) => (
-                <button
-                  key={type}
-                  onClick={() => handleAITypeChange(type)}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-hig-lg font-bold text-xs uppercase tracking-wider transition-all ${
-                    activeAIType === type
-                      ? 'gradient-brown-teal text-white shadow-brown-glow'
-                      : 'text-label-secondary hover:text-label-primary hover:bg-surface-secondary'
-                  }`}
-                >
-                  {aiTypeIcons[type]}
-                  <span>{type}</span>
-                </button>
-              ))}
-            </div>
+        {/* Message Input with Integrated Tabs - Fixed at bottom */}
+        <div className="fixed bottom-0 left-[284px] right-[368px] p-6 bg-gradient-to-t from-surface-secondary/95 via-surface-secondary/90 to-transparent dark:from-[#1C1C1E]/95 dark:via-[#1C1C1E]/90 dark:to-transparent backdrop-blur-sm pointer-events-none">
+          <div className="max-w-4xl mx-auto pointer-events-auto">
+            {/* Tabbed Message Input Box */}
+            <div className="glass-float rounded-hig-2xl shadow-float overflow-hidden border border-separator/50">
+              {/* AI Type Tabs - Integrated into message box */}
+              <div className="flex items-center border-b border-separator/30 bg-surface-secondary/40 dark:bg-[#2C2C2E]/40 backdrop-blur-sm">
+                {(['text', 'image', 'video', 'audio'] as AIType[]).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => handleAITypeChange(type)}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-bold text-xs uppercase tracking-wider transition-all border-b-2 ${
+                      activeAIType === type
+                        ? 'border-brown dark:border-teal bg-white dark:bg-[#2C2C2E] text-brown dark:text-teal'
+                        : 'border-transparent text-label-tertiary hover:text-label-primary hover:bg-white/30 dark:hover:bg-[#2C2C2E]/30'
+                    }`}
+                  >
+                    {aiTypeIcons[type]}
+                    <span>{type}</span>
+                  </button>
+                ))}
+              </div>
 
-            {/* Message Input Box */}
-            <form onSubmit={handleSubmit} className="relative group">
-              <textarea
-                value={input}
-                onChange={handleInputChange}
-                placeholder="Message..."
-                className="w-full min-h-[56px] max-h-[200px] p-5 pr-14 glass-float rounded-hig-2xl shadow-float focus:ring-2 focus:ring-brown/20 outline-none resize-none transition-all font-medium placeholder:text-label-tertiary text-label-primary"
-                rows={1}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    const formEvent = new Event('submit', { cancelable: true }) as unknown as React.FormEvent<HTMLFormElement>;
-                    handleSubmit(formEvent)
-                  }
-                }}
-              />
-              <button
-                type="submit"
-                disabled={isLoading || !input?.trim()}
-                className="absolute right-4 bottom-4 w-12 h-12 flex items-center justify-center gradient-brown-teal text-white rounded-hig-xl shadow-brown-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
-              >
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M8 3.33331V12.6666M8 3.33331L4 7.33331M8 3.33331L12 7.33331" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-            </form>
+              {/* Message Input Form */}
+              <form onSubmit={handleSubmit} className="relative">
+                <textarea
+                  value={input}
+                  onChange={handleInputChange}
+                  placeholder={`Message ${activeAIType} AI...`}
+                  className="w-full min-h-[80px] max-h-[240px] p-6 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
+                  rows={1}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      const formEvent = new Event('submit', { cancelable: true }) as unknown as React.FormEvent<HTMLFormElement>;
+                      handleSubmit(formEvent)
+                    }
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !input?.trim()}
+                  className="absolute right-4 bottom-4 w-12 h-12 flex items-center justify-center gradient-brown-teal text-white rounded-hig-xl shadow-brown-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
+                >
+                  <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 3.33331V12.6666M8 3.33331L4 7.33331M8 3.33331L12 7.33331" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </form>
+            </div>
             
-            <div className="text-center text-xs text-label-tertiary font-medium">
-              Cmd+Enter to send • {activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode active
+            <div className="text-center text-xs text-label-tertiary font-medium mt-3">
+              ⌘+Enter to send • {activeAIType.charAt(0).toUpperCase() + activeAIType.slice(1)} mode
             </div>
           </div>
         </div>
