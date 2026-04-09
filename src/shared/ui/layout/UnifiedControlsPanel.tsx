@@ -7,6 +7,8 @@ interface Model {
   name: string
   provider: string
   category?: string
+  type?: string
+  [key: string]: any
 }
 
 interface SelectOption {
