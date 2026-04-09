@@ -66,8 +66,8 @@ export default function AudioPage() {
 
   const sidebar = (
     <ChatSidebar>
-       <SidebarItem title="Lo-fi hip hop" active />
-       <SidebarItem title="Narrative voiceover" />
+       <SidebarItem id="lofi-hip-hop" title="Lo-fi hip hop" active />
+       <SidebarItem id="narrative-voiceover" title="Narrative voiceover" />
     </ChatSidebar>
   )
 

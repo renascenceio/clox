@@ -66,8 +66,8 @@ export default function VideoPage() {
 
   const sidebar = (
     <ChatSidebar>
-       <SidebarItem title="Walking in Tokyo" active />
-       <SidebarItem title="Deep sea exploration" />
+       <SidebarItem id="tokyo-walk" title="Walking in Tokyo" active />
+       <SidebarItem id="deep-sea" title="Deep sea exploration" />
     </ChatSidebar>
   )
 
