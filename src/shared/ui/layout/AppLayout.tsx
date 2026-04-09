@@ -1,6 +1,7 @@
 import { motion, Transition, Variants } from 'framer-motion'
 import { ReactNode } from 'react'
 import ThemeToggle from '@/shared/ui/components/ThemeToggle'
+import Avatar from '@/shared/ui/components/Avatar'
 
 export const spring: Transition = { type: "spring", stiffness: 380, damping: 30 }
 
@@ -42,9 +43,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
         </div>
         <div className="p-4 border-t border-separator/50">
            <div className="flex items-center gap-3 p-2.5 bg-surface rounded-hig-xl border border-separator shadow-sm group cursor-pointer hover:shadow-hig-hover transition-all active:scale-95">
-              <div className="w-9 h-9 rounded-full gradient-teal-brown flex items-center justify-center text-xs font-bold text-white shadow-teal-glow group-hover:scale-105 transition-transform">
-                AR
-              </div>
+              <Avatar seed="aslan@renascence.io" size={36} className="group-hover:scale-105 transition-transform shadow-teal-glow" />
               <div className="flex-grow min-w-0">
                  <div className="text-xs font-bold truncate">Aslan Renascence</div>
                  <div className="text-[9px] font-bold text-brown uppercase tracking-widest">Super Admin</div>
