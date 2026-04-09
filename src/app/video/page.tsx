@@ -115,16 +115,17 @@ export default function VideoPage() {
               </div>
 
               {/* Input Form */}
-              <form onSubmit={handleGenerate} className="relative flex items-center">
-                <input
+              <form onSubmit={handleGenerate} className="relative">
+                <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="Describe your video scene..."
-                  className="flex-grow p-5 bg-transparent outline-none text-sm font-medium placeholder:text-label-tertiary text-label-primary"
+                  className="w-full min-h-[80px] max-h-[240px] p-6 pr-28 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
+                  rows={1}
                 />
                 <button 
                   type="submit"
-                  className="px-8 py-5 gradient-brown-teal text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-brown-glow transition-all" 
+                  className="absolute right-4 bottom-4 px-6 py-2.5 gradient-brown-teal text-white text-sm font-bold rounded-hig-lg disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-brown-glow transition-all" 
                   disabled={isGenerating}
                 >
                   {isGenerating ? 'Processing...' : 'Generate'}

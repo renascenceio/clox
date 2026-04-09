@@ -50,7 +50,17 @@ export default function TextPage() {
       systemPrompt,
       temperature,
       maxTokens,
-    }
+    },
+    onError: (error) => {
+      console.error('[v0] Chat API error:', error)
+      alert(`Chat error: ${error.message || 'Unknown error'}`)
+    },
+    onResponse: (response) => {
+      console.log('[v0] Chat response received, status:', response.status)
+      if (!response.ok) {
+        console.error('[v0] Chat response not ok:', response.statusText)
+      }
+    },
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -229,11 +239,11 @@ export default function TextPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`max-w-[85%] ${
+                <div className={`max-w-[85%] text-sm leading-relaxed ${
                   m.role === 'user'
-                    ? 'px-5 py-4 rounded-hig-xl gradient-brown-teal text-white shadow-brown-glow'
+                    ? 'text-brown dark:text-teal font-semibold'
                     : 'prose prose-sm max-w-none text-label-primary'
-                } text-sm leading-relaxed`}>
+                }`}>
                   <ReactMarkdown>{m.content}</ReactMarkdown>
                 </div>
               </motion.div>

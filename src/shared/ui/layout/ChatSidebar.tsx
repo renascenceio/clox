@@ -31,7 +31,7 @@ export default function ChatSidebar({ children }: ChatSidebarProps) {
             placeholder="Search chats..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-9 pl-9 pr-4 bg-fill border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 focus:border-brown/30 outline-none transition-all placeholder:text-label-secondary/50 font-medium"
+            className="w-full h-9 pl-9 pr-4 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
           />
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-secondary/40 group-focus-within:text-brown transition-colors">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -116,23 +116,23 @@ function FolderItem({ title, count }: { title: string; count: number }) {
     <div>
       <div 
         onClick={() => setIsExpanded(!isExpanded)}
-        className="group px-3 py-2 rounded-hig-lg cursor-pointer transition-all hover:bg-fill dark:hover:bg-surface-tertiary flex items-center justify-between"
+        className="group px-3 py-2 rounded-hig-lg cursor-pointer transition-all hover:bg-surface-tertiary dark:hover:bg-surface flex items-center justify-between"
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <svg 
-            className={`w-3 h-3 text-label-tertiary group-hover:text-brown dark:group-hover:text-teal transition-all ${isExpanded ? 'rotate-90' : ''}`} 
+            className={`w-3 h-3 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-all ${isExpanded ? 'rotate-90' : ''}`} 
             fill="none" 
             viewBox="0 0 24 24" 
             stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
           </svg>
-          <svg className="w-4 h-4 text-label-tertiary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
-          <span className="text-sm font-medium text-label-primary truncate">{title}</span>
+          <span className="text-sm font-medium text-label-primary group-hover:text-brown dark:group-hover:text-teal truncate">{title}</span>
         </div>
-        <span className="text-[10px] font-bold text-label-secondary/40 group-hover:text-teal dark:group-hover:text-brown transition-colors">
+        <span className="text-[10px] font-bold text-label-secondary group-hover:text-teal dark:group-hover:text-brown transition-colors">
           {count}
         </span>
       </div>
