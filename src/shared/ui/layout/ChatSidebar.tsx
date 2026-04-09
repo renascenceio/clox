@@ -137,7 +137,6 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
   // Move chat to project or remove from project
   const moveChatToProject = (chatId: string, projectId: string | undefined) => {
     saveChats(chats.map(c => c.id === chatId ? { ...c, projectId, folderId: undefined } : c))
-    setShowMoveMenu(null)
   }
 
   // Open project settings
