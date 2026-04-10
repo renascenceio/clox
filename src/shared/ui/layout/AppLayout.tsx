@@ -29,7 +29,6 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutProps) {
-  const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   
   return (
@@ -42,61 +41,10 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
       </div>
       {/* Floating Left Sidebar (280px) - Improved Design */}
       <aside className="w-[280px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
-        <div className="h-16 border-b border-separator/50 flex items-center justify-between px-4 bg-gradient-to-br from-brown/5 to-teal/5 dark:from-brown/10 dark:to-teal/10">
+        <div className="h-16 border-b border-separator/50 flex items-center px-4 bg-gradient-to-br from-brown/5 to-teal/5 dark:from-brown/10 dark:to-teal/10">
            {/* Logo Icon Only */}
            <div className="w-9 h-9 gradient-brown-teal rounded-hig-lg flex items-center justify-center shadow-brown-glow">
              <span className="text-white font-bold text-base">C</span>
-           </div>
-           
-           {/* Workspace Switcher with Dropdown */}
-           <div className="relative">
-             <button 
-               onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)}
-               className="flex items-center gap-2 px-3 py-1.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group"
-             >
-               <span className="text-sm font-medium text-label-primary group-hover:text-brown dark:group-hover:text-teal truncate max-w-[120px]">Personal</span>
-               <svg className="w-3.5 h-3.5 text-label-tertiary group-hover:text-brown dark:group-hover:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-               </svg>
-             </button>
-             
-             {showWorkspaceMenu && (
-               <div className="absolute top-full right-0 mt-2 w-56 bg-surface-secondary dark:bg-[#2C2C2E] rounded-hig-xl border border-separator/50 shadow-float overflow-hidden z-50">
-                 <div className="p-1">
-                   <button className="w-full px-4 py-2.5 text-left text-sm font-medium text-label-primary hover:bg-surface-tertiary dark:hover:bg-surface transition-colors rounded-hig-lg flex items-center gap-3">
-                     <div className="w-7 h-7 gradient-brown-teal rounded-hig-lg flex items-center justify-center">
-                       <span className="text-white text-xs font-bold">P</span>
-                     </div>
-                     <div className="flex-1">
-                       <div className="font-medium">Personal</div>
-                       <div className="text-[10px] text-label-tertiary">Active</div>
-                     </div>
-                     <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                     </svg>
-                   </button>
-                   <div className="h-px bg-separator/30 my-1"></div>
-                   <button 
-                     onClick={() => {
-                       setShowWorkspaceMenu(false)
-                       // Create new workspace and add to list
-                       const newWorkspaceId = `workspace-${Date.now()}`
-                       localStorage.setItem('workspaces', JSON.stringify([
-                         ...JSON.parse(localStorage.getItem('workspaces') || '[]'),
-                         { id: newWorkspaceId, name: 'New Workspace', created: new Date().toISOString() }
-                       ]))
-                       console.log('[v0] Workspace created:', newWorkspaceId)
-                     }}
-                     className="w-full px-4 py-2.5 text-left text-sm font-medium text-brown dark:text-teal hover:bg-surface-tertiary dark:hover:bg-surface transition-colors rounded-hig-lg flex items-center gap-3"
-                   >
-                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                     </svg>
-                    New Workspace
-                   </button>
-                 </div>
-               </div>
-             )}
            </div>
         </div>
         <div className="flex-grow overflow-y-auto custom-scrollbar p-4">
