@@ -1,9 +1,29 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getAdminSettings, saveAdminSettings } from '@/lib/admin-settings'
+
+// ----- Types -----
+type UsageRow = {
+  id: string
+  user_id: string
+  provider: string
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  cost_usd: number
+  is_free_domain: boolean
+  domain: string | null
+  chat_type: string
+  created_at: string
+  profiles?: { first_name: string; last_name: string; company: string | null } | null
+}
+
+type ProviderStat = { provider: string; total_cost: number; total_calls: number; total_tokens: number }
+type UserStat = { user_id: string; name: string; email: string; total_cost: number; total_calls: number }
+type CompanyStat = { domain: string; total_cost: number; total_calls: number; is_free: boolean }
 
 // COMPLETE Provider configurations with documentation links
 const PROVIDER_CONFIG = {
@@ -61,7 +81,7 @@ const PROVIDER_CONFIG = {
   udio: { name: 'Udio (Music)', category: 'Audio AI', docs: 'https://udio.com', guide: 'Currently web-only, API coming soon', fields: { key: true, secret: false, url: false } },
 }
 
-type TabType = 'API Keys' | 'Users' | 'Translations' | 'Settings' | 'Analytics'
+type TabType = 'API Keys' | 'Users' | 'Translations' | 'Settings' | 'Usage'
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<TabType>('API Keys')
@@ -69,8 +89,69 @@ export default function AdminDashboard() {
   const [apiKeys, setApiKeys] = useState<Record<string, { key: string; secret: string; url: string; enabled: boolean }>>({})
   const [loading, setLoading] = useState(true)
   const [users, setUsers] = useState<Array<{ id: string; email?: string; created_at: string; email_confirmed_at?: string }>>([])
+
+  // Usage analytics state
+  const [usageRows, setUsageRows] = useState<UsageRow[]>([])
+  const [providerStats, setProviderStats] = useState<ProviderStat[]>([])
+  const [userStats, setUserStats] = useState<UserStat[]>([])
+  const [companyStats, setCompanyStats] = useState<CompanyStat[]>([])
+  const [usageTab, setUsageTab] = useState<'overview' | 'by-provider' | 'by-user' | 'free-companies'>('overview')
+  const [usageLoading, setUsageLoading] = useState(false)
+
   const router = useRouter()
   const supabase = createClient()
+
+  const loadUsageData = useCallback(async () => {
+    setUsageLoading(true)
+    try {
+      const { data } = await supabase
+        .from('usage_logs')
+        .select('*, profiles(first_name, last_name, company)')
+        .order('created_at', { ascending: false })
+        .limit(500)
+
+      const rows: UsageRow[] = data || []
+      setUsageRows(rows)
+
+      // Aggregate by provider
+      const byProvider: Record<string, ProviderStat> = {}
+      rows.forEach(r => {
+        if (!byProvider[r.provider]) byProvider[r.provider] = { provider: r.provider, total_cost: 0, total_calls: 0, total_tokens: 0 }
+        byProvider[r.provider].total_cost += Number(r.cost_usd)
+        byProvider[r.provider].total_calls += 1
+        byProvider[r.provider].total_tokens += r.prompt_tokens + r.completion_tokens
+      })
+      setProviderStats(Object.values(byProvider).sort((a, b) => b.total_cost - a.total_cost))
+
+      // Aggregate by user
+      const byUser: Record<string, UserStat> = {}
+      rows.forEach(r => {
+        if (!byUser[r.user_id]) byUser[r.user_id] = {
+          user_id: r.user_id,
+          name: `${r.profiles?.first_name || ''} ${r.profiles?.last_name || ''}`.trim() || 'Unknown',
+          email: '',
+          total_cost: 0,
+          total_calls: 0,
+        }
+        byUser[r.user_id].total_cost += Number(r.cost_usd)
+        byUser[r.user_id].total_calls += 1
+      })
+      setUserStats(Object.values(byUser).sort((a, b) => b.total_cost - a.total_cost))
+
+      // Aggregate by free companies
+      const FREE_DOMAINS = ['renascence.io', 'gaiarealty.ae']
+      const byCompany: Record<string, CompanyStat> = {}
+      rows.filter(r => r.domain).forEach(r => {
+        const d = r.domain!
+        if (!byCompany[d]) byCompany[d] = { domain: d, total_cost: 0, total_calls: 0, is_free: FREE_DOMAINS.includes(d) }
+        byCompany[d].total_cost += Number(r.cost_usd)
+        byCompany[d].total_calls += 1
+      })
+      setCompanyStats(Object.values(byCompany).sort((a, b) => b.total_cost - a.total_cost))
+    } finally {
+      setUsageLoading(false)
+    }
+  }, [supabase])
 
   useEffect(() => {
     checkAuthAndLoadData()
@@ -156,7 +237,7 @@ export default function AdminDashboard() {
     ([, config]) => config.category === activeCategory
   )
 
-  const tabs: TabType[] = ['API Keys', 'Users', 'Translations', 'Settings', 'Analytics']
+  const tabs: TabType[] = ['API Keys', 'Users', 'Translations', 'Settings', 'Usage']
 
   if (loading) {
     return (
@@ -416,10 +497,238 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === 'Analytics' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 p-6 shadow-float">
-            <h2 className="text-2xl font-bold text-brown-900 dark:text-brown-100 mb-4">Usage Analytics</h2>
-            <p className="text-brown-600 dark:text-brown-400">API usage statistics and metrics coming soon...</p>
+        {activeTab === 'Usage' && (
+          <div className="space-y-6">
+            {/* Header + refresh */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-brown-900 dark:text-brown-100">AI Usage</h2>
+                <p className="text-sm text-brown-600 dark:text-brown-400 mt-1">Traffic by provider, user, and company</p>
+              </div>
+              <button
+                onClick={loadUsageData}
+                disabled={usageLoading}
+                className="px-5 py-2.5 gradient-brown-teal text-white rounded-hig-lg font-bold text-sm shadow-brown-glow hover:scale-105 transition-transform disabled:opacity-60"
+              >
+                {usageLoading ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+
+            {/* Sub-tabs */}
+            <div className="flex gap-2 p-1.5 bg-white/60 dark:bg-[#2C2C2E]/60 backdrop-blur-xl rounded-hig-xl border border-brown-200 dark:border-brown-700 shadow-sm w-fit">
+              {(['overview', 'by-provider', 'by-user', 'free-companies'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => { setUsageTab(t); if (usageRows.length === 0) loadUsageData() }}
+                  className={`px-4 py-2 rounded-hig-lg font-bold text-xs transition-all capitalize ${
+                    usageTab === t
+                      ? 'gradient-brown-teal text-white shadow-brown-glow'
+                      : 'text-brown-600 dark:text-brown-400 hover:bg-brown-50 dark:hover:bg-brown-900/20'
+                  }`}
+                >
+                  {t.replace('-', ' ')}
+                </button>
+              ))}
+            </div>
+
+            {usageLoading && (
+              <div className="text-center py-16 text-brown-500 dark:text-brown-400 font-medium">Loading usage data...</div>
+            )}
+
+            {/* Overview */}
+            {!usageLoading && usageTab === 'overview' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    { label: 'Total Requests', value: usageRows.length.toLocaleString() },
+                    { label: 'Total Cost', value: `$${usageRows.reduce((s, r) => s + Number(r.cost_usd), 0).toFixed(4)}` },
+                    { label: 'Free Domain Requests', value: usageRows.filter(r => r.is_free_domain).length.toLocaleString() },
+                    { label: 'Paid Requests', value: usageRows.filter(r => !r.is_free_domain).length.toLocaleString() },
+                  ].map(stat => (
+                    <div key={stat.label} className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-xl border border-brown-200 dark:border-brown-700 p-5 shadow-float">
+                      <div className="text-xs font-bold text-brown-500 dark:text-brown-400 uppercase tracking-widest mb-1">{stat.label}</div>
+                      <div className="text-2xl font-bold text-brown-900 dark:text-brown-100">{stat.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Recent requests */}
+                <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 shadow-float overflow-hidden">
+                  <div className="px-6 py-4 border-b border-brown-100 dark:border-brown-800">
+                    <h3 className="font-bold text-brown-900 dark:text-brown-100">Recent Requests</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-brown-100 dark:border-brown-800">
+                          <th className="text-left py-3 px-4 text-xs font-bold text-brown-600 dark:text-brown-400">User</th>
+                          <th className="text-left py-3 px-4 text-xs font-bold text-brown-600 dark:text-brown-400">Provider / Model</th>
+                          <th className="text-left py-3 px-4 text-xs font-bold text-brown-600 dark:text-brown-400">Tokens</th>
+                          <th className="text-left py-3 px-4 text-xs font-bold text-brown-600 dark:text-brown-400">Cost</th>
+                          <th className="text-left py-3 px-4 text-xs font-bold text-brown-600 dark:text-brown-400">Domain</th>
+                          <th className="text-left py-3 px-4 text-xs font-bold text-brown-600 dark:text-brown-400">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usageRows.slice(0, 20).map(row => (
+                          <tr key={row.id} className="border-b border-brown-50 dark:border-brown-900 hover:bg-brown-50/50 dark:hover:bg-brown-900/20">
+                            <td className="py-3 px-4 font-medium text-brown-900 dark:text-brown-100">
+                              {row.profiles ? `${row.profiles.first_name} ${row.profiles.last_name}`.trim() || '—' : '—'}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-medium text-brown-800 dark:text-brown-200">{row.provider}</span>
+                              <span className="text-brown-400 mx-1">/</span>
+                              <span className="text-xs text-brown-500 dark:text-brown-400">{row.model}</span>
+                            </td>
+                            <td className="py-3 px-4 text-brown-600 dark:text-brown-400">{(row.prompt_tokens + row.completion_tokens).toLocaleString()}</td>
+                            <td className="py-3 px-4 font-medium text-teal-700 dark:text-teal-400">${Number(row.cost_usd).toFixed(5)}</td>
+                            <td className="py-3 px-4">
+                              {row.is_free_domain
+                                ? <span className="text-xs font-bold px-2 py-0.5 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 rounded-full">{row.domain} (free)</span>
+                                : <span className="text-xs text-brown-400">{row.domain || '—'}</span>
+                              }
+                            </td>
+                            <td className="py-3 px-4 text-xs text-brown-400">{new Date(row.created_at).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                        {usageRows.length === 0 && (
+                          <tr><td colSpan={6} className="py-10 text-center text-brown-400">No usage data yet</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* By Provider */}
+            {!usageLoading && usageTab === 'by-provider' && (
+              <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 shadow-float overflow-hidden">
+                <div className="px-6 py-4 border-b border-brown-100 dark:border-brown-800">
+                  <h3 className="font-bold text-brown-900 dark:text-brown-100">Usage by Provider</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-brown-100 dark:border-brown-800">
+                        <th className="text-left py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">Provider</th>
+                        <th className="text-right py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">Requests</th>
+                        <th className="text-right py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">Tokens</th>
+                        <th className="text-right py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">Total Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {providerStats.map(p => (
+                        <tr key={p.provider} className="border-b border-brown-50 dark:border-brown-900">
+                          <td className="py-4 px-6 font-bold text-brown-900 dark:text-brown-100 capitalize">{p.provider}</td>
+                          <td className="py-4 px-6 text-right text-brown-700 dark:text-brown-300">{p.total_calls.toLocaleString()}</td>
+                          <td className="py-4 px-6 text-right text-brown-700 dark:text-brown-300">{p.total_tokens.toLocaleString()}</td>
+                          <td className="py-4 px-6 text-right font-bold text-teal-700 dark:text-teal-400">${p.total_cost.toFixed(4)}</td>
+                        </tr>
+                      ))}
+                      {providerStats.length === 0 && (
+                        <tr><td colSpan={4} className="py-10 text-center text-brown-400">No data yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* By User */}
+            {!usageLoading && usageTab === 'by-user' && (
+              <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 shadow-float overflow-hidden">
+                <div className="px-6 py-4 border-b border-brown-100 dark:border-brown-800">
+                  <h3 className="font-bold text-brown-900 dark:text-brown-100">Usage by User</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-brown-100 dark:border-brown-800">
+                        <th className="text-left py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">User</th>
+                        <th className="text-right py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">Requests</th>
+                        <th className="text-right py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">Total Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {userStats.map(u => (
+                        <tr key={u.user_id} className="border-b border-brown-50 dark:border-brown-900">
+                          <td className="py-4 px-6 font-medium text-brown-900 dark:text-brown-100">{u.name || u.user_id.slice(0, 8)}</td>
+                          <td className="py-4 px-6 text-right text-brown-700 dark:text-brown-300">{u.total_calls.toLocaleString()}</td>
+                          <td className="py-4 px-6 text-right font-bold text-teal-700 dark:text-teal-400">${u.total_cost.toFixed(4)}</td>
+                        </tr>
+                      ))}
+                      {userStats.length === 0 && (
+                        <tr><td colSpan={3} className="py-10 text-center text-brown-400">No data yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Free Companies */}
+            {!usageLoading && usageTab === 'free-companies' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {['renascence.io', 'gaiarealty.ae'].map(domain => {
+                    const stat = companyStats.find(c => c.domain === domain)
+                    return (
+                      <div key={domain} className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-teal-300 dark:border-teal-700 p-6 shadow-float">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="px-3 py-1 bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 rounded-full text-xs font-bold">FREE</div>
+                          <span className="font-bold text-brown-900 dark:text-brown-100 text-lg">{domain}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <div className="text-xs text-brown-500 dark:text-brown-400 font-medium">Total Requests</div>
+                            <div className="text-2xl font-bold text-brown-900 dark:text-brown-100">{(stat?.total_calls || 0).toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-brown-500 dark:text-brown-400 font-medium">Cost (absorbed)</div>
+                            <div className="text-2xl font-bold text-teal-700 dark:text-teal-400">${(stat?.total_cost || 0).toFixed(4)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 shadow-float overflow-hidden">
+                  <div className="px-6 py-4 border-b border-brown-100 dark:border-brown-800">
+                    <h3 className="font-bold text-brown-900 dark:text-brown-100">All Companies</h3>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-brown-100 dark:border-brown-800">
+                        <th className="text-left py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">Domain</th>
+                        <th className="text-right py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">Requests</th>
+                        <th className="text-right py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">Cost</th>
+                        <th className="text-center py-3 px-6 text-xs font-bold text-brown-600 dark:text-brown-400">Plan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {companyStats.map(c => (
+                        <tr key={c.domain} className="border-b border-brown-50 dark:border-brown-900">
+                          <td className="py-4 px-6 font-medium text-brown-900 dark:text-brown-100">{c.domain}</td>
+                          <td className="py-4 px-6 text-right text-brown-700 dark:text-brown-300">{c.total_calls.toLocaleString()}</td>
+                          <td className="py-4 px-6 text-right font-bold text-teal-700 dark:text-teal-400">${c.total_cost.toFixed(4)}</td>
+                          <td className="py-4 px-6 text-center">
+                            {c.is_free
+                              ? <span className="px-2 py-0.5 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 rounded-full text-xs font-bold">Free</span>
+                              : <span className="px-2 py-0.5 bg-brown-100 dark:bg-brown-800 text-brown-700 dark:text-brown-300 rounded-full text-xs font-bold">Paid</span>
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                      {companyStats.length === 0 && (
+                        <tr><td colSpan={4} className="py-10 text-center text-brown-400">No company data yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
