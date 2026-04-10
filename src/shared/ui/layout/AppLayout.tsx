@@ -219,12 +219,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
               <svg className="w-3.5 h-3.5 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
               <span className="text-[11px] font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Deleted</span>
             </a>
-            {isSuperAdmin && (
-              <a href="/skills" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
-                <svg className="w-3.5 h-3.5 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                <span className="text-[11px] font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Skills</span>
-              </a>
-            )}
+
           </div>
 
           {/* User tile */}
@@ -257,19 +252,6 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
                     <span className="text-sm font-medium text-label-primary">Settings</span>
                   </a>
 
-                  {/* Super Admin link — only for admin/super_admin */}
-                  {isAdmin && (
-                    <a
-                      href="/admin"
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors"
-                    >
-                      <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-                      <span className="text-sm font-medium text-label-primary">Super Admin</span>
-                    </a>
-                  )}
-
-                  <div className="h-px bg-separator/30 my-1" />
-
                   {/* Language — inline row */}
                   <div className="flex items-center justify-between px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
                     <div className="flex items-center gap-3">
@@ -287,6 +269,28 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
                     </div>
                     <ThemeToggle />
                   </div>
+
+                  {/* Admin — only for admin/super_admin roles */}
+                  {isAdmin && (
+                    <a
+                      href="/admin"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors"
+                    >
+                      <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                      <span className="text-sm font-medium text-label-primary">Admin</span>
+                    </a>
+                  )}
+
+                  {/* Skills — only for super_admin */}
+                  {isSuperAdmin && (
+                    <a
+                      href="/skills"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors"
+                    >
+                      <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                      <span className="text-sm font-medium text-label-primary">Skills</span>
+                    </a>
+                  )}
 
                   <div className="h-px bg-separator/30 my-1" />
 
