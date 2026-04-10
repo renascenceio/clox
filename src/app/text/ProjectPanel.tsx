@@ -157,14 +157,7 @@ export default function ProjectPanel({
     setInviting(true)
     const supabase = createClient()
 
-    // Look up user by email to get their user_id (may be null if not signed up yet)
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', (await supabase.from('profiles').select('id').limit(1)).data?.[0]?.id || '')
-      .single()
-
-    // Find user id from auth.users via profile lookup by searching joined data
+    // Look up user's UUID by email (may be null if they haven't signed up yet — still OK to invite)
     const { data: userMatch } = await supabase
       .rpc('get_user_id_by_email', { p_email: email })
       .single()
@@ -187,8 +180,6 @@ export default function ProjectPanel({
       setInviteEmail('')
     }
     setInviting(false)
-    // profile is unused beyond the lookup attempt — suppress lint
-    void profile
   }
 
   const handleRemoveMember = async (memberId: string) => {

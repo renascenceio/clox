@@ -3,12 +3,14 @@
 import { useChat } from '@ai-sdk/react'
 import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
+import ProjectPanel from './ProjectPanel'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
 import { useRouter } from 'next/navigation'
 import { getAdminSettings } from '@/lib/admin-settings'
+import { createClient } from '@/lib/supabase/client'
 
 type AIType = 'text' | 'image' | 'video' | 'audio'
 
@@ -24,12 +26,56 @@ export default function TextPage() {
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(2048)
   const [activeChatId, setActiveChatId] = useState(() => {
-    // Load from localStorage or use default
     if (typeof window !== 'undefined') {
       return localStorage.getItem('activeChatId') || 'default-chat'
     }
     return 'default-chat'
   })
+
+  // Project collaboration state
+  const isProject = activeChatId.startsWith('project_')
+  const [dbProjectId, setDbProjectId] = useState<string | null>(null)
+  const [projectMessages, setProjectMessages] = useState<Array<{
+    id: string; role: 'user' | 'assistant'; content: string; sender_email?: string; sender_name?: string; created_at: string
+  }>>([])
+
+  // Load project messages from DB
+  const loadProjectMessages = useCallback(async (projectId: string) => {
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('project_messages')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: true })
+    if (data) setProjectMessages(data)
+  }, [])
+
+  const handleProjectResolved = useCallback((id: string | null) => {
+    setDbProjectId(id)
+    if (id) loadProjectMessages(id)
+  }, [loadProjectMessages])
+
+  // Save a project message to DB
+  const saveProjectMessage = useCallback(async (
+    projectId: string,
+    role: 'user' | 'assistant',
+    content: string,
+    senderEmail?: string,
+    senderName?: string,
+  ) => {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('project_messages').insert({
+      project_id: projectId,
+      user_id: role === 'user' ? user?.id : null,
+      sender_email: role === 'user' ? (senderEmail || user?.email) : null,
+      sender_name: role === 'user' ? senderName : 'AI',
+      role,
+      content,
+      model: selectedModel.id,
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedModel.id])
 
   // Load chat-specific settings when activeChatId changes
   useEffect(() => {
@@ -103,7 +149,7 @@ export default function TextPage() {
   }, [selectedModel.provider])
 
   const chat = useChat({
-    id: activeChatId, // Unique ID for this chat session
+    id: activeChatId,
     api: '/api/chat',
     body: {
       model: selectedModel.id,
@@ -118,9 +164,13 @@ export default function TextPage() {
       alert(`Chat error: ${error.message || 'Unknown error'}`)
     },
     onResponse: (response) => {
-      console.log('[v0] Chat response received, status:', response.status)
-      if (!response.ok) {
-        console.error('[v0] Chat response not ok:', response.statusText)
+      if (!response.ok) console.error('[v0] Chat response not ok:', response.statusText)
+    },
+    onFinish: async (message) => {
+      // For projects: save the AI response to DB
+      if (isProject && dbProjectId) {
+        await saveProjectMessage(dbProjectId, 'assistant', message.content)
+        await loadProjectMessages(dbProjectId)
       }
     },
   })
@@ -129,30 +179,62 @@ export default function TextPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false, setMessages } = chat as any
 
-  // Save chat history to localStorage whenever messages change
+  // Save chat history to localStorage (skip for projects — those go to DB)
   useEffect(() => {
+    if (isProject) return
     if (chat.messages && chat.messages.length > 0) {
       localStorage.setItem(`chat-history-${activeChatId}`, JSON.stringify(chat.messages))
-      console.log('[v0] Chat history saved for:', activeChatId)
     }
-  }, [chat.messages, activeChatId])
+  }, [chat.messages, activeChatId, isProject])
 
-  // Load chat history from localStorage when chat ID changes
+  // Load chat history from localStorage (skip for projects)
   useEffect(() => {
+    if (isProject) {
+      if (setMessages) setMessages([])
+      return
+    }
     const savedHistory = localStorage.getItem(`chat-history-${activeChatId}`)
     if (savedHistory && setMessages) {
       try {
-        const savedMessages = JSON.parse(savedHistory)
-        console.log('[v0] Loading chat history for:', activeChatId, 'messages:', savedMessages.length)
-        setMessages(savedMessages)
+        setMessages(JSON.parse(savedHistory))
       } catch (e) {
         console.error('[v0] Failed to parse chat history:', e)
       }
     } else if (setMessages) {
-      // Clear messages for new chat
       setMessages([])
     }
-  }, [activeChatId, setMessages])
+  }, [activeChatId, setMessages, isProject])
+
+  // Reset project state when switching away from a project
+  useEffect(() => {
+    if (!isProject) {
+      setDbProjectId(null)
+      setProjectMessages([])
+    }
+  }, [isProject])
+
+  // Project form submit: save user message first, then trigger AI
+  const handleProjectSubmit = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
+    if (!dbProjectId) return
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (input?.trim()) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('id', user?.id || '')
+        .single()
+      const name = profile ? `${profile.first_name} ${profile.last_name}`.trim() : user?.email?.split('@')[0]
+      await saveProjectMessage(dbProjectId, 'user', input.trim(), user?.email, name)
+      // Optimistically add to local state
+      setProjectMessages(prev => [...prev, {
+        id: `tmp_${Date.now()}`, role: 'user', content: input.trim(),
+        sender_email: user?.email, sender_name: name, created_at: new Date().toISOString(),
+      }])
+    }
+    handleSubmit(e)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbProjectId, input, saveProjectMessage, handleSubmit])
 
   // Get unique brands and models for selected brand (only from enabled models)
   const brands = Array.from(new Set(enabledModels.map(m => m.brandName || m.provider)))
@@ -209,7 +291,19 @@ export default function TextPage() {
     ),
   }
 
-  const rightPanel = (
+  const rightPanel = isProject ? (
+    <ProjectPanel
+      localChatId={activeChatId}
+      onProjectResolved={handleProjectResolved}
+      selectedModel={selectedModel.id}
+      systemPrompt={systemPrompt}
+      onSystemPromptChange={setSystemPrompt}
+      temperature={temperature}
+      onTemperatureChange={setTemperature}
+      maxTokens={maxTokens}
+      onMaxTokensChange={setMaxTokens}
+    />
+  ) : (
     <div className="flex flex-col h-full">
       <div className="h-16 border-b border-separator/50 flex items-center px-6">
         <span className="font-bold text-sm">Settings</span>
@@ -305,32 +399,43 @@ export default function TextPage() {
     </div>
   )
 
+  // Messages to display: project uses DB messages, chats use useChat messages
+  const displayMessages = isProject
+    ? projectMessages.map(m => ({ id: m.id, role: m.role, content: m.content, senderName: m.sender_name, senderEmail: m.sender_email }))
+    : messages.map((m: { id: string; role: string; content: string }) => ({ id: m.id, role: m.role, content: m.content, senderName: undefined, senderEmail: undefined }))
+
+  const displayLoading = isLoading
+
   return (
     <AppLayout sidebar={sidebar} rightPanel={rightPanel}>
       <div className="flex flex-col h-full max-w-4xl mx-auto px-4 pt-10">
         {/* Scrollable Messages Container */}
         <div className="flex-grow overflow-y-auto space-y-8 pr-4 pb-72">
           <AnimatePresence initial={false}>
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {messages.map((m: any) => (
+            {displayMessages.map((m) => (
               <motion.div
                 key={m.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`max-w-[85%] ${
-                  m.role === 'user'
+                <div className={`max-w-[85%] ${m.role === 'user' ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
+                  {/* Sender label for project mode */}
+                  {isProject && m.role === 'user' && m.senderName && (
+                    <span className="text-[10px] font-semibold text-label-tertiary px-1">{m.senderName}</span>
+                  )}
+                  <div className={m.role === 'user'
                     ? 'text-brown dark:text-teal font-semibold text-sm leading-relaxed'
                     : 'prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-surface-tertiary dark:prose-pre:bg-surface prose-pre:p-4 prose-pre:rounded-lg prose-code:text-brown dark:prose-code:text-teal prose-code:bg-surface-tertiary/50 dark:prose-code:bg-surface/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-headings:text-label-primary prose-strong:text-label-primary prose-a:text-brown dark:prose-a:text-teal prose-a:no-underline hover:prose-a:underline'
-                }`}>
-                  <ReactMarkdown>{m.content}</ReactMarkdown>
+                  }>
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                  </div>
                 </div>
               </motion.div>
             ))}
             
             {/* Thinking Indicator */}
-            {isLoading && (
+            {displayLoading && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -387,7 +492,7 @@ export default function TextPage() {
               </div>
 
               {/* Message Input Form */}
-              <form onSubmit={handleSubmit} className="relative">
+              <form onSubmit={isProject ? handleProjectSubmit : handleSubmit} className="relative">
                 <textarea
                   value={input}
                   onChange={handleInputChange}
@@ -397,8 +502,9 @@ export default function TextPage() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
-                      const formEvent = new Event('submit', { cancelable: true }) as unknown as React.FormEvent<HTMLFormElement>;
-                      handleSubmit(formEvent)
+                      const formEvent = new Event('submit', { cancelable: true }) as unknown as React.FormEvent<HTMLFormElement>
+                      if (isProject) handleProjectSubmit(formEvent)
+                      else handleSubmit(formEvent)
                     }
                   }}
                 />
@@ -415,7 +521,7 @@ export default function TextPage() {
                 {/* Send Button */}
                 <button
                   type="submit"
-                  disabled={isLoading || !input?.trim()}
+                  disabled={displayLoading || !input?.trim() || (isProject && !dbProjectId)}
                   className="absolute right-4 bottom-4 w-12 h-12 flex items-center justify-center gradient-brown-teal text-white rounded-hig-xl shadow-brown-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
                 >
                   <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
