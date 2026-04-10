@@ -77,8 +77,8 @@ export default function SkillsPage() {
     setSaving(null)
   }
 
-  const allTags = [...new Set(skills.flatMap(s => s.tags))].sort()
-  const engines = ['all', ...new Set(skills.map(s => s.engine))].filter(Boolean)
+  const allTags = Array.from(new Set(skills.flatMap(s => s.tags))).sort()
+  const engines = ['all', ...Array.from(new Set(skills.map(s => s.engine)))].filter(Boolean)
 
   const filtered = skills.filter(s => {
     const engineMatch = filterEngine === 'all' || s.engine === filterEngine
