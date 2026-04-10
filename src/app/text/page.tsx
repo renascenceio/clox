@@ -400,9 +400,10 @@ export default function TextPage() {
   )
 
   // Messages to display: project uses DB messages, chats use useChat messages
-  const displayMessages = isProject
+  type DisplayMessage = { id: string; role: string; content: string; senderName?: string | null; senderEmail?: string | null }
+  const displayMessages: DisplayMessage[] = isProject
     ? projectMessages.map(m => ({ id: m.id, role: m.role, content: m.content, senderName: m.sender_name, senderEmail: m.sender_email }))
-    : messages.map((m: { id: string; role: string; content: string }) => ({ id: m.id, role: m.role, content: m.content, senderName: undefined, senderEmail: undefined }))
+    : (messages as DisplayMessage[]).map(m => ({ id: m.id, role: m.role, content: m.content }))
 
   const displayLoading = isLoading
 
