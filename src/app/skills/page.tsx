@@ -85,13 +85,26 @@ export default function SkillsPage() {
   const toggleSkill = async (skill: Skill) => {
     setSaving(skill.id)
     const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setSaving(null); return }
+
     const existing = userSkills.find(us => us.skill_id === skill.id)
     if (existing) {
-      await supabase.from('user_skills').update({ is_active: !existing.is_active }).eq('id', existing.id)
-      setUserSkills(prev => prev.map(us => us.id === existing.id ? { ...us, is_active: !us.is_active } : us))
+      const { error } = await supabase
+        .from('user_skills')
+        .update({ is_active: !existing.is_active })
+        .eq('id', existing.id)
+        .eq('user_id', user.id)
+      if (!error) {
+        setUserSkills(prev => prev.map(us => us.id === existing.id ? { ...us, is_active: !us.is_active } : us))
+      }
     } else {
-      const { data } = await supabase.from('user_skills').insert({ skill_id: skill.id, is_active: true }).select().single()
-      if (data) setUserSkills(prev => [...prev, data])
+      const { data, error } = await supabase
+        .from('user_skills')
+        .insert({ skill_id: skill.id, user_id: user.id, is_active: true })
+        .select()
+        .single()
+      if (!error && data) setUserSkills(prev => [...prev, data])
     }
     setSaving(null)
   }

@@ -131,7 +131,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, externalSearch
         </div>
       )}
 
-      <div className="flex-grow overflow-y-auto px-3 space-y-5 custom-scrollbar pb-6">
+      <div className="flex-grow overflow-y-auto px-3 space-y-5 custom-scrollbar pb-6 pt-4">
         {/* Recent chats */}
         <div className="space-y-0.5">
           <div className="text-[10px] font-bold text-label-tertiary px-3 mb-2 uppercase tracking-widest flex justify-between">

@@ -49,6 +49,7 @@ export default function LanguageSwitcher() {
     <>
       <button
         ref={buttonRef}
+        onMouseDown={e => e.stopPropagation()}
         onClick={openDropdown}
         className="w-10 h-10 rounded-hig-lg bg-surface-secondary hover:bg-fill border border-separator/30 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
         aria-label="Switch language"
@@ -58,9 +59,10 @@ export default function LanguageSwitcher() {
 
       {isOpen && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop — stops mousedown so AppLayout outside-click doesn't close user menu */}
           <div
             className="fixed inset-0 z-[200]"
+            onMouseDown={e => e.stopPropagation()}
             onClick={() => setIsOpen(false)}
           />
 
@@ -68,6 +70,7 @@ export default function LanguageSwitcher() {
           <div
             className="fixed w-56 bg-surface-secondary dark:bg-surface border border-separator rounded-hig-xl shadow-hig-hover overflow-hidden z-[201]"
             style={{ top: dropdownPos.top, right: dropdownPos.right }}
+            onMouseDown={e => e.stopPropagation()}
           >
             <div className="p-2 border-b border-separator">
               <div className="text-xs font-bold text-label-secondary uppercase tracking-widest px-2 py-1">
