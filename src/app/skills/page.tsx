@@ -32,7 +32,6 @@ const ENGINE_COLORS: Record<string, string> = {
 }
 
 export default function SkillsPage() {
-  const supabase = createClient()
   const [skills, setSkills] = useState<Skill[]>([])
   const [userSkills, setUserSkills] = useState<UserSkill[]>([])
   const [loading, setLoading] = useState(true)
@@ -43,6 +42,7 @@ export default function SkillsPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true)
+    const supabase = createClient()
     const [{ data: skillsData }, { data: userSkillsData }] = await Promise.all([
       supabase.from('skills').select('*').order('name'),
       supabase.from('user_skills').select('*'),
@@ -50,7 +50,7 @@ export default function SkillsPage() {
     setSkills(skillsData || [])
     setUserSkills(userSkillsData || [])
     setLoading(false)
-  }, [supabase])
+  }, [])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -59,6 +59,7 @@ export default function SkillsPage() {
 
   const toggleSkill = async (skill: Skill) => {
     setSaving(skill.id)
+    const supabase = createClient()
     const existing = userSkills.find(us => us.skill_id === skill.id)
     if (existing) {
       await supabase
