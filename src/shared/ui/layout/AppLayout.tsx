@@ -114,7 +114,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
 
   const handleNewProject = () => {
     const newId = `project_${Date.now()}`
-    const newProject: Chat = { id: newId, title: 'New Project', model: '', createdAt: Date.now(), type: 'project' }
+    const newProject: Chat = { id: newId, title: 'New Project', model: 'gemini-2.5-flash', createdAt: Date.now(), type: 'project' }
     const saved: Chat[] = JSON.parse(localStorage.getItem('clox_chats') || '[]')
     localStorage.setItem('clox_chats', JSON.stringify([newProject, ...saved]))
     localStorage.setItem('activeChatId', newId)
@@ -140,6 +140,13 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
 
   const isSuperAdmin = profile.role === 'super_admin'
   const isAdmin = profile.role === 'admin' || isSuperAdmin
+  const isFreeDomain = ['renascence.io', 'gaiarealty.ae', 'clox.ai'].some(d => profile.email.endsWith('@' + d))
+
+  const roleLabel =
+    profile.role === 'super_admin' ? 'Emperor'
+    : profile.role === 'admin' ? 'Admin'
+    : profile.role === 'user' ? 'User'
+    : profile.role.replace('_', ' ')
 
   return (
     <div className="flex h-screen relative bg-gradient-to-br from-surface-secondary via-surface-tertiary to-surface-secondary text-label-primary font-sans selection:bg-teal/20 overflow-hidden p-6 gap-6">
@@ -233,88 +240,74 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-3 p-3 bg-surface-tertiary dark:bg-surface rounded-hig-xl border border-separator shadow-sm cursor-pointer hover:shadow-hig-hover hover:border-brown dark:hover:border-teal transition-all active:scale-95 group"
             >
-              <Avatar seed={profile.avatarSeed || profile.email || 'user'} size={40} className="group-hover:scale-105 transition-transform shadow-brown-glow" />
+              <Avatar seed={profile.avatarSeed || undefined} size={40} className="group-hover:scale-105 transition-transform shadow-brown-glow" />
               <div className="flex-grow min-w-0">
                 <div className="text-sm font-bold truncate text-label-primary capitalize">{profile.firstName || 'Loading...'}</div>
-                <div className="text-[10px] font-bold text-brown dark:text-teal uppercase tracking-widest">{profile.role.replace('_', ' ')}</div>
+                <div className="text-[10px] font-bold text-brown dark:text-teal uppercase tracking-widest">{roleLabel}</div>
               </div>
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-secondary/60 dark:bg-surface-tertiary/60 rounded-hig-lg border border-separator/30">
-                <span className="text-xs font-bold text-teal-600 dark:text-teal-400">${profile.balance}</span>
-                <div className="w-1.5 h-1.5 bg-success rounded-full animate-pulse" />
-              </div>
+              {isFreeDomain ? (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-brown/10 dark:bg-teal/10 rounded-hig-lg border border-brown/20 dark:border-teal/20">
+                  <span className="text-xs font-bold text-brown dark:text-teal">Pro</span>
+                  <div className="w-1.5 h-1.5 bg-brown dark:bg-teal rounded-full" />
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-secondary/60 dark:bg-surface-tertiary/60 rounded-hig-lg border border-separator/30">
+                  <span className="text-xs font-bold text-teal-600 dark:text-teal-400">${profile.balance}</span>
+                  <div className="w-1.5 h-1.5 bg-success rounded-full animate-pulse" />
+                </div>
+              )}
             </div>
 
             {/* User menu — opens upward, fixed z-index */}
             {showUserMenu && (
               <div className="absolute bottom-full left-0 right-0 mb-2 bg-surface-secondary dark:bg-[#2C2C2E] rounded-hig-xl border border-separator/50 shadow-float z-[100]">
-                <div className="p-2">
+                <div className="p-1.5 space-y-0.5">
                   {/* Settings = User Profile */}
-                  <a
-                    href="/settings"
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors"
-                  >
-                    <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                    <span className="text-sm font-medium text-label-primary">Settings</span>
+                  <a href="/settings" className="h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
+                    <svg className="w-4 h-4 text-label-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                    <span className="text-sm font-medium text-label-primary flex-grow">Settings</span>
                   </a>
 
-                  {/* Language — inline row */}
-                  <div className="flex items-center justify-between px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
-                    <div className="flex items-center gap-3">
-                      <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
-                      <span className="text-sm font-medium text-label-primary">Language</span>
-                    </div>
+                  {/* Language */}
+                  <div className="h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
+                    <svg className="w-4 h-4 text-label-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
+                    <span className="text-sm font-medium text-label-primary flex-grow">Language</span>
                     <LanguageSwitcher />
                   </div>
 
                   {/* Theme */}
-                  <div className="flex items-center justify-between px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
-                    <div className="flex items-center gap-3">
-                      <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
-                      <span className="text-sm font-medium text-label-primary">Theme</span>
-                    </div>
+                  <div className="h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
+                    <svg className="w-4 h-4 text-label-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                    <span className="text-sm font-medium text-label-primary flex-grow">Theme</span>
                     <ThemeToggle />
                   </div>
 
                   {/* Admin — only for admin/super_admin roles */}
                   {isAdmin && (
-                    <a
-                      href="/admin"
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors"
-                    >
-                      <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-                      <span className="text-sm font-medium text-label-primary">Admin</span>
+                    <a href="/admin" className="h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
+                      <svg className="w-4 h-4 text-label-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                      <span className="text-sm font-medium text-label-primary flex-grow">Admin</span>
                     </a>
                   )}
 
                   {/* Skills — only for super_admin */}
                   {isSuperAdmin && (
-                    <a
-                      href="/skills"
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors"
-                    >
-                      <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                      <span className="text-sm font-medium text-label-primary">Skills</span>
+                    <a href="/skills" className="h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
+                      <svg className="w-4 h-4 text-label-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                      <span className="text-sm font-medium text-label-primary flex-grow">Skills</span>
                     </a>
                   )}
 
-                  <div className="h-px bg-separator/30 my-1" />
+                  <div className="h-px bg-separator/30 mx-3 my-1" />
 
-                  <button
-                    onClick={handleSignOut}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
-                  >
-                    <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                    <span className="text-sm font-medium text-red-600 dark:text-red-400">Sign out</span>
+                  <button onClick={handleSignOut} className="w-full h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
+                    <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                    <span className="text-sm font-medium text-red-600 dark:text-red-400 flex-grow">Sign out</span>
                   </button>
 
-                  <div className="h-px bg-separator/30 my-1" />
-
-                  <button
-                    onClick={handleDeleteAccount}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
-                  >
-                    <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    <span className="text-sm font-medium text-red-400 dark:text-red-500">Delete account</span>
+                  <button onClick={handleDeleteAccount} className="w-full h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
+                    <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    <span className="text-sm font-medium text-red-400 dark:text-red-500 flex-grow">Delete account</span>
                   </button>
                 </div>
               </div>
