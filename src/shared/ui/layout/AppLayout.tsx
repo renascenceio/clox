@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, Transition, Variants } from 'framer-motion'
-import { ReactNode, useState, useEffect, isValidElement, cloneElement } from 'react'
+import { ReactNode, useState, useEffect, useRef, isValidElement, cloneElement } from 'react'
 import ThemeToggle from '@/shared/ui/components/ThemeToggle'
 import LanguageSwitcher from '@/shared/ui/components/LanguageSwitcher'
 import Avatar from '@/shared/ui/components/Avatar'
@@ -39,10 +39,23 @@ interface UserProfile {
   balance: string
 }
 
+// Shared Chat type for the header new-menu
+interface Chat {
+  id: string
+  title: string
+  model: string
+  createdAt: number
+  type: 'chat' | 'project'
+}
+
 export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutProps) {
   const router = useRouter()
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showNewMenu, setShowNewMenu] = useState(false)
   const [headerSearch, setHeaderSearch] = useState('')
+  const newMenuRef = useRef<HTMLDivElement>(null)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+
   const [profile, setProfile] = useState<UserProfile>({
     email: '',
     firstName: '',
@@ -70,12 +83,37 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     })
   }, [])
 
-  const handleHeaderNew = () => {
-    const newId = `chat-${Date.now()}`
-    const newChat = { id: newId, title: 'New Chat', model: 'gemini-2.5-flash', createdAt: Date.now(), type: 'chat' as const }
-    const saved = JSON.parse(localStorage.getItem('clox_chats') || '[]')
+  // Close menus on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+        setShowNewMenu(false)
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleNewChat = () => {
+    const newId = `chat_${Date.now()}`
+    const newChat: Chat = { id: newId, title: 'New Chat', model: 'gemini-2.5-flash', createdAt: Date.now(), type: 'chat' }
+    const saved: Chat[] = JSON.parse(localStorage.getItem('clox_chats') || '[]')
     localStorage.setItem('clox_chats', JSON.stringify([newChat, ...saved]))
     localStorage.setItem('activeChatId', newId)
+    setShowNewMenu(false)
+    router.push('/text')
+  }
+
+  const handleNewProject = () => {
+    const newId = `project_${Date.now()}`
+    const newProject: Chat = { id: newId, title: 'New Project', model: '', createdAt: Date.now(), type: 'project' }
+    const saved: Chat[] = JSON.parse(localStorage.getItem('clox_chats') || '[]')
+    localStorage.setItem('clox_chats', JSON.stringify([newProject, ...saved]))
+    localStorage.setItem('activeChatId', newId)
+    setShowNewMenu(false)
     router.push('/text')
   }
 
@@ -90,11 +128,13 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    // Delete profile (cascades to credits, usage_logs, etc.)
     await supabase.from('profiles').delete().eq('id', user.id)
     await supabase.auth.signOut()
     router.push('/login')
   }
+
+  const isSuperAdmin = profile.role === 'super_admin'
+  const isAdmin = profile.role === 'admin' || isSuperAdmin
 
   return (
     <div className="flex h-screen relative bg-gradient-to-br from-surface-secondary via-surface-tertiary to-surface-secondary text-label-primary font-sans selection:bg-teal/20 overflow-hidden p-6 gap-6">
@@ -107,11 +147,12 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
 
       {/* Floating Left Sidebar */}
       <aside className="w-[280px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
-        {/* Sidebar header: logo + search + new */}
+        {/* Sidebar header: logo + search + new-menu */}
         <div className="h-16 border-b border-separator/50 flex items-center gap-2 px-3 bg-gradient-to-br from-brown/5 to-teal/5 dark:from-brown/10 dark:to-teal/10 flex-shrink-0">
           <div className="w-9 h-9 gradient-brown-teal rounded-hig-lg flex items-center justify-center shadow-brown-glow flex-shrink-0">
             <span className="text-white font-black text-base">C</span>
           </div>
+
           {/* Search */}
           <div className="relative flex-grow group">
             <input
@@ -121,19 +162,46 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
               onChange={e => setHeaderSearch(e.target.value)}
               className="w-full h-8 pl-7 pr-2 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
             />
-            <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-label-tertiary" fill="none" viewBox="0 0 16 16" stroke="currentColor"><path d="M7.333 12.667A5.333 5.333 0 107.333 2a5.333 5.333 0 000 10.667zm6.667 1.333L11.1 11.1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-label-tertiary pointer-events-none" fill="none" viewBox="0 0 16 16" stroke="currentColor">
+              <path d="M7.333 12.667A5.333 5.333 0 107.333 2a5.333 5.333 0 000 10.667zm6.667 1.333L11.1 11.1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </div>
-          {/* New chat button */}
-          <button
-            onClick={handleHeaderNew}
-            className="w-8 h-8 gradient-brown-teal text-white rounded-hig-lg font-bold shadow-brown-glow hover:scale-105 active:scale-95 transition-all flex items-center justify-center flex-shrink-0"
-            title="New chat"
-          >
-            <span className="text-lg leading-none">+</span>
-          </button>
+
+          {/* New button with dropdown (New Chat / New Project) */}
+          <div className="relative flex-shrink-0" ref={newMenuRef}>
+            <button
+              onClick={() => setShowNewMenu(!showNewMenu)}
+              className="w-8 h-8 gradient-brown-teal text-white rounded-hig-lg font-bold shadow-brown-glow hover:scale-105 active:scale-95 transition-all flex items-center justify-center"
+              title="Create new"
+            >
+              <span className="text-lg leading-none">+</span>
+            </button>
+            {showNewMenu && (
+              <div className="absolute top-full right-0 mt-2 w-44 bg-surface dark:bg-surface-secondary border border-separator rounded-hig-lg shadow-float z-50 overflow-hidden">
+                <button
+                  onClick={handleNewChat}
+                  className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
+                >
+                  <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  New Chat
+                </button>
+                <button
+                  onClick={handleNewProject}
+                  className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
+                >
+                  <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  New Project
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Sidebar scrollable body */}
+        {/* Sidebar scrollable body — sidebar's own + button is hidden via externalSearch prop */}
         <div className="flex-grow overflow-y-auto custom-scrollbar">
           {isValidElement(sidebar)
             ? cloneElement(sidebar as React.ReactElement<{ externalSearch?: string }>, { externalSearch: headerSearch })
@@ -151,14 +219,16 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
               <svg className="w-3.5 h-3.5 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
               <span className="text-[11px] font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Deleted</span>
             </a>
-            <a href="/skills" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
-              <svg className="w-3.5 h-3.5 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-              <span className="text-[11px] font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Skills</span>
-            </a>
+            {isSuperAdmin && (
+              <a href="/skills" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
+                <svg className="w-3.5 h-3.5 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                <span className="text-[11px] font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Skills</span>
+              </a>
+            )}
           </div>
 
           {/* User tile */}
-          <div className="relative">
+          <div className="relative" ref={userMenuRef}>
             <div
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-3 p-3 bg-surface-tertiary dark:bg-surface rounded-hig-xl border border-separator shadow-sm cursor-pointer hover:shadow-hig-hover hover:border-brown dark:hover:border-teal transition-all active:scale-95 group"
@@ -174,17 +244,33 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
               </div>
             </div>
 
-            {/* User menu */}
+            {/* User menu — opens upward, fixed z-index */}
             {showUserMenu && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 bg-surface-secondary dark:bg-[#2C2C2E] rounded-hig-xl border border-separator/50 shadow-float overflow-hidden z-50">
+              <div className="absolute bottom-full left-0 right-0 mb-2 bg-surface-secondary dark:bg-[#2C2C2E] rounded-hig-xl border border-separator/50 shadow-float z-[100]">
                 <div className="p-2">
-                  <a href="/admin" className="flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
-                    <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  {/* Settings = User Profile */}
+                  <a
+                    href="/settings"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors"
+                  >
+                    <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                     <span className="text-sm font-medium text-label-primary">Settings</span>
                   </a>
 
+                  {/* Super Admin link — only for admin/super_admin */}
+                  {isAdmin && (
+                    <a
+                      href="/admin"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors"
+                    >
+                      <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                      <span className="text-sm font-medium text-label-primary">Super Admin</span>
+                    </a>
+                  )}
+
                   <div className="h-px bg-separator/30 my-1" />
 
+                  {/* Language — inline row */}
                   <div className="flex items-center justify-between px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
                     <div className="flex items-center gap-3">
                       <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
@@ -193,6 +279,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
                     <LanguageSwitcher />
                   </div>
 
+                  {/* Theme */}
                   <div className="flex items-center justify-between px-3 py-2.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
                     <div className="flex items-center gap-3">
                       <svg className="w-4 h-4 text-label-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
