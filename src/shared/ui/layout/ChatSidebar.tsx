@@ -26,12 +26,11 @@ interface ChatSidebarProps {
   activeChatId?: string
   onChatSelect?: (chatId: string) => void
   externalSearch?: string
-  onRegisterControls?: (controls: { search: string; setSearch: (v: string) => void; onNew: () => void }) => void
 }
 
 const CHATS_KEY = 'clox_chats'
 
-export default function ChatSidebar({ activeChatId, onChatSelect, onRegisterControls, externalSearch }: ChatSidebarProps) {
+export default function ChatSidebar({ activeChatId, onChatSelect, externalSearch }: ChatSidebarProps) {
   const router = useRouter()
   const [search, setSearch] = useState('')
   // If externalSearch is provided, use it; otherwise use internal state
