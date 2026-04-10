@@ -25,15 +25,17 @@ interface ChatSidebarProps {
   children?: ReactNode
   activeChatId?: string
   onChatSelect?: (chatId: string) => void
-  // Allows AppLayout header to receive search & new-chat controls
+  externalSearch?: string
   onRegisterControls?: (controls: { search: string; setSearch: (v: string) => void; onNew: () => void }) => void
 }
 
 const CHATS_KEY = 'clox_chats'
 
-export default function ChatSidebar({ activeChatId, onChatSelect, onRegisterControls }: ChatSidebarProps) {
+export default function ChatSidebar({ activeChatId, onChatSelect, onRegisterControls, externalSearch }: ChatSidebarProps) {
   const router = useRouter()
   const [search, setSearch] = useState('')
+  // If externalSearch is provided, use it; otherwise use internal state
+  const activeSearch = externalSearch !== undefined ? externalSearch : search
   const [chats, setChats] = useState<Chat[]>([])
   const [showNewMenu, setShowNewMenu] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -131,7 +133,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, onRegisterCont
     chats.filter(c => c.projectId === projectId && c.type === 'chat')
 
   const filteredChats = chats.filter(c =>
-    c.title.toLowerCase().includes(search.toLowerCase()) && !c.projectId
+    c.title.toLowerCase().includes(activeSearch.toLowerCase()) && !c.projectId
   )
 
   const sidebarChats = filteredChats.filter(c => c.type === 'chat')
@@ -139,26 +141,28 @@ export default function ChatSidebar({ activeChatId, onChatSelect, onRegisterCont
 
   return (
     <div className="flex flex-col h-full">
-      {/* Search + New button (shown in sidebar body when not in header) */}
+      {/* Search + New button (search is hidden when externalSearch controls it from the header) */}
       <div className="p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <div className="relative group flex-grow">
-            <input
-              type="text"
-              placeholder="Search..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-9 pl-9 pr-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
-            />
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-tertiary group-focus-within:text-brown transition-colors pointer-events-none">
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-                <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+          {externalSearch === undefined && (
+            <div className="relative group flex-grow">
+              <input
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full h-9 pl-9 pr-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
+              />
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-tertiary group-focus-within:text-brown transition-colors pointer-events-none">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                  <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="relative">
+          <div className="relative ml-auto">
             <button
               onClick={() => setShowNewMenu(!showNewMenu)}
               className="w-9 h-9 gradient-brown-teal text-white rounded-hig-lg font-bold shadow-brown-glow hover:shadow-hig-hover hover:scale-105 active:scale-95 transition-all flex items-center justify-center flex-shrink-0"

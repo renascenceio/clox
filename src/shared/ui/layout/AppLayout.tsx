@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, Transition, Variants } from 'framer-motion'
-import { ReactNode, useState, useEffect } from 'react'
+import { ReactNode, useState, useEffect, isValidElement, cloneElement } from 'react'
 import ThemeToggle from '@/shared/ui/components/ThemeToggle'
 import LanguageSwitcher from '@/shared/ui/components/LanguageSwitcher'
 import Avatar from '@/shared/ui/components/Avatar'
@@ -42,6 +42,7 @@ interface UserProfile {
 export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutProps) {
   const router = useRouter()
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [headerSearch, setHeaderSearch] = useState('')
   const [profile, setProfile] = useState<UserProfile>({
     email: '',
     firstName: '',
@@ -69,8 +70,28 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     })
   }, [])
 
+  const handleHeaderNew = () => {
+    const newId = `chat-${Date.now()}`
+    const newChat = { id: newId, title: 'New Chat', model: 'gemini-2.5-flash', createdAt: Date.now(), type: 'chat' as const }
+    const saved = JSON.parse(localStorage.getItem('clox_chats') || '[]')
+    localStorage.setItem('clox_chats', JSON.stringify([newChat, ...saved]))
+    localStorage.setItem('activeChatId', newId)
+    router.push('/text')
+  }
+
   const handleSignOut = async () => {
     const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
+  const handleDeleteAccount = async () => {
+    if (!confirm('Are you sure you want to permanently delete your account? This cannot be undone.')) return
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    // Delete profile (cascades to credits, usage_logs, etc.)
+    await supabase.from('profiles').delete().eq('id', user.id)
     await supabase.auth.signOut()
     router.push('/login')
   }
@@ -86,28 +107,53 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
 
       {/* Floating Left Sidebar */}
       <aside className="w-[280px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
-        {/* Sidebar header: logo */}
-        <div className="h-16 border-b border-separator/50 flex items-center px-4 bg-gradient-to-br from-brown/5 to-teal/5 dark:from-brown/10 dark:to-teal/10 flex-shrink-0">
-          <div className="w-9 h-9 gradient-brown-teal rounded-hig-lg flex items-center justify-center shadow-brown-glow">
+        {/* Sidebar header: logo + search + new */}
+        <div className="h-16 border-b border-separator/50 flex items-center gap-2 px-3 bg-gradient-to-br from-brown/5 to-teal/5 dark:from-brown/10 dark:to-teal/10 flex-shrink-0">
+          <div className="w-9 h-9 gradient-brown-teal rounded-hig-lg flex items-center justify-center shadow-brown-glow flex-shrink-0">
             <span className="text-white font-black text-base">C</span>
           </div>
+          {/* Search */}
+          <div className="relative flex-grow group">
+            <input
+              type="text"
+              placeholder="Search..."
+              value={headerSearch}
+              onChange={e => setHeaderSearch(e.target.value)}
+              className="w-full h-8 pl-7 pr-2 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
+            />
+            <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-label-tertiary" fill="none" viewBox="0 0 16 16" stroke="currentColor"><path d="M7.333 12.667A5.333 5.333 0 107.333 2a5.333 5.333 0 000 10.667zm6.667 1.333L11.1 11.1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          {/* New chat button */}
+          <button
+            onClick={handleHeaderNew}
+            className="w-8 h-8 gradient-brown-teal text-white rounded-hig-lg font-bold shadow-brown-glow hover:scale-105 active:scale-95 transition-all flex items-center justify-center flex-shrink-0"
+            title="New chat"
+          >
+            <span className="text-lg leading-none">+</span>
+          </button>
         </div>
 
         {/* Sidebar scrollable body */}
         <div className="flex-grow overflow-y-auto custom-scrollbar">
-          {sidebar}
+          {isValidElement(sidebar)
+            ? cloneElement(sidebar as React.ReactElement<{ externalSearch?: string }>, { externalSearch: headerSearch })
+            : sidebar}
         </div>
 
         {/* Sidebar footer */}
         <div className="p-4 border-t border-separator/50 bg-surface-secondary/30 dark:bg-surface-tertiary/30 space-y-3 flex-shrink-0">
-          <div className="flex items-center justify-center gap-4">
-            <a href="/gallery" className="flex items-center gap-2 px-3 py-2 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
-              <svg className="w-4 h-4 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-              <span className="text-xs font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Gallery</span>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <a href="/gallery" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
+              <svg className="w-3.5 h-3.5 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+              <span className="text-[11px] font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Gallery</span>
             </a>
-            <a href="/deleted" className="flex items-center gap-2 px-3 py-2 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
-              <svg className="w-4 h-4 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-              <span className="text-xs font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Deleted</span>
+            <a href="/deleted" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
+              <svg className="w-3.5 h-3.5 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              <span className="text-[11px] font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Deleted</span>
+            </a>
+            <a href="/skills" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
+              <svg className="w-3.5 h-3.5 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+              <span className="text-[11px] font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Skills</span>
             </a>
           </div>
 
@@ -163,6 +209,16 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
                   >
                     <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
                     <span className="text-sm font-medium text-red-600 dark:text-red-400">Sign out</span>
+                  </button>
+
+                  <div className="h-px bg-separator/30 my-1" />
+
+                  <button
+                    onClick={handleDeleteAccount}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-hig-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left"
+                  >
+                    <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    <span className="text-sm font-medium text-red-400 dark:text-red-500">Delete account</span>
                   </button>
                 </div>
               </div>
