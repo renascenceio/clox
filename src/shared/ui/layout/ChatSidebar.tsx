@@ -36,7 +36,6 @@ export default function ChatSidebar({ activeChatId, onChatSelect, externalSearch
   // If externalSearch is provided, use it; otherwise use internal state
   const activeSearch = externalSearch !== undefined ? externalSearch : search
   const [chats, setChats] = useState<Chat[]>([])
-  const [showNewMenu, setShowNewMenu] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [showProjectSettings, setShowProjectSettings] = useState<string | null>(null)
@@ -73,7 +72,6 @@ export default function ChatSidebar({ activeChatId, onChatSelect, externalSearch
     }
     const updated = [newChat, ...chats]
     saveChats(updated)
-    setShowNewMenu(false)
     handleChatClick(newChat.id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chats, handleChatClick])
@@ -88,7 +86,6 @@ export default function ChatSidebar({ activeChatId, onChatSelect, externalSearch
     }
     const updated = [newProject, ...chats]
     saveChats(updated)
-    setShowNewMenu(false)
     handleChatClick(newProject.id)
   }
 
@@ -140,54 +137,26 @@ export default function ChatSidebar({ activeChatId, onChatSelect, externalSearch
 
   return (
     <div className="flex flex-col h-full">
-      {/* Search + New button (search is hidden when externalSearch controls it from the header) */}
-      <div className="p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          {externalSearch === undefined && (
-            <div className="relative group flex-grow">
-              <input
-                type="text"
-                placeholder="Search..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
-              />
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-tertiary group-focus-within:text-brown transition-colors pointer-events-none">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-                  <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
+      {/* Standalone search — only shown when externalSearch is not provided (no AppLayout header) */}
+      {externalSearch === undefined && (
+        <div className="p-4">
+          <div className="relative group">
+            <input
+              type="text"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full h-9 pl-9 pr-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
+            />
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-tertiary group-focus-within:text-brown transition-colors pointer-events-none">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </div>
-          )}
-
-          <div className="relative ml-auto">
-            <button
-              onClick={() => setShowNewMenu(!showNewMenu)}
-              className="w-9 h-9 gradient-brown-teal text-white rounded-hig-lg font-bold shadow-brown-glow hover:shadow-hig-hover hover:scale-105 active:scale-95 transition-all flex items-center justify-center flex-shrink-0"
-              title="Create new"
-            >
-              <span className="text-lg leading-none">+</span>
-            </button>
-            {showNewMenu && (
-              <div className="absolute top-full right-0 mt-2 w-44 bg-surface dark:bg-surface-secondary border border-separator rounded-hig-lg shadow-float z-50 overflow-hidden">
-                <button onClick={handleNewChat} className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3">
-                  <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  New Chat
-                </button>
-                <button onClick={handleNewProject} className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3">
-                  <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  New Project
-                </button>
-              </div>
-            )}
           </div>
         </div>
-      </div>
+      )}
 
       <div className="flex-grow overflow-y-auto px-3 space-y-5 custom-scrollbar pb-6">
         {/* Recent chats */}

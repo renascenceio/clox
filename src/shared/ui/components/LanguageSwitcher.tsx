@@ -1,24 +1,37 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { SUPPORTED_LANGUAGES, getCurrentLanguage, setCurrentLanguage, getTranslationProgress } from '@/lib/translations'
 
 export default function LanguageSwitcher() {
   const [mounted, setMounted] = useState(false)
   const [currentLang, setCurrentLang] = useState('en')
   const [isOpen, setIsOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 })
 
   useEffect(() => {
     setMounted(true)
     setCurrentLang(getCurrentLanguage())
-    
-    // Listen for language changes from other components
+
     const handleLangChange = (e: CustomEvent) => {
       setCurrentLang(e.detail.langCode)
     }
     window.addEventListener('language-changed', handleLangChange as EventListener)
     return () => window.removeEventListener('language-changed', handleLangChange as EventListener)
   }, [])
+
+  const openDropdown = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      // Position below the button, right-aligned
+      setDropdownPos({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right,
+      })
+    }
+    setIsOpen(true)
+  }
 
   const changeLanguage = (langCode: string) => {
     setCurrentLang(langCode)
@@ -27,15 +40,16 @@ export default function LanguageSwitcher() {
   }
 
   if (!mounted) {
-    return <div className="w-10 h-10" /> // Placeholder to prevent layout shift
+    return <div className="w-10 h-10" />
   }
 
   const currentLanguage = SUPPORTED_LANGUAGES.find(lang => lang.code === currentLang) || SUPPORTED_LANGUAGES[0]
 
   return (
-    <div className="relative">
+    <>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        ref={buttonRef}
+        onClick={openDropdown}
         className="w-10 h-10 rounded-hig-lg bg-surface-secondary hover:bg-fill border border-separator/30 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
         aria-label="Switch language"
       >
@@ -45,13 +59,16 @@ export default function LanguageSwitcher() {
       {isOpen && (
         <>
           {/* Backdrop */}
-          <div 
-            className="fixed inset-0 z-40" 
+          <div
+            className="fixed inset-0 z-[200]"
             onClick={() => setIsOpen(false)}
           />
-          
-          {/* Dropdown */}
-          <div className="absolute bottom-full mb-2 right-0 w-56 bg-surface-secondary dark:bg-surface border border-separator rounded-hig-xl shadow-hig-hover overflow-hidden z-50">
+
+          {/* Dropdown — fixed to viewport so it's never clipped */}
+          <div
+            className="fixed w-56 bg-surface-secondary dark:bg-surface border border-separator rounded-hig-xl shadow-hig-hover overflow-hidden z-[201]"
+            style={{ top: dropdownPos.top, right: dropdownPos.right }}
+          >
             <div className="p-2 border-b border-separator">
               <div className="text-xs font-bold text-label-secondary uppercase tracking-widest px-2 py-1">
                 Select Language
@@ -89,6 +106,6 @@ export default function LanguageSwitcher() {
           </div>
         </>
       )}
-    </div>
+    </>
   )
 }
