@@ -37,6 +37,7 @@ interface UserProfile {
   firstName: string
   role: string
   balance: string
+  avatarSeed: string
 }
 
 // Shared Chat type for the header new-menu
@@ -61,6 +62,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     firstName: '',
     role: 'user',
     balance: '0.00',
+    avatarSeed: '',
   })
 
   useEffect(() => {
@@ -69,16 +71,19 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
       if (!user) return
       const email = user.email ?? ''
       const [profileRes, creditsRes] = await Promise.all([
-        supabase.from('profiles').select('first_name, role').eq('id', user.id).single(),
+        supabase.from('profiles').select('first_name, last_name, role, avatar_seed').eq('id', user.id).single(),
         supabase.from('credits').select('balance_usd').eq('user_id', user.id).single(),
       ])
       setProfile({
         email,
-        firstName: profileRes.data?.first_name || email.split('@')[0],
+        firstName: profileRes.data?.first_name
+          ? `${profileRes.data.first_name}${profileRes.data.last_name ? ' ' + profileRes.data.last_name : ''}`
+          : email.split('@')[0],
         role: profileRes.data?.role || 'user',
         balance: creditsRes.data?.balance_usd != null
           ? parseFloat(creditsRes.data.balance_usd).toFixed(2)
           : '0.00',
+        avatarSeed: profileRes.data?.avatar_seed || email,
       })
     })
   }, [])
@@ -228,7 +233,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center gap-3 p-3 bg-surface-tertiary dark:bg-surface rounded-hig-xl border border-separator shadow-sm cursor-pointer hover:shadow-hig-hover hover:border-brown dark:hover:border-teal transition-all active:scale-95 group"
             >
-              <Avatar seed={profile.email || 'user'} size={40} className="group-hover:scale-105 transition-transform shadow-brown-glow" />
+              <Avatar seed={profile.avatarSeed || profile.email || 'user'} size={40} className="group-hover:scale-105 transition-transform shadow-brown-glow" />
               <div className="flex-grow min-w-0">
                 <div className="text-sm font-bold truncate text-label-primary capitalize">{profile.firstName || 'Loading...'}</div>
                 <div className="text-[10px] font-bold text-brown dark:text-teal uppercase tracking-widest">{profile.role.replace('_', ' ')}</div>
