@@ -62,33 +62,6 @@ export default function ChatSidebar({ activeChatId, onChatSelect, externalSearch
     }
   }, [onChatSelect, router])
 
-  const handleNewChat = useCallback(() => {
-    const newChat: Chat = {
-      id: `chat_${Date.now()}`,
-      title: 'New Chat',
-      model: 'Gemini 2.5 Flash',
-      createdAt: Date.now(),
-      type: 'chat',
-    }
-    const updated = [newChat, ...chats]
-    saveChats(updated)
-    handleChatClick(newChat.id)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chats, handleChatClick])
-
-  const handleNewProject = () => {
-    const newProject: Chat = {
-      id: `project_${Date.now()}`,
-      title: 'New Project',
-      model: '',
-      createdAt: Date.now(),
-      type: 'project',
-    }
-    const updated = [newProject, ...chats]
-    saveChats(updated)
-    handleChatClick(newProject.id)
-  }
-
   const handleDeleteChat = (id: string) => {
     const chatToDelete = chats.find(c => c.id === id)
     if (chatToDelete) {
