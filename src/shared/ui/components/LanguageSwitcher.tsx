@@ -1,103 +1,48 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import { SUPPORTED_LANGUAGES, getCurrentLanguage, setCurrentLanguage } from '@/lib/translations'
-
-const ACTIVE_LANGUAGES = SUPPORTED_LANGUAGES.filter(l => l.code === 'en' || l.code === 'ru')
+import { useEffect, useState } from 'react'
+import { getCurrentLanguage, setCurrentLanguage } from '@/lib/translations'
 
 export default function LanguageSwitcher() {
+  const [lang, setLang] = useState<'en' | 'ru'>('en')
   const [mounted, setMounted] = useState(false)
-  const [currentLang, setCurrentLang] = useState('en')
-  const [isOpen, setIsOpen] = useState(false)
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 })
 
   useEffect(() => {
     setMounted(true)
-    setCurrentLang(getCurrentLanguage())
-
-    const handleLangChange = (e: CustomEvent) => {
-      setCurrentLang(e.detail.langCode)
-    }
-    window.addEventListener('language-changed', handleLangChange as EventListener)
-    return () => window.removeEventListener('language-changed', handleLangChange as EventListener)
+    const current = getCurrentLanguage()
+    setLang(current === 'ru' ? 'ru' : 'en')
   }, [])
 
-  const openDropdown = () => {
-    if (buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect()
-      // Position below the button, right-aligned
-      setDropdownPos({
-        top: rect.bottom + 8,
-        right: window.innerWidth - rect.right,
-      })
-    }
-    setIsOpen(true)
+  const toggle = () => {
+    const next = lang === 'en' ? 'ru' : 'en'
+    setLang(next)
+    setCurrentLanguage(next)
+    window.dispatchEvent(new CustomEvent('language-changed', { detail: { langCode: next } }))
   }
 
-  const changeLanguage = (langCode: string) => {
-    setCurrentLang(langCode)
-    setCurrentLanguage(langCode)
-    setIsOpen(false)
-  }
+  if (!mounted) return <div className="w-[58px] h-7" />
 
-  if (!mounted) {
-    return <div className="w-10 h-10" />
-  }
-
-  const currentLanguage = SUPPORTED_LANGUAGES.find(lang => lang.code === currentLang) || SUPPORTED_LANGUAGES[0]
+  const isRu = lang === 'ru'
 
   return (
-    <>
-      <button
-        ref={buttonRef}
-        onMouseDown={e => e.stopPropagation()}
-        onClick={openDropdown}
-        className="w-10 h-10 rounded-hig-lg bg-surface-secondary hover:bg-fill border border-separator/30 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-        aria-label="Switch language"
-      >
-        <span className="text-base">{currentLanguage.flag}</span>
-      </button>
-
-      {isOpen && (
-        <>
-          {/* Backdrop — stops mousedown so AppLayout outside-click doesn't close user menu */}
-          <div
-            className="fixed inset-0 z-[200]"
-            onMouseDown={e => e.stopPropagation()}
-            onClick={() => setIsOpen(false)}
-          />
-
-          {/* Dropdown — fixed to viewport so it's never clipped */}
-          <div
-            className="fixed w-44 bg-surface-secondary dark:bg-surface border border-separator rounded-hig-xl shadow-hig-hover overflow-hidden z-[201]"
-            style={{ top: dropdownPos.top, right: dropdownPos.right }}
-            onMouseDown={e => e.stopPropagation()}
-          >
-            <div className="p-1">
-              {ACTIVE_LANGUAGES.map((lang) => (
-                <button
-                  key={lang.code}
-                  onClick={() => changeLanguage(lang.code)}
-                  className={`w-full h-10 flex items-center gap-3 px-3 rounded-hig-lg transition-all ${
-                    currentLang === lang.code
-                      ? 'bg-brown/10 dark:bg-teal/10 text-brown dark:text-teal border border-brown/20 dark:border-teal/20'
-                      : 'hover:bg-surface-tertiary dark:hover:bg-surface-tertiary/50 text-label-primary'
-                  }`}
-                >
-                  <span className="text-lg">{lang.flag}</span>
-                  <span className="text-sm font-medium flex-grow text-left">{lang.nativeName}</span>
-                  {currentLang === lang.code && (
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-    </>
+    <button
+      onClick={(e) => { e.stopPropagation(); toggle() }}
+      onMouseDown={(e) => e.stopPropagation()}
+      aria-label={`Switch to ${isRu ? 'English' : 'Russian'}`}
+      className="relative flex items-center h-7 w-[58px] rounded-full bg-surface-tertiary dark:bg-surface border border-separator/50 flex-shrink-0 cursor-pointer"
+    >
+      {/* Sliding pill */}
+      <span
+        className={`absolute top-0.5 h-6 w-6 rounded-full gradient-brown-teal shadow-sm transition-all duration-200 ease-in-out ${isRu ? 'left-[30px]' : 'left-0.5'}`}
+      />
+      {/* EN label */}
+      <span className={`absolute left-[6px] text-[10px] font-bold leading-none transition-colors duration-200 select-none ${!isRu ? 'text-white' : 'text-label-tertiary'}`}>
+        EN
+      </span>
+      {/* RU label */}
+      <span className={`absolute right-[5px] text-[10px] font-bold leading-none transition-colors duration-200 select-none ${isRu ? 'text-white' : 'text-label-tertiary'}`}>
+        RU
+      </span>
+    </button>
   )
 }
