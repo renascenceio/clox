@@ -138,7 +138,7 @@ export default function SettingsPage() {
   }
 
   const inputClass =
-    'w-full h-11 px-4 bg-white/70 dark:bg-[#2C2C2E]/70 border border-separator rounded-hig-lg text-sm font-medium text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/30 dark:focus:ring-teal/30 focus:border-brown dark:focus:border-teal transition-all'
+    'w-full h-11 px-4 bg-white/70 dark:bg-[#2C2C2E]/70 border border-separator rounded-hig-lg text-sm font-medium text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-mint/30 dark:focus:ring-teal/30 focus:border-mint dark:focus:border-teal transition-all'
   const selectClass = inputClass + ' cursor-pointer'
   const labelClass = 'block text-xs font-bold text-label-tertiary uppercase tracking-wider mb-1.5'
 
@@ -165,7 +165,7 @@ export default function SettingsPage() {
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 border-2 border-brown/30 border-t-brown rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-mint/30 border-t-brown rounded-full animate-spin" />
           </div>
         ) : (
           <form onSubmit={handleSave} className="space-y-6">
@@ -174,7 +174,7 @@ export default function SettingsPage() {
               <h2 className="text-sm font-bold text-label-secondary uppercase tracking-widest mb-4">Avatar</h2>
               <div className="flex items-center gap-5">
                 <div className="relative">
-                  <Avatar seed={previewSeed || email} size={80} className="ring-4 ring-brown/20 dark:ring-teal/20 shadow-brown-glow" />
+                  <Avatar seed={previewSeed || email} size={80} className="ring-4 ring-mint/20 dark:ring-teal/20 shadow-mint-glow" />
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-label-primary mb-1">
@@ -186,7 +186,7 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={regenerateAvatar}
-                      className="flex items-center gap-2 px-4 py-2 bg-surface-tertiary dark:bg-surface border border-separator rounded-hig-lg text-sm font-medium text-label-primary hover:border-brown dark:hover:border-teal hover:text-brown dark:hover:text-teal transition-all"
+                      className="flex items-center gap-2 px-4 py-2 bg-surface-tertiary dark:bg-surface border border-separator rounded-hig-lg text-sm font-medium text-label-primary hover:border-mint dark:hover:border-teal hover:text-mint dark:hover:text-teal transition-all"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -335,7 +335,7 @@ export default function SettingsPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="px-6 h-11 gradient-brown-teal text-white rounded-hig-lg text-sm font-bold shadow-brown-glow hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-6 h-11 gradient-mint-teal text-white rounded-hig-lg text-sm font-bold shadow-mint-glow hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {saving ? (
                   <>

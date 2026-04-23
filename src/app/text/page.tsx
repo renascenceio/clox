@@ -269,14 +269,14 @@ export default function TextPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-label-primary">AI Model</h3>
-            <div className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-pulse"></div>
+            <div className="w-2 h-2 bg-mint dark:bg-teal rounded-full animate-pulse"></div>
           </div>
           
           {/* Model Selector */}
           <select
             value={selectedModel.id}
             onChange={(e) => handleModelChange(e.target.value)}
-            className="w-full h-11 px-4 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-bold text-label-primary focus:outline-none focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown dark:focus:border-teal transition-all"
+            className="w-full h-11 px-4 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm font-bold text-label-primary focus:outline-none focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20 focus:border-mint dark:focus:border-teal transition-all"
           >
             {brands.map(brand => {
               const modelsForBrand = enabledModels.filter(m => (m.brandName || m.provider) === brand)
@@ -293,8 +293,8 @@ export default function TextPage() {
           </select>
 
           {/* Current Selection Badge */}
-          <div className="px-3 py-2 bg-brown-50 dark:bg-brown-900/20 border border-brown-200 dark:border-brown-700 rounded-hig-lg">
-            <p className="text-xs font-bold text-brown-700 dark:text-brown-300">{selectedBrand} • {selectedModel.version || selectedModel.name}</p>
+          <div className="px-3 py-2 bg-mint-50 dark:bg-mint-900/20 border border-mint-200 dark:border-mint-700 rounded-hig-lg">
+            <p className="text-xs font-bold text-mint-700 dark:text-mint-300">{selectedBrand} • {selectedModel.version || selectedModel.name}</p>
           </div>
         </div>
 
@@ -305,7 +305,7 @@ export default function TextPage() {
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
             placeholder="You are a helpful assistant..."
-            className="w-full min-h-[100px] p-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all resize-none"
+            className="w-full min-h-[100px] p-3 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-hig-lg text-sm text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-mint/20 focus:border-mint transition-all resize-none"
             rows={4}
           />
         </div>
@@ -314,7 +314,7 @@ export default function TextPage() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">Temperature</label>
-            <span className="text-sm font-bold text-brown">{temperature}</span>
+            <span className="text-sm font-bold text-mint">{temperature}</span>
           </div>
           <input
             type="range"
@@ -323,7 +323,7 @@ export default function TextPage() {
             step="0.1"
             value={temperature}
             onChange={(e) => setTemperature(parseFloat(e.target.value))}
-            className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-brown"
+            className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-mint"
           />
           <div className="flex justify-between text-xs text-label-tertiary">
             <span>Precise</span>
@@ -371,8 +371,8 @@ export default function TextPage() {
               >
                 <div className={`max-w-[85%] ${
                   m.role === 'user'
-                    ? 'text-brown dark:text-teal font-semibold text-sm leading-relaxed'
-                    : 'prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-surface-tertiary dark:prose-pre:bg-surface prose-pre:p-4 prose-pre:rounded-lg prose-code:text-brown dark:prose-code:text-teal prose-code:bg-surface-tertiary/50 dark:prose-code:bg-surface/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-headings:text-label-primary prose-strong:text-label-primary prose-a:text-brown dark:prose-a:text-teal prose-a:no-underline hover:prose-a:underline'
+                    ? 'text-mint dark:text-teal font-semibold text-sm leading-relaxed'
+                    : 'prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-surface-tertiary dark:prose-pre:bg-surface prose-pre:p-4 prose-pre:rounded-lg prose-code:text-mint dark:prose-code:text-teal prose-code:bg-surface-tertiary/50 dark:prose-code:bg-surface/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-headings:text-label-primary prose-strong:text-label-primary prose-a:text-mint dark:prose-a:text-teal prose-a:no-underline hover:prose-a:underline'
                 }`}>
                   <ReactMarkdown>{m.content}</ReactMarkdown>
                 </div>
@@ -388,7 +388,7 @@ export default function TextPage() {
               >
                 <div className="flex items-start gap-3 max-w-[85%]">
                   {/* AI Avatar */}
-                  <div className="w-8 h-8 rounded-full gradient-brown-teal flex items-center justify-center flex-shrink-0 shadow-brown-glow">
+                  <div className="w-8 h-8 rounded-full gradient-mint-teal flex items-center justify-center flex-shrink-0 shadow-mint-glow">
                     <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
@@ -398,9 +398,9 @@ export default function TextPage() {
                   <div className="bg-surface-tertiary/60 dark:bg-surface/60 rounded-hig-xl px-4 py-3 border border-separator/30">
                     <div className="flex items-center gap-2 text-sm text-label-secondary">
                       <div className="flex items-center gap-1">
-                        <span className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                        <span className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                        <span className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                        <span className="w-2 h-2 bg-mint dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                        <span className="w-2 h-2 bg-mint dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                        <span className="w-2 h-2 bg-mint dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                       </div>
                       <span className="text-xs font-medium text-label-tertiary ml-2">
                         {selectedBrand} is thinking...
@@ -426,7 +426,7 @@ export default function TextPage() {
                     onClick={() => handleAITypeChange(type)}
                     className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-bold text-xs uppercase tracking-wider transition-all border-b-2 ${
                       activeAIType === type
-                        ? 'border-brown dark:border-teal bg-white dark:bg-[#2C2C2E] text-brown dark:text-teal'
+                        ? 'border-mint dark:border-teal bg-white dark:bg-[#2C2C2E] text-mint dark:text-teal'
                         : 'border-transparent text-label-tertiary hover:text-label-primary hover:bg-white/30 dark:hover:bg-[#2C2C2E]/30'
                     }`}
                   >
@@ -455,7 +455,7 @@ export default function TextPage() {
                 {/* File Upload Button */}
                 <button
                   type="button"
-                  className="absolute left-4 bottom-4 w-10 h-10 flex items-center justify-center text-label-secondary hover:text-brown dark:hover:text-teal transition-all hover:scale-110 active:scale-95"
+                  className="absolute left-4 bottom-4 w-10 h-10 flex items-center justify-center text-label-secondary hover:text-mint dark:hover:text-teal transition-all hover:scale-110 active:scale-95"
                   title="Attach files or images"
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -466,7 +466,7 @@ export default function TextPage() {
                 <button
                   type="submit"
                   disabled={isLoading || !input?.trim()}
-                  className="absolute right-4 bottom-4 w-12 h-12 flex items-center justify-center gradient-brown-teal text-white rounded-hig-xl shadow-brown-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
+                  className="absolute right-4 bottom-4 w-12 h-12 flex items-center justify-center gradient-mint-teal text-white rounded-hig-xl shadow-mint-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
                 >
                   <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M8 3.33331V12.6666M8 3.33331L4 7.33331M8 3.33331L12 7.33331" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
