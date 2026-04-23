@@ -19,18 +19,23 @@
   }
 
   .dark {
-    --background: #0F0E0D;
-    --foreground: #F5EFE7;
-    
-    /* FULLY DARK mode with brown/teal accents - NO WHITE ANYWHERE */
-    --surface: 28 26 24;
-    --surface-secondary: 15 14 13;
-    --surface-tertiary: 38 36 34;
-    --label-primary: 245 239 231;
-    --label-secondary: 180 166 150;
-    --label-tertiary: 139 127 115;
-    --separator: 68 64 60;
-    --fill: 92 84 76;
+    /*
+     * FULLY DARK mode with mint/teal accents.
+     * All surface and label values use cool neutrals (a very subtle teal cast)
+     * so the UI never reads warm/brown. Accent colors come from the mint and
+     * apple-teal Tailwind palettes.
+     */
+    --background: #0A1213;
+    --foreground: #E8F4F5;
+
+    --surface: 15 20 21;
+    --surface-secondary: 8 13 14;
+    --surface-tertiary: 22 28 29;
+    --label-primary: 232 244 245;
+    --label-secondary: 150 166 170;
+    --label-tertiary: 110 125 128;
+    --separator: 45 55 58;
+    --fill: 75 90 93;
   }
 }
 
@@ -67,33 +72,51 @@ body {
   }
 
   .glass-float {
-    @apply bg-white/90 dark:bg-[#1C1A18]/95 backdrop-blur-[24px] border border-separator/30;
+    @apply bg-white/90 dark:bg-[#0F1A1B]/95 backdrop-blur-[24px] border border-separator/30;
   }
 
   /*
-   * Primary call-to-action background.
-   * We keep the original class name so existing components pick up the new color
-   * automatically. Per request this is now Apple HIG systemTeal — a solid color
-   * rather than a gradient — with a darker variant for dark mode.
+   * Primary brand gradient: Apple HIG systemMint → systemTeal.
+   * All legacy `.gradient-brown-teal` / `.gradient-teal-brown` usages are
+   * aliased to the same mint→teal gradient so nothing across the app still
+   * renders brown. A `.text-gradient-mint-teal` helper is exposed for gradient
+   * headings/text.
    */
-  .gradient-brown-teal {
-    background: #30B0C7;
+  .gradient-mint-teal,
+  .gradient-brown-teal,
+  .gradient-teal-brown {
+    background: linear-gradient(135deg, #00C7BE 0%, #30B0C7 100%);
   }
-  .dark .gradient-brown-teal {
-    background: #40C8E0;
+  .dark .gradient-mint-teal,
+  .dark .gradient-brown-teal,
+  .dark .gradient-teal-brown {
+    background: linear-gradient(135deg, #63E6E2 0%, #40C8E0 100%);
   }
-  .gradient-brown-teal:hover {
-    background: #268FA1;
+  .gradient-mint-teal:hover,
+  .gradient-brown-teal:hover,
+  .gradient-teal-brown:hover {
+    background: linear-gradient(135deg, #00A89F 0%, #268FA1 100%);
   }
-  .dark .gradient-brown-teal:hover {
-    background: #30B0C7;
+  .dark .gradient-mint-teal:hover,
+  .dark .gradient-brown-teal:hover,
+  .dark .gradient-teal-brown:hover {
+    background: linear-gradient(135deg, #40C8E0 0%, #30B0C7 100%);
   }
 
-  .gradient-teal-brown {
-    background: #30B0C7;
+  /* Gradient text helper — apply to inline spans/headings. */
+  .text-gradient-mint-teal {
+    background: linear-gradient(135deg, #00C7BE 0%, #30B0C7 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
   }
-  .dark .gradient-teal-brown {
-    background: #40C8E0;
+  .dark .text-gradient-mint-teal {
+    background: linear-gradient(135deg, #63E6E2 0%, #40C8E0 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
   }
 }
 
@@ -103,5 +126,8 @@ body {
 
 .prose code {
   @apply font-mono !important;
-  color: #6F5938 !important;
+  color: #00A89F !important; /* mint-600 */
+}
+.dark .prose code {
+  color: #63E6E2 !important; /* mint (dark) */
 }
