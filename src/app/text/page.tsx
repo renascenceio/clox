@@ -64,30 +64,53 @@ export default function TextPage() {
     localStorage.setItem(`chat-settings-${activeChatId}`, JSON.stringify(settings))
   }, [activeChatId, selectedModel.id, systemPrompt, temperature, maxTokens])
   
-  // Load saved model from localStorage on mount and filter models
+  // Compute the list of models whose provider is enabled AND has an API key.
+  // Falls back to the full list when nothing is configured yet so the UI is
+  // never empty during first-run setup.
   useEffect(() => {
-    const settings = getAdminSettings()
-    const filtered = TEXT_MODELS.filter(model => {
-      const isEnabled = settings.providers[model.provider]?.enabled ?? true // Default to true if not set
-      return isEnabled
-    })
-    setEnabledModels(filtered)
-    
-    // Try to load saved model from localStorage
-    const savedModelId = localStorage.getItem('selectedTextModelId')
-    if (savedModelId) {
-      const savedModel = filtered.find(m => m.id === savedModelId)
-      if (savedModel) {
-        setSelectedModel(savedModel)
-        setSelectedBrand(savedModel.brandName || savedModel.provider)
-        return
+    const computeList = () => {
+      const settings = getAdminSettings()
+      const filtered = TEXT_MODELS.filter(model => {
+        const entry = settings.providers[model.provider]
+        const enabled = entry?.enabled ?? true
+        const hasKey = Boolean(entry?.apiKey && entry.apiKey.trim().length > 0)
+        return enabled && hasKey
+      })
+      return filtered.length > 0 ? filtered : TEXT_MODELS
+    }
+
+    const applyList = (list: typeof TEXT_MODELS) => {
+      setEnabledModels(list)
+      // If the currently-selected model is no longer visible, switch to the first available.
+      if (!list.find(m => m.id === selectedModel.id)) {
+        setSelectedModel(list[0])
+        setSelectedBrand(list[0].brandName || list[0].provider)
       }
     }
-    
-    // Fallback to first enabled model if no saved model or saved model not found
-    if (filtered.length > 0 && !filtered.find(m => m.id === selectedModel.id)) {
-      setSelectedModel(filtered[0])
-      setSelectedBrand(filtered[0].brandName || filtered[0].provider)
+
+    // Initial load — honour the previously-chosen model from localStorage if it's still visible.
+    const initialList = computeList()
+    const savedModelId = typeof window !== 'undefined' ? localStorage.getItem('selectedTextModelId') : null
+    if (savedModelId) {
+      const savedModel = initialList.find(m => m.id === savedModelId)
+      if (savedModel) {
+        setEnabledModels(initialList)
+        setSelectedModel(savedModel)
+        setSelectedBrand(savedModel.brandName || savedModel.provider)
+      } else {
+        applyList(initialList)
+      }
+    } else {
+      applyList(initialList)
+    }
+
+    // Refresh when admin toggles a provider or saves a key.
+    const refresh = () => applyList(computeList())
+    window.addEventListener('admin-settings-changed', refresh)
+    window.addEventListener('storage', refresh)
+    return () => {
+      window.removeEventListener('admin-settings-changed', refresh)
+      window.removeEventListener('storage', refresh)
     }
   }, [selectedModel.id])
   

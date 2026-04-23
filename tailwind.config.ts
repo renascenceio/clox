@@ -24,7 +24,7 @@ const config: Config = {
           900: "#372C1C",
         },
         teal: {
-          DEFAULT: "#5AC8C8", // Apple HIG Teal
+          DEFAULT: "#5AC8C8", // Legacy HIG Teal - kept for backwards compat
           50: "#E8F8F8",
           100: "#C7EEEE",
           200: "#A0E3E3",
@@ -35,6 +35,22 @@ const config: Config = {
           700: "#2E8A8A",
           800: "#206363",
           900: "#113C3C",
+        },
+        // Apple HIG systemTeal
+        // Light: #30B0C7  Dark: #40C8E0 (the default here is the light variant;
+        // dark mode is handled in globals.css via a CSS variable)
+        'apple-teal': {
+          DEFAULT: "#30B0C7",
+          50: "#E7F6F9",
+          100: "#C1E8EF",
+          200: "#8CD6E2",
+          300: "#5BC5D6",
+          400: "#40C8E0",
+          500: "#30B0C7",
+          600: "#268FA1",
+          700: "#1E6E7C",
+          800: "#164E57",
+          900: "#0E3037",
         },
         surface: {
           DEFAULT: "rgb(var(--surface) / <alpha-value>)",
@@ -57,8 +73,11 @@ const config: Config = {
         'hig-hover': "0 2px 8px rgba(0,0,0,0.1), 0 10px 24px rgba(0,0,0,0.08)",
         'float': "0 8px 16px rgba(0,0,0,0.08), 0 16px 48px rgba(0,0,0,0.12)",
         'float-lg': "0 12px 24px rgba(0,0,0,0.1), 0 24px 64px rgba(0,0,0,0.15)",
-        'brown-glow': "0 4px 16px rgba(162,132,94,0.2)",
+        // Renamed visually: the CTA is now Apple Teal, so the glow tints teal too.
+        // Keeping the utility name preserves backwards compatibility across the app.
+        'brown-glow': "0 4px 16px rgba(48,176,199,0.28)",
         'teal-glow': "0 4px 16px rgba(90,200,200,0.2)",
+        'apple-teal': "0 4px 16px rgba(48,176,199,0.28)",
       },
       borderRadius: {
         'hig-sm': '4px',

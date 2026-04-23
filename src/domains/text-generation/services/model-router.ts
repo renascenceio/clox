@@ -75,20 +75,48 @@ export const PROVIDER_MAX_DURATION: Record<AIProvider, number> = {
 }
 
 export const TEXT_MODELS = [
-  // Google Gemini - 2.5 Flash is the tested working model
+  // Google Gemini
   { id: 'gemini-2.5-flash', name: '2.5 Flash', version: '2.5 Flash', provider: 'google', brandName: 'Gemini' },
   { id: 'gemini-2.0-flash', name: '2.0 Flash', version: '2.0 Flash', provider: 'google', brandName: 'Gemini' },
   { id: 'gemini-1.5-pro', name: '1.5 Pro', version: '1.5 Pro', provider: 'google', brandName: 'Gemini' },
-  
+
   // OpenAI ChatGPT
   { id: 'gpt-4o', name: 'GPT-4o', version: 'GPT-4o', provider: 'openai', brandName: 'ChatGPT' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', version: 'GPT-4o Mini', provider: 'openai', brandName: 'ChatGPT' },
-  
+
   // Anthropic Claude
   { id: 'claude-opus-4.6', name: 'Opus 4.6', version: 'Opus 4.6', provider: 'anthropic', brandName: 'Claude' },
   { id: 'claude-sonnet-4.6', name: 'Sonnet 4.6', version: 'Sonnet 4.6', provider: 'anthropic', brandName: 'Claude' },
   { id: 'claude-haiku-4.5', name: 'Haiku 4.5', version: 'Haiku 4.5', provider: 'anthropic', brandName: 'Claude' },
-  
+
   // Mistral
   { id: 'mistral-large-latest', name: 'Large', version: 'Large', provider: 'mistral', brandName: 'Mistral AI' },
+  { id: 'mistral-small-latest', name: 'Small', version: 'Small', provider: 'mistral', brandName: 'Mistral AI' },
+
+  // xAI Grok
+  { id: 'grok-4', name: 'Grok 4', version: '4', provider: 'xai', brandName: 'Grok' },
+  { id: 'grok-3', name: 'Grok 3', version: '3', provider: 'xai', brandName: 'Grok' },
+
+  // DeepSeek
+  { id: 'deepseek-chat', name: 'Chat v3', version: 'Chat v3', provider: 'deepseek', brandName: 'DeepSeek' },
+  { id: 'deepseek-reasoner', name: 'Reasoner R1', version: 'Reasoner R1', provider: 'deepseek', brandName: 'DeepSeek' },
+
+  // Moonshot Kimi
+  { id: 'kimi-k2', name: 'K2', version: 'K2', provider: 'moonshot', brandName: 'Kimi' },
+  { id: 'moonshot-v1-128k', name: 'v1 128k', version: 'v1 128k', provider: 'moonshot', brandName: 'Kimi' },
+
+  // Alibaba Qwen
+  { id: 'qwen-max', name: 'Max', version: 'Max', provider: 'alibaba', brandName: 'Qwen' },
+  { id: 'qwen-plus', name: 'Plus', version: 'Plus', provider: 'alibaba', brandName: 'Qwen' },
+
+  // Cohere
+  { id: 'command-r-plus', name: 'Command R+', version: 'R+', provider: 'cohere', brandName: 'Cohere' },
+  { id: 'command-r', name: 'Command R', version: 'R', provider: 'cohere', brandName: 'Cohere' },
+
+  // Perplexity
+  { id: 'sonar-large', name: 'Sonar Large', version: 'Sonar Large', provider: 'perplexity', brandName: 'Perplexity' },
+  { id: 'sonar-small', name: 'Sonar Small', version: 'Sonar Small', provider: 'perplexity', brandName: 'Perplexity' },
+
+  // Zhipu ChatGLM
+  { id: 'glm-4.5', name: 'GLM-4.5', version: '4.5', provider: 'zhipu', brandName: 'ChatGLM' },
 ]

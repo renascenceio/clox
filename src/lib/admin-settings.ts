@@ -77,3 +77,26 @@ export function setProviderApiKey(providerId: string, apiKey: string, apiSecret?
   if (baseUrl) settings.providers[providerId].baseUrl = baseUrl
   saveAdminSettings(settings)
 }
+
+/**
+ * A provider is considered "available" when it is both enabled AND has an API key configured.
+ * Use this for user-facing dropdowns so only providers that can actually be used are shown.
+ */
+export function isProviderConfigured(providerId: string): boolean {
+  const settings = getAdminSettings()
+  const entry = settings.providers[providerId]
+  if (!entry) return false
+  const enabled = entry.enabled ?? true
+  const hasKey = Boolean(entry.apiKey && entry.apiKey.trim().length > 0)
+  return enabled && hasKey
+}
+
+/**
+ * Filter a list of models (text/image/video/audio) to only those whose provider
+ * is both enabled and has an API key set. Returns the original list as a
+ * fallback when nothing is configured yet so the UI is never empty during setup.
+ */
+export function filterAvailableModels<T extends { provider: string }>(models: T[]): T[] {
+  const available = models.filter(m => isProviderConfigured(m.provider))
+  return available.length > 0 ? available : models
+}

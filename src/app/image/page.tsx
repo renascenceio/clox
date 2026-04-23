@@ -4,17 +4,26 @@ import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
 import UnifiedControlsPanel from '@/shared/ui/layout/UnifiedControlsPanel'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { IMAGE_MODELS, ASPECT_RATIOS, QUALITY_LEVELS, STYLE_PRESETS } from '@/domains/image-generation/services/image-models'
 import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
+import { useAvailableModels } from '@/lib/use-available-models'
 
 type AIType = 'text' | 'image' | 'video' | 'audio'
 
 export default function ImagePage() {
   const router = useRouter()
-  const [selectedModel, setSelectedModel] = useState<typeof IMAGE_MODELS[number]>(IMAGE_MODELS[0])
+  const availableModels = useAvailableModels(IMAGE_MODELS)
+  const [selectedModel, setSelectedModel] = useState<typeof IMAGE_MODELS[number]>(availableModels[0] ?? IMAGE_MODELS[0])
+
+  // Ensure selected model stays valid when admin toggles providers
+  useEffect(() => {
+    if (!availableModels.find(m => m.id === selectedModel.id)) {
+      if (availableModels[0]) setSelectedModel(availableModels[0])
+    }
+  }, [availableModels, selectedModel.id])
   const [selectedRatio, setSelectedRatio] = useState('1:1')
   const [selectedQuality, setSelectedQuality] = useState('hd')
   const [selectedStyle, setSelectedStyle] = useState('photorealistic')
@@ -103,7 +112,7 @@ export default function ImagePage() {
   const settingsPanel = (
     <UnifiedControlsPanel
       type="image"
-      models={IMAGE_MODELS}
+      models={availableModels}
       selectedModel={selectedModel}
       onModelChange={(model) => setSelectedModel(model as typeof IMAGE_MODELS[number])}
       aspectRatios={ASPECT_RATIOS}
@@ -205,12 +214,28 @@ export default function ImagePage() {
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
                    <p className="text-white text-xs line-clamp-2 mb-3">{gen.prompt}</p>
                    <div className="flex gap-2">
-                      <button className="flex-grow h-8 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-lg text-white text-[11px] font-medium transition-colors">
+                      <button
+                        onClick={() => {
+                          setPrompt(gen.prompt)
+                          setTimeout(() => document.querySelector<HTMLTextAreaElement>('textarea')?.focus(), 50)
+                        }}
+                        className="flex-grow h-8 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-lg text-white text-[11px] font-medium transition-colors"
+                      >
+                        Reply / Refine
+                      </button>
+                      <button
+                        onClick={() => {
+                          const raw = localStorage.getItem('clox_image_gallery')
+                          const existing = raw ? JSON.parse(raw) : []
+                          localStorage.setItem('clox_image_gallery', JSON.stringify([gen, ...existing]))
+                        }}
+                        className="flex-grow h-8 bg-apple-teal/80 hover:bg-apple-teal backdrop-blur-md rounded-lg text-white text-[11px] font-medium transition-colors"
+                      >
                         Save to Gallery
                       </button>
-                      <button className="w-8 h-8 flex items-center justify-center bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-lg text-white transition-colors">
+                      <a href={gen.url} download className="w-8 h-8 flex items-center justify-center bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-lg text-white transition-colors">
                         ↓
-                      </button>
+                      </a>
                    </div>
                 </div>
               </motion.div>
