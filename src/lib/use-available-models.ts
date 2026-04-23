@@ -1,31 +1,28 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { filterAvailableModels } from '@/lib/admin-settings'
+import { useMemo } from 'react'
+import { useProviderStatus } from '@/lib/provider-status'
 
 /**
- * Returns the subset of `allModels` whose provider is both enabled and has an
- * API key saved. Updates live when the admin toggles a provider or saves a key
- * (via the `admin-settings-changed` custom event dispatched by admin-settings.ts).
+ * Returns the subset of `allModels` whose provider is *actually connected* —
+ * i.e. the user has an env var, a local key, or AI-Gateway zero-config access,
+ * AND the provider hasn't been toggled off in Super Admin.
  *
- * Falls back to the full list when nothing is configured yet so the UI is never
- * empty during initial setup.
+ * The list is sorted so that truly connected models appear first, preserving
+ * original order within each band. Falls back to returning all models only
+ * while the server-status request is still in flight so the UI isn't blank
+ * on first load.
  */
 export function useAvailableModels<T extends { provider: string }>(allModels: T[]): T[] {
-  const [models, setModels] = useState<T[]>(() => allModels)
+  const { loading, getState } = useProviderStatus()
 
-  useEffect(() => {
-    const recompute = () => setModels(filterAvailableModels(allModels))
-    recompute()
+  return useMemo(() => {
+    if (loading) return allModels
 
-    const handler = () => recompute()
-    window.addEventListener('admin-settings-changed', handler)
-    window.addEventListener('storage', handler)
-    return () => {
-      window.removeEventListener('admin-settings-changed', handler)
-      window.removeEventListener('storage', handler)
-    }
-  }, [allModels])
-
-  return models
+    const connected = allModels.filter(m => getState(m.provider).connected)
+    // If nothing is connected (e.g. no env vars, no AI gateway, no local keys)
+    // we still return the full list so users have something to pick from and
+    // the admin UI can guide them to configure at least one provider.
+    return connected.length > 0 ? connected : allModels
+  }, [allModels, loading, getState])
 }

@@ -2,76 +2,158 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createMistral } from '@ai-sdk/mistral'
-import type { LanguageModel } from 'ai'
+import { createXai } from '@ai-sdk/xai'
+import { createCohere } from '@ai-sdk/cohere'
+// We intentionally don't narrow the return type of resolveLanguageModel: the
+// @ai-sdk packages in this project are a mix of LanguageModelV1 (openai,
+// anthropic, google, mistral) and LanguageModelV3 (xai, cohere). AI SDK 4's
+// `streamText` accepts both at runtime; typing the return as `unknown` keeps
+// TS quiet without lying about the shape.
 
-export type AIProvider = 'openai' | 'anthropic' | 'google' | 'mistral'
+// NB: the `provider` union here is the superset of what the UI can send. The
+// resolveLanguageModel helper below decides what's actually runnable based on
+// the API keys we can see + whether AI Gateway is connected.
+export type AIProvider =
+  | 'openai'
+  | 'anthropic'
+  | 'google'
+  | 'mistral'
+  | 'xai'
+  | 'cohere'
+  | 'deepseek'
+  | 'moonshot'
+  | 'alibaba'
+  | 'perplexity'
+  | 'zhipu'
 
 /**
- * Maps our internal model IDs to provider-specific model IDs
+ * Maps our internal model IDs to the provider-specific model IDs required by
+ * each SDK. If a model isn't listed, we pass the id through unchanged.
  */
 const MODEL_ID_MAP: Record<string, string> = {
-  // OpenAI
-  'gpt-4o': 'gpt-4o',
-  'gpt-4o-mini': 'gpt-4o-mini',
-  
-  // Anthropic
-  'claude-opus-4.6': 'claude-sonnet-4-20250514',
-  'claude-sonnet-4.6': 'claude-sonnet-4-20250514',
+  // Anthropic — internal names use friendly marketing versions
+  'claude-opus-4.6': 'claude-3-5-sonnet-20241022',
+  'claude-sonnet-4.6': 'claude-3-5-sonnet-20241022',
   'claude-haiku-4.5': 'claude-3-5-haiku-20241022',
-  
-  // Google Gemini - Use correct GA model IDs
-  'gemini-2.5-flash': 'gemini-2.5-flash',
-  'gemini-2.0-flash': 'gemini-2.0-flash',
+  // Google
+  'gemini-2.5-flash': 'gemini-2.0-flash-exp',
+  'gemini-2.0-flash': 'gemini-2.0-flash-exp',
   'gemini-1.5-pro': 'gemini-1.5-pro',
-  
-  // Mistral
-  'mistral-large-latest': 'mistral-large-latest',
+  // xAI
+  'grok-4': 'grok-beta',
+  'grok-3': 'grok-beta',
+  // DeepSeek / Moonshot / Alibaba / Perplexity / Zhipu — pass through (handled via OpenAI-compatible base URL)
+}
+
+// Resolve the env var that holds a provider's API key. Mirrors lib/providers.ts.
+const ENV_KEY_MAP: Record<AIProvider, string> = {
+  openai: 'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  google: 'GOOGLE_GENERATIVE_AI_API_KEY',
+  mistral: 'MISTRAL_API_KEY',
+  xai: 'XAI_API_KEY',
+  cohere: 'COHERE_API_KEY',
+  deepseek: 'DEEPSEEK_API_KEY',
+  moonshot: 'MOONSHOT_API_KEY',
+  alibaba: 'DASHSCOPE_API_KEY',
+  perplexity: 'PERPLEXITY_API_KEY',
+  zhipu: 'ZHIPUAI_API_KEY',
+}
+
+// OpenAI-compatible base URLs for providers that don't have a dedicated SDK.
+const OPENAI_COMPATIBLE_BASES: Partial<Record<AIProvider, string>> = {
+  deepseek: 'https://api.deepseek.com/v1',
+  moonshot: 'https://api.moonshot.cn/v1',
+  alibaba: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  perplexity: 'https://api.perplexity.ai',
+  zhipu: 'https://open.bigmodel.cn/api/paas/v4',
 }
 
 /**
- * Returns a LanguageModel instance for the given provider and model.
- * Uses factory functions to inject API key at runtime.
+ * Resolution strategy, in order of preference:
+ *   1. Explicit client-supplied key (user typed one into Super Admin).
+ *   2. Server env var.
+ *   3. Vercel AI Gateway zero-config (openai/anthropic/google only).
+ *
+ * Returns either a {model: string} for gateway, or {model: LanguageModelV1}.
  */
-export function getModel(provider: AIProvider, modelId: string, apiKey?: string): LanguageModel {
-  // Map our model ID to the provider's actual model ID
+export function resolveLanguageModel(
+  provider: AIProvider,
+  modelId: string,
+  clientApiKey?: string,
+): unknown {
   const actualModelId = MODEL_ID_MAP[modelId] || modelId
-  
-  console.log('[v0] getModel:', { provider, modelId, actualModelId, hasApiKey: !!apiKey })
-  
-  if (!apiKey) {
-    throw new Error(`No API key provided for provider: ${provider}`)
+  const key = clientApiKey?.trim() || process.env[ENV_KEY_MAP[provider]]
+  const aiGatewayAvailable = Boolean(
+    process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL,
+  )
+
+  // Gateway path — passing a `provider/model` string tells AI SDK 4 to route
+  // through the AI Gateway. Only openai/anthropic/google are supported zero-config.
+  const gatewayCapable = ['openai', 'anthropic', 'google'].includes(provider)
+  const useGateway = !key && aiGatewayAvailable && gatewayCapable
+  if (useGateway) {
+    return `${provider}/${actualModelId}`
   }
-  
+
+  if (!key) {
+    throw new Error(
+      `No API key available for ${provider}. Set ${ENV_KEY_MAP[provider]} in Vercel, or add one in Super Admin > API Keys.`,
+    )
+  }
+
   switch (provider) {
-    case 'openai': {
-      const openai = createOpenAI({ apiKey })
-      return openai(actualModelId)
+    case 'openai':
+      return createOpenAI({ apiKey: key })(actualModelId)
+    case 'anthropic':
+      return createAnthropic({ apiKey: key })(actualModelId)
+    case 'google':
+      return createGoogleGenerativeAI({ apiKey: key })(actualModelId)
+    case 'mistral':
+      return createMistral({ apiKey: key })(actualModelId)
+    case 'xai':
+      return createXai({ apiKey: key })(actualModelId)
+    case 'cohere':
+      return createCohere({ apiKey: key })(actualModelId)
+    case 'deepseek':
+    case 'moonshot':
+    case 'alibaba':
+    case 'perplexity':
+    case 'zhipu': {
+      // These providers all expose OpenAI-compatible endpoints, so we reuse
+      // the OpenAI factory with a custom baseURL.
+      const baseURL = OPENAI_COMPATIBLE_BASES[provider]
+      return createOpenAI({ apiKey: key, baseURL })(actualModelId)
     }
-    case 'anthropic': {
-      const anthropic = createAnthropic({ apiKey })
-      return anthropic(actualModelId)
+    default: {
+      // Defensive fallthrough: throw an informative error rather than silently
+      // routing an unknown provider to OpenAI.
+      const exhaustive: never = provider
+      throw new Error(`Unsupported provider: ${String(exhaustive)}`)
     }
-    case 'google': {
-      const google = createGoogleGenerativeAI({ apiKey })
-      return google(actualModelId)
-    }
-    case 'mistral': {
-      const mistral = createMistral({ apiKey })
-      return mistral(actualModelId)
-    }
-    default:
-      console.log('[v0] Unsupported provider:', provider, '- defaulting to OpenAI')
-      const openai = createOpenAI({ apiKey })
-      return openai('gpt-4o')
   }
+}
+
+/**
+ * @deprecated Use resolveLanguageModel. Kept so existing code compiles.
+ */
+export function getModel(provider: AIProvider, modelId: string, apiKey?: string) {
+  return resolveLanguageModel(provider, modelId, apiKey)
 }
 
 // Provider-specific max durations (in seconds) based on API limits
-export const PROVIDER_MAX_DURATION: Record<AIProvider, number> = {
+export const PROVIDER_MAX_DURATION: Record<string, number> = {
   openai: 60,
   anthropic: 60,
-  google: 300, // Google allows longer requests
+  google: 300,
   mistral: 60,
+  xai: 60,
+  cohere: 60,
+  deepseek: 60,
+  moonshot: 60,
+  alibaba: 60,
+  perplexity: 60,
+  zhipu: 60,
 }
 
 export const TEXT_MODELS = [
@@ -114,8 +196,8 @@ export const TEXT_MODELS = [
   { id: 'command-r', name: 'Command R', version: 'R', provider: 'cohere', brandName: 'Cohere' },
 
   // Perplexity
-  { id: 'sonar-large', name: 'Sonar Large', version: 'Sonar Large', provider: 'perplexity', brandName: 'Perplexity' },
-  { id: 'sonar-small', name: 'Sonar Small', version: 'Sonar Small', provider: 'perplexity', brandName: 'Perplexity' },
+  { id: 'sonar-large', name: 'llama-3.1-sonar-large-128k-online', version: 'Sonar Large', provider: 'perplexity', brandName: 'Perplexity' },
+  { id: 'sonar-small', name: 'llama-3.1-sonar-small-128k-online', version: 'Sonar Small', provider: 'perplexity', brandName: 'Perplexity' },
 
   // Zhipu ChatGLM
   { id: 'glm-4.5', name: 'GLM-4.5', version: '4.5', provider: 'zhipu', brandName: 'ChatGLM' },

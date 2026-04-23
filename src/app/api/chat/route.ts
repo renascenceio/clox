@@ -1,53 +1,67 @@
 import { streamText } from 'ai'
-import { getModel, AIProvider } from '@/domains/text-generation/services/model-router'
+import { resolveLanguageModel, AIProvider } from '@/domains/text-generation/services/model-router'
 
-export const maxDuration = 30
+export const maxDuration = 60
 
 export async function POST(req: Request) {
   let requestData
-  
   try {
     requestData = await req.json()
   } catch (e) {
-    console.error('[v0] Failed to parse request body:', e)
+    console.error('[v0] Failed to parse chat request body:', e)
     return new Response('Invalid request body', { status: 400 })
   }
-  
-  const { messages, model, provider, temperature = 0.7, maxTokens = 2048, systemPrompt, apiKey } = requestData
 
-  console.log('[v0] Chat API called:', { 
-    provider, 
-    model, 
-    hasApiKey: !!apiKey,
-    apiKeyLength: apiKey?.length || 0,
-    messagesCount: messages?.length || 0
+  const {
+    messages,
+    model,
+    provider,
+    temperature = 0.7,
+    maxTokens = 2048,
+    systemPrompt,
+    apiKey,
+  }: {
+    messages: unknown[]
+    model: string
+    provider: AIProvider
+    temperature?: number
+    maxTokens?: number
+    systemPrompt?: string
+    apiKey?: string
+  } = requestData
+
+  console.log('[v0] /api/chat:', {
+    provider,
+    model,
+    hasClientKey: Boolean(apiKey),
+    messagesCount: Array.isArray(messages) ? messages.length : 0,
   })
 
-  if (!apiKey) {
-    console.error('[v0] No API key provided for provider:', provider)
-    return new Response(`No API key configured for ${provider}. Please add your API key in Admin > API Keys.`, { status: 400 })
-  }
-
   try {
-    // Get the LanguageModel instance for this provider with the API key from admin settings
-    console.log('[v0] Getting model for provider:', provider, 'model:', model)
-    const languageModel = getModel(provider as AIProvider, model, apiKey)
-    console.log('[v0] Got language model, starting streamText')
+    // Pick the best way to actually run this model: client key > env var > AI Gateway.
+    const resolved = resolveLanguageModel(provider, model, apiKey)
+    console.log(
+      '[v0] resolved model via:',
+      typeof resolved === 'string' ? `gateway (${resolved})` : 'provider SDK',
+    )
 
-    const result = await streamText({
-      model: languageModel,
-      messages: systemPrompt ? [{ role: 'system', content: systemPrompt }, ...messages] : messages,
+    const result = streamText({
+      // The AI SDK 4 `model` field accepts either a LanguageModelV1 instance or
+      // a gateway model-id string like `openai/gpt-4o`.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      model: resolved as any,
+      messages: systemPrompt
+        ? [{ role: 'system', content: systemPrompt }, ...(messages as never[])]
+        : (messages as never[]),
       temperature,
       maxTokens,
     })
 
-    console.log('[v0] streamText completed, returning response')
     return result.toDataStreamResponse()
   } catch (error) {
-    console.error('[v0] Error in chat API:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    const errorStack = error instanceof Error ? error.stack : ''
-    console.error('[v0] Error details:', { errorMessage, errorStack })
-    return new Response(`Error: ${errorMessage}`, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unknown chat error'
+    console.error('[v0] /api/chat error:', message)
+    // Return a structured error the client can show inline.
+    return Response.json({ error: message }, { status: 400 })
   }
 }
