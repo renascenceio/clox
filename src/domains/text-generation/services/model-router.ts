@@ -28,21 +28,18 @@ export type AIProvider =
 
 /**
  * Maps our internal model IDs to the provider-specific model IDs required by
- * each SDK. If a model isn't listed, we pass the id through unchanged.
+ * each SDK's direct path. We deliberately keep this MINIMAL and prefer to pass
+ * ids through unchanged, because hardcoded names drift every time a provider
+ * ships a new model family (e.g. `claude-3-5-sonnet-20241022` is long dead).
+ * When the AI Gateway is available we bypass this map entirely — the gateway
+ * keeps its own up-to-date catalog and tolerates friendly names like
+ * `claude-sonnet-4.6` or `gemini-2.5-flash`.
+ *
+ * Only add an entry here if our UI ID is a synthetic label that *cannot* be
+ * sent directly to the provider API.
  */
 const MODEL_ID_MAP: Record<string, string> = {
-  // Anthropic — internal names use friendly marketing versions
-  'claude-opus-4.6': 'claude-3-5-sonnet-20241022',
-  'claude-sonnet-4.6': 'claude-3-5-sonnet-20241022',
-  'claude-haiku-4.5': 'claude-3-5-haiku-20241022',
-  // Google
-  'gemini-2.5-flash': 'gemini-2.0-flash-exp',
-  'gemini-2.0-flash': 'gemini-2.0-flash-exp',
-  'gemini-1.5-pro': 'gemini-1.5-pro',
-  // xAI
-  'grok-4': 'grok-beta',
-  'grok-3': 'grok-beta',
-  // DeepSeek / Moonshot / Alibaba / Perplexity / Zhipu — pass through (handled via OpenAI-compatible base URL)
+  // (Intentionally empty — we pass UI ids straight through.)
 }
 
 // Resolve the env var(s) that hold a provider's API key. Mirrors lib/providers.ts.
@@ -92,12 +89,33 @@ const OPENAI_COMPATIBLE_BASES: Partial<Record<AIProvider, string>> = {
 }
 
 /**
- * Resolution strategy, in order of preference:
- *   1. Explicit client-supplied key (user typed one into Super Admin).
- *   2. Server env var.
- *   3. Vercel AI Gateway zero-config (openai/anthropic/google only).
+ * Which providers can be routed through the Vercel AI Gateway.
  *
- * Returns either a {model: string} for gateway, or {model: LanguageModelV1}.
+ *   - OpenAI / Anthropic / Google work *zero-config* on Vercel (no AI_GATEWAY_API_KEY required).
+ *   - Everything else listed here works through the gateway as long as
+ *     AI_GATEWAY_API_KEY is present. The gateway handles auth / billing.
+ *
+ * Keeping this list in one place also means if a provider is added to the
+ * gateway later we just append it here.
+ */
+const GATEWAY_ZERO_CONFIG: AIProvider[] = ['openai', 'anthropic', 'google']
+const GATEWAY_WITH_KEY: AIProvider[] = [
+  'openai', 'anthropic', 'google',
+  'mistral', 'xai', 'cohere', 'deepseek', 'perplexity',
+]
+
+/**
+ * Resolution strategy, in priority order:
+ *
+ *   1. Explicit client-supplied key → use the provider SDK directly.
+ *      (User typed a key into Super Admin — respect that override.)
+ *   2. AI Gateway → when available for this provider. The gateway keeps
+ *      track of current model IDs, so friendly names like `claude-sonnet-4.6`
+ *      or `gemini-2.5-flash` Just Work without us maintaining a map.
+ *   3. Server env var → direct provider SDK as a fallback.
+ *
+ * Returns either a gateway model string (e.g. `openai/gpt-4o`) or a
+ * LanguageModel instance from one of the @ai-sdk packages.
  */
 export function resolveLanguageModel(
   provider: AIProvider,
@@ -105,39 +123,55 @@ export function resolveLanguageModel(
   clientApiKey?: string,
 ): unknown {
   const actualModelId = MODEL_ID_MAP[modelId] || modelId
-  const key = clientApiKey?.trim() || envKeyFor(provider)
-  const aiGatewayAvailable = Boolean(
-    process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL,
-  )
+  const clientKey = clientApiKey?.trim() || undefined
+  const envKey = envKeyFor(provider)
 
-  // Gateway path — passing a `provider/model` string tells AI SDK 4 to route
-  // through the AI Gateway. Only openai/anthropic/google are supported zero-config.
-  const gatewayCapable = ['openai', 'anthropic', 'google'].includes(provider)
-  const useGateway = !key && aiGatewayAvailable && gatewayCapable
-  if (useGateway) {
+  // Gateway is usable when either (a) the provider is zero-config and we're
+  // on Vercel, or (b) AI_GATEWAY_API_KEY is set and the provider is on the
+  // gateway catalog.
+  const gatewayUsable =
+    (GATEWAY_ZERO_CONFIG.includes(provider) && Boolean(process.env.VERCEL)) ||
+    (GATEWAY_WITH_KEY.includes(provider) && Boolean(process.env.AI_GATEWAY_API_KEY))
+
+  // Priority 1 — explicit client key overrides everything so the user's
+  // Super Admin entry always takes effect.
+  if (clientKey) {
+    return buildDirectModel(provider, actualModelId, clientKey)
+  }
+
+  // Priority 2 — gateway. Preferred over env-var-direct because the gateway
+  // catalog is kept current, avoiding the stale-model-id class of bugs.
+  if (gatewayUsable) {
     return `${provider}/${actualModelId}`
   }
 
-  if (!key) {
-    const names = ENV_KEY_MAP[provider].join(' or ')
-    throw new Error(
-      `No API key available for ${provider}. Set ${names} in Vercel, or add one in Super Admin > API Keys.`,
-    )
+  // Priority 3 — env var + direct SDK.
+  if (envKey) {
+    return buildDirectModel(provider, actualModelId, envKey)
   }
 
+  const names = ENV_KEY_MAP[provider].join(' or ')
+  throw new Error(
+    `No API key available for ${provider}. Set ${names} in Vercel, ` +
+      `enable the AI Gateway with AI_GATEWAY_API_KEY, or add a key in Super Admin > API Keys.`,
+  )
+}
+
+/** Build a LanguageModel instance from the right @ai-sdk package. */
+function buildDirectModel(provider: AIProvider, modelId: string, key: string): unknown {
   switch (provider) {
     case 'openai':
-      return createOpenAI({ apiKey: key })(actualModelId)
+      return createOpenAI({ apiKey: key })(modelId)
     case 'anthropic':
-      return createAnthropic({ apiKey: key })(actualModelId)
+      return createAnthropic({ apiKey: key })(modelId)
     case 'google':
-      return createGoogleGenerativeAI({ apiKey: key })(actualModelId)
+      return createGoogleGenerativeAI({ apiKey: key })(modelId)
     case 'mistral':
-      return createMistral({ apiKey: key })(actualModelId)
+      return createMistral({ apiKey: key })(modelId)
     case 'xai':
-      return createXai({ apiKey: key })(actualModelId)
+      return createXai({ apiKey: key })(modelId)
     case 'cohere':
-      return createCohere({ apiKey: key })(actualModelId)
+      return createCohere({ apiKey: key })(modelId)
     case 'deepseek':
     case 'moonshot':
     case 'alibaba':
@@ -146,7 +180,7 @@ export function resolveLanguageModel(
       // These providers all expose OpenAI-compatible endpoints, so we reuse
       // the OpenAI factory with a custom baseURL.
       const baseURL = OPENAI_COMPATIBLE_BASES[provider]
-      return createOpenAI({ apiKey: key, baseURL })(actualModelId)
+      return createOpenAI({ apiKey: key, baseURL })(modelId)
     }
     default: {
       // Defensive fallthrough: throw an informative error rather than silently
