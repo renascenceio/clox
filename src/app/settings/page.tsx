@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
 import Avatar from '@/shared/ui/components/Avatar'
+import { getChatById, setActiveChatId } from '@/lib/chat-store'
 
 const USE_CASES = [
   'Content Creation', 'Software Development', 'Research & Analysis',
@@ -141,7 +142,17 @@ export default function SettingsPage() {
   const selectClass = inputClass + ' cursor-pointer'
   const labelClass = 'block text-xs font-bold text-label-tertiary uppercase tracking-wider mb-1.5'
 
-  const sidebar = <ChatSidebar />
+  // Clicking a chat in the sidebar from the settings page should deep-link
+  // back into the originating workspace (text / image / video / audio), with
+  // that chat marked active so its messages or generations load immediately.
+  const handleChatSelectFromSettings = (chatId: string) => {
+    const chat = getChatById(chatId)
+    const modality = chat?.modality ?? 'text'
+    setActiveChatId(modality, chatId)
+    router.push(`/${modality}`)
+  }
+
+  const sidebar = <ChatSidebar onChatSelect={handleChatSelectFromSettings} />
 
   return (
     <AppLayout sidebar={sidebar}>

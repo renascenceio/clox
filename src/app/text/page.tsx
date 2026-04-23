@@ -9,6 +9,12 @@ import ReactMarkdown from 'react-markdown'
 import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
 import { useRouter } from 'next/navigation'
 import { getAdminSettings } from '@/lib/admin-settings'
+import {
+  getActiveChatId,
+  setActiveChatId as persistActiveChatId,
+  ensureActiveChat,
+  touchChat,
+} from '@/lib/chat-store'
 
 type AIType = 'text' | 'image' | 'video' | 'audio'
 
@@ -23,12 +29,17 @@ export default function TextPage() {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(2048)
-  const [activeChatId, setActiveChatId] = useState(() => {
-    // Load from localStorage or use default
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('activeChatId') || 'default-chat'
-    }
-    return 'default-chat'
+  // Active chat id for the text workspace. Stored per-modality so each
+  // workspace preserves its own most-recently-open chat and can be routed
+  // into from anywhere (e.g. the settings page "Recent Activity" list).
+  const [activeChatId, setActiveChatId] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'default-chat'
+    return (
+      getActiveChatId('text') ||
+      // Back-compat: migrate the previous single-bucket key once.
+      localStorage.getItem('activeChatId') ||
+      'default-chat'
+    )
   })
 
   // Load chat-specific settings when activeChatId changes
@@ -198,15 +209,31 @@ export default function TextPage() {
     }
   }
 
-  // Handle chat selection from sidebar
+  // Handle chat selection from sidebar (or routed in from settings page)
   const handleChatSelect = (chatId: string) => {
-    console.log('[v0] Chat selected:', chatId)
     setActiveChatId(chatId)
-    localStorage.setItem('activeChatId', chatId)
+    persistActiveChatId('text', chatId)
+  }
+
+  // Wrap handleSubmit so the very first send in a fresh session lazily creates
+  // a chat entry (titled from the prompt) in the sidebar's shared store.
+  const handleSubmitWithChat = (e: React.FormEvent<HTMLFormElement>) => {
+    const promptText = (input || '').trim()
+    if (promptText) {
+      const chat = ensureActiveChat('text', promptText, selectedModel.name)
+      if (chat.id !== activeChatId) {
+        setActiveChatId(chat.id)
+        persistActiveChatId('text', chat.id)
+      } else {
+        // Keep the sidebar title in sync with the latest model on subsequent sends.
+        touchChat(chat.id, { model: selectedModel.name })
+      }
+    }
+    handleSubmit(e)
   }
 
   const sidebar = (
-    <ChatSidebar activeChatId={activeChatId} onChatSelect={handleChatSelect} />
+    <ChatSidebar modality="text" activeChatId={activeChatId} onChatSelect={handleChatSelect} />
   )
 
   const aiTypeIcons = {
@@ -410,7 +437,7 @@ export default function TextPage() {
               </div>
 
               {/* Message Input Form */}
-              <form onSubmit={handleSubmit} className="relative">
+              <form onSubmit={handleSubmitWithChat} className="relative">
                 <textarea
                   value={input}
                   onChange={handleInputChange}
@@ -421,7 +448,7 @@ export default function TextPage() {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
                       const formEvent = new Event('submit', { cancelable: true }) as unknown as React.FormEvent<HTMLFormElement>;
-                      handleSubmit(formEvent)
+                      handleSubmitWithChat(formEvent)
                     }
                   }}
                 />

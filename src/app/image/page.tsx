@@ -1,7 +1,7 @@
 'use client'
 
 import AppLayout from '@/shared/ui/layout/AppLayout'
-import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
+import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
 import UnifiedControlsPanel from '@/shared/ui/layout/UnifiedControlsPanel'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect } from 'react'
@@ -10,8 +10,24 @@ import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useAvailableModels } from '@/lib/use-available-models'
+import {
+  getActiveChatId,
+  setActiveChatId as persistActiveChatId,
+  ensureActiveChat,
+  touchChat,
+  loadHistory,
+  saveHistory,
+} from '@/lib/chat-store'
 
 type AIType = 'text' | 'image' | 'video' | 'audio'
+
+interface Generation {
+  id: string
+  url: string
+  prompt: string
+  model: string
+  ratio: string
+}
 
 export default function ImagePage() {
   const router = useRouter()
@@ -29,13 +45,41 @@ export default function ImagePage() {
   const [selectedStyle, setSelectedStyle] = useState('photorealistic')
   const [activeAIType, setActiveAIType] = useState<AIType>('image')
   const [prompt, setPrompt] = useState('')
-  const [generations, setGenerations] = useState<{ id: string; url: string; prompt: string; model: string; ratio: string }[]>([])
+  const [generations, setGenerations] = useState<Generation[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+
+  // Per-modality active chat — persisted across navigations so the sidebar
+  // highlights the right chat and "Recent Activity" elsewhere can deep-link in.
+  const [activeChatId, setActiveChatIdState] = useState<string | null>(null)
+
+  // Hydrate active chat + its saved generations on mount and keep them synced
+  // when the user switches chats via the sidebar.
+  useEffect(() => {
+    const id = getActiveChatId('image')
+    setActiveChatIdState(id)
+    setGenerations(loadHistory<Generation>('image', id))
+  }, [])
+
+  const handleChatSelect = (chatId: string) => {
+    setActiveChatIdState(chatId)
+    persistActiveChatId('image', chatId)
+    setGenerations(loadHistory<Generation>('image', chatId))
+  }
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!prompt.trim() || isGenerating) return
+
+    // Lazily create a chat on the first generation so the sidebar shows
+    // something meaningful immediately.
+    const chat = ensureActiveChat('image', prompt, selectedModel.brandName)
+    if (chat.id !== activeChatId) {
+      setActiveChatIdState(chat.id)
+      persistActiveChatId('image', chat.id)
+    } else {
+      touchChat(chat.id, { model: selectedModel.brandName })
+    }
 
     setIsGenerating(true)
     try {
@@ -57,9 +101,7 @@ export default function ImagePage() {
         throw new Error(data.error || 'Failed to generate image')
       }
 
-      console.log('[v0] Image generated:', data.url)
-
-      setGenerations([
+      const next: Generation[] = [
         {
           id: Date.now().toString(),
           url: data.url,
@@ -67,8 +109,10 @@ export default function ImagePage() {
           model: selectedModel.name,
           ratio: selectedRatio,
         },
-        ...generations
-      ])
+        ...generations,
+      ]
+      setGenerations(next)
+      saveHistory('image', chat.id, next)
       setPrompt('')
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to generate image'
@@ -128,11 +172,11 @@ export default function ImagePage() {
   )
 
   const sidebar = (
-    <ChatSidebar>
-       <SidebarItem id="futuristic-city" title="Futuristic city" active />
-       <SidebarItem id="cyberpunk-cat" title="Cyberpunk cat" />
-       <SidebarItem id="minimalist-logo" title="Minimalist logo" />
-    </ChatSidebar>
+    <ChatSidebar
+      modality="image"
+      activeChatId={activeChatId ?? undefined}
+      onChatSelect={handleChatSelect}
+    />
   )
 
   return (
@@ -156,7 +200,7 @@ export default function ImagePage() {
               onClick={() => setErrorMessage('')}
               className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
             >
-              ✕
+              &times;
             </button>
           </motion.div>
         )}
@@ -169,7 +213,7 @@ export default function ImagePage() {
             className="mb-8 flex justify-start"
           >
             <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full gradient-brown-teal flex items-center justify-center flex-shrink-0 shadow-brown-glow">
+              <div className="w-8 h-8 rounded-full gradient-mint-teal flex items-center justify-center flex-shrink-0 shadow-mint-glow">
                 <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
@@ -177,9 +221,9 @@ export default function ImagePage() {
               <div className="bg-surface-tertiary/60 dark:bg-surface/60 rounded-hig-xl px-4 py-3 border border-separator/30">
                 <div className="flex items-center gap-2 text-sm text-label-secondary">
                   <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                    <span className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                    <span className="w-2 h-2 bg-brown dark:bg-teal rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    <span className="w-2 h-2 bg-mint rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-2 h-2 bg-mint rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-2 h-2 bg-mint rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                   </div>
                   <span className="text-xs font-medium text-label-tertiary ml-2">
                     {selectedModel.name} is generating...
@@ -234,7 +278,7 @@ export default function ImagePage() {
                         Save to Gallery
                       </button>
                       <a href={gen.url} download className="w-8 h-8 flex items-center justify-center bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-lg text-white transition-colors">
-                        ↓
+                        {'\u2193'}
                       </a>
                    </div>
                 </div>
@@ -256,7 +300,7 @@ export default function ImagePage() {
                     onClick={() => handleAITypeChange(type)}
                     className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-bold text-xs uppercase tracking-wider transition-all border-b-2 ${
                       activeAIType === type
-                        ? 'border-brown dark:border-teal bg-white dark:bg-[#2C2C2E] text-brown dark:text-teal'
+                        ? 'border-mint bg-white dark:bg-[#2C2C2E] text-mint'
                         : 'border-transparent text-label-tertiary hover:text-label-primary hover:bg-white/30 dark:hover:bg-[#2C2C2E]/30'
                     }`}
                   >
@@ -285,7 +329,7 @@ export default function ImagePage() {
                 <button
                   type="submit"
                   disabled={isGenerating || !prompt?.trim()}
-                  className="absolute right-4 bottom-4 w-12 h-12 flex items-center justify-center gradient-brown-teal text-white rounded-hig-xl shadow-brown-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
+                  className="absolute right-4 bottom-4 w-12 h-12 flex items-center justify-center gradient-mint-teal text-white rounded-hig-xl shadow-mint-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
                 >
                   <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M8 3.33331V12.6666M8 3.33331L4 7.33331M8 3.33331L12 7.33331" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>

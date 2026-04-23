@@ -2,16 +2,12 @@
 
 import { motion } from 'framer-motion'
 import { ReactNode, useState, useEffect } from 'react'
-
-interface Chat {
-  id: string
-  title: string
-  model: string
-  createdAt: number
-  type: 'chat' | 'project'
-  folderId?: string
-  projectId?: string // For chats that belong to a project
-}
+import {
+  Chat,
+  Modality,
+  listChats as listChatsFromStore,
+  saveChats as saveChatsToStore,
+} from '@/lib/chat-store'
 
 interface ProjectSettings {
   id: string
@@ -31,13 +27,17 @@ interface ChatSidebarProps {
   children?: ReactNode
   activeChatId?: string
   onChatSelect?: (chatId: string) => void
+  /**
+   * When provided, the sidebar only shows chats whose `modality` matches, and
+   * new chats created from here are tagged with that modality. Omit the prop
+   * on pages that should see everything (e.g. the settings page).
+   */
+  modality?: Modality
 }
 
-// LocalStorage keys
-const CHATS_KEY = 'clox_chats'
 const FOLDERS_KEY = 'clox_folders'
 
-export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarProps) {
+export default function ChatSidebar({ activeChatId, onChatSelect, modality }: ChatSidebarProps) {
   const [search, setSearch] = useState('')
   const [chats, setChats] = useState<Chat[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
@@ -53,33 +53,41 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
     modelId: 'gemini-2.5-flash'
   })
 
-  // Load chats and folders from localStorage
+  // Load chats from the shared store and stay in sync with other workspaces.
   useEffect(() => {
-    const savedChats = localStorage.getItem(CHATS_KEY)
+    setChats(listChatsFromStore())
     const savedFolders = localStorage.getItem(FOLDERS_KEY)
-    if (savedChats) setChats(JSON.parse(savedChats))
     if (savedFolders) setFolders(JSON.parse(savedFolders))
+
+    const refresh = () => setChats(listChatsFromStore())
+    window.addEventListener('clox-chats-changed', refresh)
+    window.addEventListener('storage', refresh)
+    return () => {
+      window.removeEventListener('clox-chats-changed', refresh)
+      window.removeEventListener('storage', refresh)
+    }
   }, [])
 
-  // Save chats to localStorage
+  // Write-through helpers that keep local state and shared store aligned.
   const saveChats = (newChats: Chat[]) => {
     setChats(newChats)
-    localStorage.setItem(CHATS_KEY, JSON.stringify(newChats))
+    saveChatsToStore(newChats)
   }
 
-  // Save folders to localStorage
   const saveFolders = (newFolders: Folder[]) => {
     setFolders(newFolders)
     localStorage.setItem(FOLDERS_KEY, JSON.stringify(newFolders))
   }
 
   const handleNewChat = () => {
+    const m: Modality = modality ?? 'text'
     const newChat: Chat = {
-      id: `chat_${Date.now()}`,
+      id: `${m}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       title: 'New Chat',
-      model: 'Gemini 2.5 Flash',
+      model: m === 'text' ? 'Gemini 2.5 Flash' : '',
       createdAt: Date.now(),
-      type: 'chat'
+      type: 'chat',
+      modality: m,
     }
     saveChats([newChat, ...chats])
     setShowNewMenu(false)
@@ -87,12 +95,14 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
   }
 
   const handleNewProject = () => {
+    const m: Modality = modality ?? 'text'
     const newProject: Chat = {
-      id: `project_${Date.now()}`,
+      id: `project_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       title: 'New Project',
       model: '',
       createdAt: Date.now(),
-      type: 'project'
+      type: 'project',
+      modality: m,
     }
     saveChats([newProject, ...chats])
     setShowNewMenu(false)
@@ -179,8 +189,14 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
   const getChatsByProject = (projectId: string) => 
     chats.filter(c => c.projectId === projectId && c.type === 'chat')
 
+  // When `modality` is provided, only show chats belonging to that workspace.
+  // Legacy chats with no stored modality are treated as 'text' (see chat-store).
+  const chatsForModality = modality
+    ? chats.filter(c => (c.modality ?? 'text') === modality)
+    : chats
+
   // Filter chats by search - exclude chats in folders or projects
-  const filteredChats = chats.filter(c => 
+  const filteredChats = chatsForModality.filter(c =>
     c.title.toLowerCase().includes(search.toLowerCase()) && !c.folderId && !c.projectId
   )
 

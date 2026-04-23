@@ -1,7 +1,7 @@
 'use client'
 
 import AppLayout from '@/shared/ui/layout/AppLayout'
-import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
+import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
 import UnifiedControlsPanel from '@/shared/ui/layout/UnifiedControlsPanel'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useState } from 'react'
@@ -10,6 +10,14 @@ import { VIDEO_MODELS, VIDEO_ASPECT_RATIOS, VIDEO_DURATIONS } from '@/domains/vi
 import { useRouter } from 'next/navigation'
 import { useAvailableModels } from '@/lib/use-available-models'
 import { getProviderApiKey } from '@/lib/admin-settings'
+import {
+  getActiveChatId,
+  setActiveChatId as persistActiveChatId,
+  ensureActiveChat,
+  touchChat,
+  loadHistory,
+  saveHistory,
+} from '@/lib/chat-store'
 
 type AIType = 'text' | 'image' | 'video' | 'audio'
 
@@ -55,12 +63,26 @@ export default function VideoPage() {
   const [videos, setVideos] = useState<VideoClip[]>([])
   const [errorMessage, setErrorMessage] = useState('')
   const [activeAIType, setActiveAIType] = useState<AIType>('video')
+  const [activeChatId, setActiveChatIdState] = useState<string | null>(null)
 
   useEffect(() => {
     if (!availableModels.find(m => m.id === selectedModel.id) && availableModels[0]) {
       setSelectedModel(availableModels[0])
     }
   }, [availableModels, selectedModel.id])
+
+  // Hydrate active chat + saved generations on mount.
+  useEffect(() => {
+    const id = getActiveChatId('video')
+    setActiveChatIdState(id)
+    setVideos(loadHistory<VideoClip>('video', id))
+  }, [])
+
+  const handleChatSelect = (chatId: string) => {
+    setActiveChatIdState(chatId)
+    persistActiveChatId('video', chatId)
+    setVideos(loadHistory<VideoClip>('video', chatId))
+  }
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -70,6 +92,15 @@ export default function VideoPage() {
     if (!apiKey) {
       setErrorMessage(`No API key found for ${selectedModel.brandName}. Add one in Super Admin → API Keys.`)
       return
+    }
+
+    // Create a chat on first send so the sidebar + Recent Activity reflect it.
+    const chat = ensureActiveChat('video', prompt, selectedModel.brandName)
+    if (chat.id !== activeChatId) {
+      setActiveChatIdState(chat.id)
+      persistActiveChatId('video', chat.id)
+    } else {
+      touchChat(chat.id, { model: selectedModel.brandName })
     }
 
     setErrorMessage('')
@@ -98,7 +129,11 @@ export default function VideoPage() {
         duration: selectedDuration,
         createdAt: Date.now(),
       }
-      setVideos(prev => [clip, ...prev])
+      setVideos(prev => {
+        const next = [clip, ...prev]
+        saveHistory('video', chat.id, next)
+        return next
+      })
       setPrompt('')
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Video generation failed')
@@ -150,10 +185,11 @@ export default function VideoPage() {
   )
 
   const sidebar = (
-    <ChatSidebar>
-      <SidebarItem id="tokyo-walk" title="Walking in Tokyo" active />
-      <SidebarItem id="deep-sea" title="Deep sea exploration" />
-    </ChatSidebar>
+    <ChatSidebar
+      modality="video"
+      activeChatId={activeChatId ?? undefined}
+      onChatSelect={handleChatSelect}
+    />
   )
 
   return (
