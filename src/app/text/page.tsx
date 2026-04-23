@@ -9,6 +9,7 @@ import ReactMarkdown from 'react-markdown'
 import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
 import { useRouter } from 'next/navigation'
 import { getAdminSettings } from '@/lib/admin-settings'
+import { useAvailableModels } from '@/lib/use-available-models'
 import {
   getActiveChatId,
   setActiveChatId as persistActiveChatId,
@@ -21,8 +22,9 @@ type AIType = 'text' | 'image' | 'video' | 'audio'
 export default function TextPage() {
   const router = useRouter()
   
-  // Start with all models, will filter client-side
-  const [enabledModels, setEnabledModels] = useState(TEXT_MODELS)
+  // Use the shared hook so the dropdown reflects real provider availability
+  // (Vercel env vars, AI Gateway, or a local key saved in Super Admin).
+  const enabledModels = useAvailableModels(TEXT_MODELS)
   const [selectedModel, setSelectedModel] = useState<typeof TEXT_MODELS[number]>(TEXT_MODELS[0])
   const [selectedBrand, setSelectedBrand] = useState<string>(TEXT_MODELS[0].brandName || TEXT_MODELS[0].provider)
   const [activeAIType, setActiveAIType] = useState<AIType>('text')
@@ -75,55 +77,24 @@ export default function TextPage() {
     localStorage.setItem(`chat-settings-${activeChatId}`, JSON.stringify(settings))
   }, [activeChatId, selectedModel.id, systemPrompt, temperature, maxTokens])
   
-  // Compute the list of models whose provider is enabled AND has an API key.
-  // Falls back to the full list when nothing is configured yet so the UI is
-  // never empty during first-run setup.
+  // Keep the selected model valid as the list of available models updates
+  // (e.g. admin toggles a provider, saves a key, or we finish fetching server
+  // provider status). If the current selection is missing from the new list,
+  // fall back to the first available one.
   useEffect(() => {
-    const computeList = () => {
-      const settings = getAdminSettings()
-      const filtered = TEXT_MODELS.filter(model => {
-        const entry = settings.providers[model.provider]
-        const enabled = entry?.enabled ?? true
-        const hasKey = Boolean(entry?.apiKey && entry.apiKey.trim().length > 0)
-        return enabled && hasKey
-      })
-      return filtered.length > 0 ? filtered : TEXT_MODELS
+    if (enabledModels.length === 0) return
+    const savedModelId =
+      typeof window !== 'undefined' ? localStorage.getItem('selectedTextModelId') : null
+    const preferred = savedModelId
+      ? enabledModels.find(m => m.id === savedModelId)
+      : undefined
+    const current = enabledModels.find(m => m.id === selectedModel.id)
+    if (!current) {
+      const next = preferred || enabledModels[0]
+      setSelectedModel(next)
+      setSelectedBrand(next.brandName || next.provider)
     }
-
-    const applyList = (list: typeof TEXT_MODELS) => {
-      setEnabledModels(list)
-      // If the currently-selected model is no longer visible, switch to the first available.
-      if (!list.find(m => m.id === selectedModel.id)) {
-        setSelectedModel(list[0])
-        setSelectedBrand(list[0].brandName || list[0].provider)
-      }
-    }
-
-    // Initial load — honour the previously-chosen model from localStorage if it's still visible.
-    const initialList = computeList()
-    const savedModelId = typeof window !== 'undefined' ? localStorage.getItem('selectedTextModelId') : null
-    if (savedModelId) {
-      const savedModel = initialList.find(m => m.id === savedModelId)
-      if (savedModel) {
-        setEnabledModels(initialList)
-        setSelectedModel(savedModel)
-        setSelectedBrand(savedModel.brandName || savedModel.provider)
-      } else {
-        applyList(initialList)
-      }
-    } else {
-      applyList(initialList)
-    }
-
-    // Refresh when admin toggles a provider or saves a key.
-    const refresh = () => applyList(computeList())
-    window.addEventListener('admin-settings-changed', refresh)
-    window.addEventListener('storage', refresh)
-    return () => {
-      window.removeEventListener('admin-settings-changed', refresh)
-      window.removeEventListener('storage', refresh)
-    }
-  }, [selectedModel.id])
+  }, [enabledModels, selectedModel.id])
   
   // Get API key from admin settings - refreshed each render
   const [currentApiKey, setCurrentApiKey] = useState('')

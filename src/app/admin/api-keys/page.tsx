@@ -5,6 +5,8 @@ import { stagger, cardVariant } from '@/shared/ui/layout/AppLayout'
 import { useState, useEffect } from 'react'
 import { getAdminSettings, setProviderApiKey, setProviderEnabled } from '@/lib/admin-settings'
 import { PROVIDERS, ProviderCategory } from '@/lib/providers'
+import { useProviderStatus } from '@/lib/provider-status'
+import { getModelsForProviderInCategory } from '@/lib/provider-models'
 
 const CATEGORY_LABELS: Record<ProviderCategory, string> = {
   text: 'Text & Chat',
@@ -16,6 +18,8 @@ const CATEGORY_LABELS: Record<ProviderCategory, string> = {
 const CATEGORY_ORDER: ProviderCategory[] = ['text', 'image', 'video', 'audio']
 
 export default function ApiKeysPage() {
+  const { aiGatewayConnected, getState, refresh } = useProviderStatus()
+
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
   const [enabledProviders, setEnabledProviders] = useState<Record<string, boolean>>({})
   const [editingProvider, setEditingProvider] = useState<string | null>(null)
@@ -55,22 +59,33 @@ export default function ApiKeysPage() {
     ? PROVIDERS
     : PROVIDERS.filter(p => p.categories.includes(filter))
 
-  // Group the visible providers by their primary category for display.
-  // Within each category we sort so that *connected* providers (enabled AND
-  // have an API key) appear at the top, then configured-but-disabled, then
-  // unconfigured. Within each band we alphabetise by name for stability.
+  // Rank providers by how "connected" they are so the user sees what actually
+  // works at the top of each category. Lower rank = shown first.
+  //
+  //   0 — env var set on Vercel (real production key)
+  //   1 — AI Gateway zero-config (no key needed to run it)
+  //   2 — local key saved in admin UI + toggled on
+  //   3 — local key saved but toggled off
+  //   4 — nothing configured
   const configuredRank = (providerId: string): number => {
-    const hasKey = Boolean(apiKeys[providerId]?.trim())
-    const enabled = enabledProviders[providerId] ?? true
-    if (hasKey && enabled) return 0
-    if (hasKey && !enabled) return 1
-    return 2
+    const state = getState(providerId)
+    if (!state.enabled && state.hasLocalKey) return 3
+    if (state.hasEnvKey) return 0
+    if (state.aiGatewayCapable) return 1
+    if (state.hasLocalKey && state.enabled) return 2
+    return 4
   }
 
+  // Full parity with the front-end: a provider shows up under EVERY category
+  // it powers, not just its first. So "Google Gemini" appears under Text,
+  // Image AND Audio — and each card lists exactly which models in that
+  // category the same API key unlocks (e.g. "Powers: Imagen 3, Nano Banana"
+  // in the Image section).
   const grouped: Record<ProviderCategory, typeof PROVIDERS> = { text: [], image: [], video: [], audio: [] }
   visibleProviders.forEach(p => {
-    const primary = CATEGORY_ORDER.find(c => p.categories.includes(c)) || 'text'
-    grouped[primary].push(p)
+    p.categories.forEach(cat => {
+      grouped[cat].push(p)
+    })
   })
   CATEGORY_ORDER.forEach(cat => {
     grouped[cat].sort((a, b) => {
@@ -86,7 +101,7 @@ export default function ApiKeysPage() {
         <header className="flex justify-between items-end gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">AI API Configuration</h1>
-            <p className="text-label-secondary mt-1">Enable providers and set API keys. Only enabled providers with keys appear in user dropdowns.</p>
+            <p className="text-label-secondary mt-1">Providers with a Vercel env var, a saved admin key, or AI Gateway access are active in the app.</p>
           </div>
           {savedMessage && (
             <div className="px-4 py-2 bg-apple-teal/10 text-apple-teal rounded-lg text-sm font-medium">
@@ -94,6 +109,17 @@ export default function ApiKeysPage() {
             </div>
           )}
         </header>
+
+        {/* Gateway banner */}
+        {aiGatewayConnected && (
+          <div className="bg-mint/10 border border-mint/30 rounded-xl p-4 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-mint flex items-center justify-center text-white flex-shrink-0 font-bold">G</div>
+            <div className="text-sm">
+              <p className="font-bold text-label-primary">Vercel AI Gateway connected</p>
+              <p className="text-label-secondary">OpenAI, Anthropic and Google models run zero-config through the gateway. Adding your own keys is optional and gives you higher rate limits.</p>
+            </div>
+          </div>
+        )}
 
         {/* Category filter */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -120,33 +146,50 @@ export default function ApiKeysPage() {
               <h2 className="text-xs font-bold uppercase tracking-widest text-label-secondary">{CATEGORY_LABELS[cat]}</h2>
               <motion.div variants={stagger} initial="initial" animate="animate" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {list.map(provider => {
-                  const configured = Boolean(apiKeys[provider.id])
-                  const isLive = configured && (enabledProviders[provider.id] ?? true)
-                  // Visually de-emphasise providers the user hasn't set up yet so
-                  // connected ones read as the primary affordance.
-                  const cardTone = isLive
+                  const state = getState(provider.id)
+                  const { connected, source, hasEnvKey, aiGatewayCapable, hasLocalKey } = state
+                  // The exact front-end models this key powers in this category.
+                  const modelsInCategory = getModelsForProviderInCategory(provider.id, cat)
+
+                  // Visual treatment: connected providers get the accent
+                  // ring/avatar. Configured-but-off looks neutral. Unconfigured
+                  // is faded so the eye lands on what actually works.
+                  const cardTone = connected
                     ? 'bg-surface border-mint/40 ring-1 ring-mint/20'
-                    : configured
+                    : hasLocalKey
                       ? 'bg-surface border-separator'
                       : 'bg-surface/60 border-separator/60 opacity-60 hover:opacity-100 transition-opacity'
-                  const statusTone = isLive
+
+                  const statusLabel =
+                    source === 'env'
+                      ? `Connected via ${provider.envKey}`
+                      : source === 'gateway'
+                        ? 'Connected via AI Gateway'
+                        : source === 'local'
+                          ? enabledProviders[provider.id]
+                            ? 'Connected (local key)'
+                            : 'Configured (off)'
+                          : 'Not configured'
+
+                  const statusTone = connected
                     ? 'text-mint'
-                    : configured
+                    : hasLocalKey
                       ? 'text-label-secondary'
                       : 'text-label-tertiary'
+
                   return (
-                    <motion.div key={provider.id} variants={cardVariant} className={`${cardTone} border rounded-2xl shadow-sm overflow-hidden`}>
+                    <motion.div key={`${cat}-${provider.id}`} variants={cardVariant} className={`${cardTone} border rounded-2xl shadow-sm overflow-hidden`}>
                       <div className="p-5 border-b border-separator flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white flex-shrink-0 ${
-                            isLive ? 'bg-mint' : configured ? 'bg-apple-teal' : 'bg-fill'
+                            connected ? 'bg-mint' : hasLocalKey ? 'bg-apple-teal' : 'bg-fill'
                           }`}>
                             {provider.name[0]}
                           </div>
                           <div className="min-w-0">
                             <h3 className="font-bold truncate">{provider.name}</h3>
                             <div className={`text-[10px] uppercase font-bold tracking-widest ${statusTone}`}>
-                              {isLive ? 'Connected' : configured ? 'Configured (off)' : 'Not configured'}
+                              {statusLabel}
                             </div>
                           </div>
                         </div>
@@ -154,11 +197,33 @@ export default function ApiKeysPage() {
                           onClick={() => handleToggleEnabled(provider.id)}
                           className={`w-12 h-6 rounded-full p-1 transition-colors flex-shrink-0 ${enabledProviders[provider.id] ? 'bg-apple-teal' : 'bg-separator'}`}
                           aria-label={`Toggle ${provider.name}`}
+                          title={hasEnvKey || aiGatewayCapable ? 'Enable/disable use of this provider in the app' : ''}
                         >
                           <div className={`w-4 h-4 bg-white rounded-full transition-transform ${enabledProviders[provider.id] ? 'translate-x-6' : ''}`} />
                         </button>
                       </div>
                       <div className="p-5 space-y-3">
+                        {modelsInCategory.length > 0 && (
+                          <div>
+                            <div className="text-[10px] uppercase font-bold tracking-widest text-label-tertiary mb-1.5">
+                              Powers {modelsInCategory.length} {modelsInCategory.length === 1 ? 'model' : 'models'} in {CATEGORY_LABELS[cat]}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {modelsInCategory.map(m => (
+                                <span
+                                  key={m.id}
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                    connected
+                                      ? 'bg-mint/10 border-mint/30 text-mint'
+                                      : 'bg-surface border-separator text-label-secondary'
+                                  }`}
+                                >
+                                  {m.displayName}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between">
                           <label className="text-[11px] font-bold text-label-secondary uppercase tracking-tight truncate">
                             {provider.envKey}
@@ -170,7 +235,7 @@ export default function ApiKeysPage() {
                               rel="noopener noreferrer"
                               className="text-[11px] font-semibold text-apple-teal hover:underline"
                             >
-                              Get key ↗
+                              Get key
                             </a>
                           )}
                         </div>
@@ -179,7 +244,7 @@ export default function ApiKeysPage() {
                             <>
                               <input
                                 type="text"
-                                placeholder="Enter API key…"
+                                placeholder="Enter API key..."
                                 defaultValue={apiKeys[provider.id]}
                                 className="flex-grow h-10 px-3 bg-fill/30 border border-separator rounded-lg text-sm focus:ring-2 focus:ring-apple-teal/20 focus:border-apple-teal outline-none"
                                 onKeyDown={(e) => {
@@ -208,16 +273,26 @@ export default function ApiKeysPage() {
                             <>
                               <input
                                 type="password"
-                                value={apiKeys[provider.id] ? '•'.repeat(Math.min(apiKeys[provider.id].length, 32)) : ''}
+                                value={
+                                  hasLocalKey
+                                    ? '\u2022'.repeat(Math.min(apiKeys[provider.id].length, 32))
+                                    : ''
+                                }
                                 readOnly
-                                placeholder="No key configured"
+                                placeholder={
+                                  hasEnvKey
+                                    ? 'Using Vercel env var'
+                                    : aiGatewayCapable
+                                      ? 'Using AI Gateway (optional override)'
+                                      : 'No key configured'
+                                }
                                 className="flex-grow h-10 px-3 bg-fill/30 border border-separator rounded-lg text-sm"
                               />
                               <button
                                 onClick={() => setEditingProvider(provider.id)}
                                 className="px-4 bg-surface border border-separator rounded-lg text-sm font-medium hover:bg-fill/30 transition-colors"
                               >
-                                {apiKeys[provider.id] ? 'Edit' : 'Add key'}
+                                {hasLocalKey ? 'Edit' : 'Add key'}
                               </button>
                             </>
                           )}
@@ -232,11 +307,22 @@ export default function ApiKeysPage() {
         })}
 
         <div className="bg-apple-teal/5 border border-apple-teal/20 rounded-xl p-6">
-          <h3 className="font-bold mb-2">How the filter works</h3>
-          <p className="text-sm text-label-secondary">
-            User-facing dropdowns in the text, image, video and audio workspaces only show models whose provider is
-            both toggled on and has an API key saved above. Everything else stays hidden until it&apos;s configured.
+          <h3 className="font-bold mb-2">How connected providers are chosen</h3>
+          <ul className="text-sm text-label-secondary space-y-1 list-disc pl-5">
+            <li><strong className="text-label-primary">Env var</strong> — a matching key is set on your Vercel project. Safest, highest priority.</li>
+            <li><strong className="text-label-primary">AI Gateway</strong> — OpenAI, Anthropic and Google work through the gateway with no key.</li>
+            <li><strong className="text-label-primary">Local key</strong> — a key you typed here, stored in your browser only.</li>
+          </ul>
+          <p className="text-sm text-label-secondary mt-3">
+            Dropdowns across the Text / Image / Video / Audio workspaces only show models whose provider is connected
+            and not toggled off.
           </p>
+          <button
+            onClick={() => refresh()}
+            className="mt-3 h-9 px-4 rounded-full text-xs font-bold uppercase tracking-wider bg-apple-teal text-white"
+          >
+            Re-check env vars
+          </button>
         </div>
       </div>
     </div>
