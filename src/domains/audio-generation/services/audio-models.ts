@@ -7,8 +7,10 @@ export const AUDIO_MODELS = [
   { id: 'openai-tts-1-hd', name: 'TTS HD', version: 'TTS-1-HD', provider: 'openai', brandName: 'OpenAI TTS', type: 'voice' },
   { id: 'openai-tts-1', name: 'TTS Standard', version: 'TTS-1', provider: 'openai', brandName: 'OpenAI TTS', type: 'voice' },
   
-  // Google WaveNet
-  { id: 'google-wavenet', name: 'WaveNet', version: 'WaveNet', provider: 'google', brandName: 'Google Cloud TTS', type: 'voice' },
+  // Google Gemini TTS — the only audio model wired to a real backend right
+  // now. Uses the same GOOGLE_GENERATIVE_AI_API_KEY the chat uses, so it
+  // works out of the box once that env var is set.
+  { id: 'gemini-tts', name: 'Gemini TTS', version: '2.5 Flash Preview', provider: 'google', brandName: 'Gemini TTS', type: 'voice' },
   
   // Azure Neural TTS (Microsoft)
   { id: 'azure-neural-tts', name: 'Neural TTS', version: 'Neural', provider: 'microsoft', brandName: 'Azure TTS', type: 'voice' },
