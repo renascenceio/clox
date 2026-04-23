@@ -101,7 +101,7 @@ export default function UnifiedControlsPanel({
             <select
               value={selectedBrand}
               onChange={(e) => handleBrandChange(e.target.value)}
-              className="w-full h-12 px-4 bg-surface border-2 border-separator/50 rounded-hig-xl text-base font-bold focus:ring-2 focus:ring-brown/20 focus:border-brown outline-none transition-all"
+              className="w-full h-12 px-4 bg-surface border-2 border-separator/50 rounded-hig-xl text-base font-bold focus:ring-2 focus:ring-mint/20 focus:border-mint outline-none transition-all"
             >
               {brands.map(brand => (
                 <option key={brand} value={brand}>
@@ -127,9 +127,9 @@ export default function UnifiedControlsPanel({
             </select>
           </div>
           
-          <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-brown-50 to-teal-50 border border-brown-200 rounded-hig-xl">
-            <div className="w-2 h-2 bg-brown rounded-full animate-pulse"></div>
-            <span className="text-xs text-brown-700 font-bold">
+          <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-mint-50 to-teal-50 border border-mint-200 rounded-hig-xl">
+            <div className="w-2 h-2 bg-mint rounded-full animate-pulse"></div>
+            <span className="text-xs text-mint-700 font-bold">
               {selectedBrand} • {selectedModel.version || selectedModel.name}
             </span>
           </div>
@@ -172,8 +172,8 @@ export default function UnifiedControlsPanel({
                   onClick={() => onQualityChange(quality.value as string)}
                   className={`h-11 rounded-hig-xl border text-xs font-semibold transition-all ${
                     selectedQuality === quality.value
-                      ? 'bg-brown-50 border-brown-500 text-brown-700 shadow-brown-glow'
-                      : 'bg-surface border-separator hover:border-brown-300 hover:bg-brown-50/50'
+                      ? 'bg-mint-50 border-mint-500 text-mint-700 shadow-mint-glow'
+                      : 'bg-surface border-separator hover:border-mint-300 hover:bg-mint-50/50'
                   }`}
                 >
                   {quality.label}
@@ -220,8 +220,8 @@ export default function UnifiedControlsPanel({
                   onClick={() => onDurationChange(duration.value as number)}
                   className={`h-11 rounded-hig-xl border text-xs font-semibold transition-all ${
                     selectedDuration === duration.value
-                      ? 'bg-brown-50 border-brown-500 text-brown-700 shadow-brown-glow'
-                      : 'bg-surface border-separator hover:border-brown-300 hover:bg-brown-50/50'
+                      ? 'bg-mint-50 border-mint-500 text-mint-700 shadow-mint-glow'
+                      : 'bg-surface border-separator hover:border-mint-300 hover:bg-mint-50/50'
                   }`}
                 >
                   {duration.label}
@@ -251,7 +251,7 @@ export default function UnifiedControlsPanel({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-label-secondary">Temperature</label>
-                  <span className="text-xs font-bold text-brown">0.7</span>
+                  <span className="text-xs font-bold text-mint">0.7</span>
                 </div>
                 <input 
                   type="range" 
@@ -259,7 +259,7 @@ export default function UnifiedControlsPanel({
                   max="2" 
                   step="0.1" 
                   defaultValue="0.7"
-                  className="w-full h-2 bg-surface-secondary rounded-full appearance-none cursor-pointer accent-brown"
+                  className="w-full h-2 bg-surface-secondary rounded-full appearance-none cursor-pointer accent-mint"
                 />
               </div>
             )}
@@ -269,7 +269,7 @@ export default function UnifiedControlsPanel({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-label-secondary">Max Tokens</label>
-                  <span className="text-xs font-bold text-brown">2048</span>
+                  <span className="text-xs font-bold text-mint">2048</span>
                 </div>
                 <input 
                   type="range" 
@@ -277,7 +277,7 @@ export default function UnifiedControlsPanel({
                   max="32000" 
                   step="256" 
                   defaultValue="2048"
-                  className="w-full h-2 bg-surface-secondary rounded-full appearance-none cursor-pointer accent-brown"
+                  className="w-full h-2 bg-surface-secondary rounded-full appearance-none cursor-pointer accent-mint"
                 />
               </div>
             )}
@@ -324,17 +324,17 @@ export default function UnifiedControlsPanel({
               <input 
                 type="number" 
                 placeholder="Random"
-                className="w-full h-10 px-3 bg-fill border border-separator/30 rounded-hig-xl text-xs focus:ring-2 focus:ring-brown/20 outline-none"
+                className="w-full h-10 px-3 bg-fill border border-separator/30 rounded-hig-xl text-xs focus:ring-2 focus:ring-mint/20 outline-none"
               />
             </div>
           </div>
         </details>
 
         {/* Cost Estimate */}
-        <div className="p-4 bg-gradient-to-br from-brown-50 to-teal-50 border border-brown-200 rounded-hig-2xl">
+        <div className="p-4 bg-gradient-to-br from-mint-50 to-teal-50 border border-mint-200 rounded-hig-2xl">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-label-secondary uppercase tracking-widest">Est. Cost</span>
-            <span className="text-lg font-bold text-brown">$0.05</span>
+            <span className="text-lg font-bold text-mint">$0.05</span>
           </div>
           <p className="text-[10px] text-label-tertiary leading-relaxed">
             Based on current settings and selected model
@@ -344,7 +344,7 @@ export default function UnifiedControlsPanel({
 
       {/* Footer Actions */}
       <div className="p-6 border-t border-separator/50 space-y-3">
-        <button className="w-full h-11 gradient-brown-teal text-white rounded-hig-2xl font-bold shadow-float hover:shadow-hig-hover hover:scale-105 active:scale-95 transition-all">
+        <button className="w-full h-11 gradient-mint-teal text-white rounded-hig-2xl font-bold shadow-float hover:shadow-hig-hover hover:scale-105 active:scale-95 transition-all">
           Apply Settings
         </button>
         <button className="w-full h-10 bg-surface-secondary border border-separator/30 rounded-hig-xl text-sm font-semibold text-label-secondary hover:bg-fill transition-all">

@@ -99,21 +99,21 @@ export default function RegisterPage() {
   }
 
   const inputClass =
-    'w-full h-11 px-4 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-xl text-sm font-medium text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/40 dark:focus:ring-teal/40 focus:border-brown dark:focus:border-teal transition-all'
+    'w-full h-11 px-4 bg-white dark:bg-[#2C2C2E] border-2 border-separator rounded-xl text-sm font-medium text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-mint/40 dark:focus:ring-teal/40 focus:border-mint dark:focus:border-teal transition-all'
   const selectClass = inputClass + ' cursor-pointer'
   const labelClass = 'block text-xs font-bold text-label-tertiary uppercase tracking-wider mb-1.5'
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-brown-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E] p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-mint-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E] p-4">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 -left-4 w-72 h-72 bg-brown/20 rounded-full filter blur-3xl animate-blob" />
+        <div className="absolute top-0 -left-4 w-72 h-72 bg-mint/20 rounded-full filter blur-3xl animate-blob" />
         <div className="absolute -bottom-8 right-20 w-72 h-72 bg-teal/20 rounded-full filter blur-3xl animate-blob [animation-delay:3s]" />
       </div>
 
       <div className="w-full max-w-lg relative z-10">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-12 h-12 gradient-brown-teal rounded-2xl flex items-center justify-center shadow-brown-glow mx-auto mb-3">
+          <div className="w-12 h-12 gradient-mint-teal rounded-2xl flex items-center justify-center shadow-mint-glow mx-auto mb-3">
             <span className="text-white font-black text-xl">C</span>
           </div>
           <h1 className="text-2xl font-black text-label-primary tracking-tight">Create your account</h1>
@@ -126,7 +126,7 @@ export default function RegisterPage() {
             <div
               key={s}
               className={`h-1.5 flex-1 rounded-full transition-all ${
-                s <= step ? 'gradient-brown-teal' : 'bg-separator'
+                s <= step ? 'gradient-mint-teal' : 'bg-separator'
               }`}
             />
           ))}
@@ -258,7 +258,7 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="flex-1 h-12 bg-surface-tertiary dark:bg-[#2C2C2E] text-label-primary rounded-xl text-sm font-bold border-2 border-separator hover:border-brown/50 dark:hover:border-teal/50 transition-all"
+                  className="flex-1 h-12 bg-surface-tertiary dark:bg-[#2C2C2E] text-label-primary rounded-xl text-sm font-bold border-2 border-separator hover:border-mint/50 dark:hover:border-teal/50 transition-all"
                 >
                   Back
                 </button>
@@ -266,7 +266,7 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 h-12 gradient-brown-teal text-white rounded-xl text-sm font-bold shadow-brown-glow hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
+                className="flex-1 h-12 gradient-mint-teal text-white rounded-xl text-sm font-bold shadow-mint-glow hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <>

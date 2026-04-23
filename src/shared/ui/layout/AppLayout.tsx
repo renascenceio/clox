@@ -116,15 +116,15 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     <div className="flex h-screen relative bg-gradient-to-br from-surface-secondary via-surface-tertiary to-surface-secondary text-label-primary font-sans selection:bg-teal/20 overflow-hidden p-6 gap-6">
       {/* Background Blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 -left-10 w-[500px] h-[500px] bg-brown/20 dark:bg-brown-400/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow opacity-60 dark:opacity-70" />
+        <div className="absolute top-20 -left-10 w-[500px] h-[500px] bg-mint/20 dark:bg-mint-400/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow opacity-60 dark:opacity-70" />
         <div className="absolute top-40 -right-10 w-[500px] h-[500px] bg-teal/20 dark:bg-teal-400/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow [animation-delay:3s] opacity-60 dark:opacity-70" />
-        <div className="absolute bottom-20 left-1/3 w-[500px] h-[500px] bg-brown-300/20 dark:bg-brown-500/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow [animation-delay:6s] opacity-60 dark:opacity-70" />
+        <div className="absolute bottom-20 left-1/3 w-[500px] h-[500px] bg-mint-300/20 dark:bg-mint-500/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow [animation-delay:6s] opacity-60 dark:opacity-70" />
       </div>
 
       {/* Left Sidebar */}
       <aside className="w-[280px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
-        <div className="h-16 border-b border-separator/50 flex items-center px-4 bg-gradient-to-br from-brown/5 to-teal/5 dark:from-brown/10 dark:to-teal/10">
-          <div className="w-9 h-9 gradient-brown-teal rounded-hig-lg flex items-center justify-center shadow-brown-glow">
+        <div className="h-16 border-b border-separator/50 flex items-center px-4 bg-gradient-to-br from-mint/5 to-teal/5 dark:from-mint/10 dark:to-teal/10">
+          <div className="w-9 h-9 gradient-mint-teal rounded-hig-lg flex items-center justify-center shadow-mint-glow">
             <span className="text-white font-bold text-base">C</span>
           </div>
         </div>
@@ -137,16 +137,16 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
           {/* Footer links */}
           <div className="flex items-center justify-center gap-4">
             <a href="/gallery" className="flex items-center gap-2 px-3 py-2 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
-              <svg className="w-4 h-4 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
-              <span className="text-xs font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Gallery</span>
+              <span className="text-xs font-medium text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors">Gallery</span>
             </a>
             <a href="/deleted" className="flex items-center gap-2 px-3 py-2 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
-              <svg className="w-4 h-4 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
-              <span className="text-xs font-medium text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors">Deleted</span>
+              <span className="text-xs font-medium text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors">Deleted</span>
             </a>
           </div>
 
@@ -154,21 +154,21 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
           <div className="relative" data-user-menu>
             <div
               onClick={() => setShowUserMenu(v => !v)}
-              className="flex items-center gap-3 p-3 bg-surface-tertiary dark:bg-surface rounded-hig-xl border border-separator shadow-sm group cursor-pointer hover:shadow-hig-hover transition-all active:scale-95 hover:border-brown dark:hover:border-teal"
+              className="flex items-center gap-3 p-3 bg-surface-tertiary dark:bg-surface rounded-hig-xl border border-separator shadow-sm group cursor-pointer hover:shadow-hig-hover transition-all active:scale-95 hover:border-mint dark:hover:border-teal"
             >
-              <Avatar seed={profile.avatarSeed || undefined} size={40} className="group-hover:scale-105 transition-transform shadow-brown-glow" />
+              <Avatar seed={profile.avatarSeed || undefined} size={40} className="group-hover:scale-105 transition-transform shadow-mint-glow" />
               <div className="flex-grow min-w-0">
                 <div className="text-sm font-bold truncate text-label-primary capitalize">
                   {profile.firstName || '\u00a0'}
                 </div>
-                <div className="text-[10px] font-bold text-brown dark:text-teal uppercase tracking-widest">
+                <div className="text-[10px] font-bold text-mint dark:text-teal uppercase tracking-widest">
                   {roleLabel}
                 </div>
               </div>
               {isFreeDomain ? (
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-brown/10 dark:bg-teal/10 rounded-hig-lg border border-brown/20 dark:border-teal/20">
-                  <span className="text-xs font-bold text-brown dark:text-teal">Pro</span>
-                  <div className="w-1.5 h-1.5 bg-brown dark:bg-teal rounded-full" />
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-mint/10 dark:bg-teal/10 rounded-hig-lg border border-mint/20 dark:border-teal/20">
+                  <span className="text-xs font-bold text-mint dark:text-teal">Pro</span>
+                  <div className="w-1.5 h-1.5 bg-mint dark:bg-teal rounded-full" />
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-secondary/60 dark:bg-surface-tertiary/60 rounded-hig-lg border border-separator/30">

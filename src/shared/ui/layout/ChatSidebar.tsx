@@ -2,16 +2,12 @@
 
 import { motion } from 'framer-motion'
 import { ReactNode, useState, useEffect } from 'react'
-
-interface Chat {
-  id: string
-  title: string
-  model: string
-  createdAt: number
-  type: 'chat' | 'project'
-  folderId?: string
-  projectId?: string // For chats that belong to a project
-}
+import {
+  Chat,
+  Modality,
+  listChats as listChatsFromStore,
+  saveChats as saveChatsToStore,
+} from '@/lib/chat-store'
 
 interface ProjectSettings {
   id: string
@@ -31,13 +27,17 @@ interface ChatSidebarProps {
   children?: ReactNode
   activeChatId?: string
   onChatSelect?: (chatId: string) => void
+  /**
+   * When provided, the sidebar only shows chats whose `modality` matches, and
+   * new chats created from here are tagged with that modality. Omit the prop
+   * on pages that should see everything (e.g. the settings page).
+   */
+  modality?: Modality
 }
 
-// LocalStorage keys
-const CHATS_KEY = 'clox_chats'
 const FOLDERS_KEY = 'clox_folders'
 
-export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarProps) {
+export default function ChatSidebar({ activeChatId, onChatSelect, modality }: ChatSidebarProps) {
   const [search, setSearch] = useState('')
   const [chats, setChats] = useState<Chat[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
@@ -53,33 +53,41 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
     modelId: 'gemini-2.5-flash'
   })
 
-  // Load chats and folders from localStorage
+  // Load chats from the shared store and stay in sync with other workspaces.
   useEffect(() => {
-    const savedChats = localStorage.getItem(CHATS_KEY)
+    setChats(listChatsFromStore())
     const savedFolders = localStorage.getItem(FOLDERS_KEY)
-    if (savedChats) setChats(JSON.parse(savedChats))
     if (savedFolders) setFolders(JSON.parse(savedFolders))
+
+    const refresh = () => setChats(listChatsFromStore())
+    window.addEventListener('clox-chats-changed', refresh)
+    window.addEventListener('storage', refresh)
+    return () => {
+      window.removeEventListener('clox-chats-changed', refresh)
+      window.removeEventListener('storage', refresh)
+    }
   }, [])
 
-  // Save chats to localStorage
+  // Write-through helpers that keep local state and shared store aligned.
   const saveChats = (newChats: Chat[]) => {
     setChats(newChats)
-    localStorage.setItem(CHATS_KEY, JSON.stringify(newChats))
+    saveChatsToStore(newChats)
   }
 
-  // Save folders to localStorage
   const saveFolders = (newFolders: Folder[]) => {
     setFolders(newFolders)
     localStorage.setItem(FOLDERS_KEY, JSON.stringify(newFolders))
   }
 
   const handleNewChat = () => {
+    const m: Modality = modality ?? 'text'
     const newChat: Chat = {
-      id: `chat_${Date.now()}`,
+      id: `${m}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       title: 'New Chat',
-      model: 'Gemini 2.5 Flash',
+      model: m === 'text' ? 'Gemini 2.5 Flash' : '',
       createdAt: Date.now(),
-      type: 'chat'
+      type: 'chat',
+      modality: m,
     }
     saveChats([newChat, ...chats])
     setShowNewMenu(false)
@@ -87,12 +95,14 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
   }
 
   const handleNewProject = () => {
+    const m: Modality = modality ?? 'text'
     const newProject: Chat = {
-      id: `project_${Date.now()}`,
+      id: `project_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       title: 'New Project',
       model: '',
       createdAt: Date.now(),
-      type: 'project'
+      type: 'project',
+      modality: m,
     }
     saveChats([newProject, ...chats])
     setShowNewMenu(false)
@@ -179,8 +189,14 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
   const getChatsByProject = (projectId: string) => 
     chats.filter(c => c.projectId === projectId && c.type === 'chat')
 
+  // When `modality` is provided, only show chats belonging to that workspace.
+  // Legacy chats with no stored modality are treated as 'text' (see chat-store).
+  const chatsForModality = modality
+    ? chats.filter(c => (c.modality ?? 'text') === modality)
+    : chats
+
   // Filter chats by search - exclude chats in folders or projects
-  const filteredChats = chats.filter(c => 
+  const filteredChats = chatsForModality.filter(c =>
     c.title.toLowerCase().includes(search.toLowerCase()) && !c.folderId && !c.projectId
   )
 
@@ -198,9 +214,9 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
               placeholder="Search chats..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-9 pl-9 pr-4 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
+              className="w-full h-9 pl-9 pr-4 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20 focus:border-mint/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
             />
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-secondary/40 group-focus-within:text-brown transition-colors">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-secondary/40 group-focus-within:text-mint transition-colors">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -212,7 +228,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
           <div className="relative">
             <button 
               onClick={() => setShowNewMenu(!showNewMenu)}
-              className="w-9 h-9 gradient-brown-teal text-white rounded-hig-lg font-bold transition-all shadow-brown-glow hover:shadow-hig-hover hover:scale-105 active:scale-95 flex items-center justify-center flex-shrink-0"
+              className="w-9 h-9 gradient-mint-teal text-white rounded-hig-lg font-bold transition-all shadow-mint-glow hover:shadow-hig-hover hover:scale-105 active:scale-95 flex items-center justify-center flex-shrink-0"
               title="Create new"
             >
               <span className="text-xl leading-none">+</span>
@@ -223,7 +239,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
                   onClick={handleNewChat}
                   className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
                 >
-                  <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 text-mint dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
                   New Chat
@@ -232,7 +248,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
                   onClick={handleNewProject}
                   className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
                 >
-                  <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 text-mint dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                   </svg>
                   New Project
@@ -241,7 +257,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
                   onClick={handleNewFolder}
                   className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
                 >
-                  <svg className="w-4 h-4 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-4 h-4 text-mint dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                   </svg>
                   New Folder
@@ -322,7 +338,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
                         e.stopPropagation()
                         openProjectSettings(project.id)
                       }}
-                      className="p-1.5 rounded-lg hover:bg-surface-tertiary dark:hover:bg-surface text-label-tertiary hover:text-brown dark:hover:text-teal transition-colors"
+                      className="p-1.5 rounded-lg hover:bg-surface-tertiary dark:hover:bg-surface text-label-tertiary hover:text-mint dark:hover:text-teal transition-colors"
                       title="Project Settings"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -405,7 +421,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
                   value={projectSettings.systemPrompt}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, systemPrompt: e.target.value }))}
                   placeholder="Enter a system prompt for this project..."
-                  className="w-full h-24 p-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-sm outline-none focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 resize-none"
+                  className="w-full h-24 p-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-sm outline-none focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20 resize-none"
                 />
               </div>
               {/* Temperature */}
@@ -420,7 +436,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
                   step="0.1"
                   value={projectSettings.temperature}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))}
-                  className="w-full accent-brown dark:accent-teal"
+                  className="w-full accent-mint dark:accent-teal"
                 />
               </div>
               {/* Max Tokens */}
@@ -435,7 +451,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
                   step="256"
                   value={projectSettings.maxTokens}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, maxTokens: parseInt(e.target.value) }))}
-                  className="w-full accent-brown dark:accent-teal"
+                  className="w-full accent-mint dark:accent-teal"
                 />
               </div>
               {/* Model Selection */}
@@ -444,7 +460,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
                 <select
                   value={projectSettings.modelId}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, modelId: e.target.value }))}
-                  className="w-full p-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-sm outline-none focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20"
+                  className="w-full p-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-sm outline-none focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20"
                 >
                   <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                   <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
@@ -463,7 +479,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect }: ChatSidebarP
               </button>
               <button
                 onClick={saveProjectSettings}
-                className="px-4 py-2 text-sm font-bold gradient-brown-teal text-white rounded-hig-lg shadow-brown-glow hover:scale-105 transition-transform"
+                className="px-4 py-2 text-sm font-bold gradient-mint-teal text-white rounded-hig-lg shadow-mint-glow hover:scale-105 transition-transform"
               >
                 Save Settings
               </button>
@@ -528,16 +544,16 @@ export function SidebarItem({
             }}
             onBlur={onSaveEdit}
             autoFocus
-            className="w-full text-sm font-bold bg-transparent outline-none border-b border-brown dark:border-teal"
+            className="w-full text-sm font-bold bg-transparent outline-none border-b border-mint dark:border-teal"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <div className={`text-sm font-bold truncate ${active ? 'text-brown dark:text-teal' : 'text-label-primary'}`}>
+          <div className={`text-sm font-bold truncate ${active ? 'text-mint dark:text-teal' : 'text-label-primary'}`}>
             {title}
           </div>
         )}
         {model && !isEditing && (
-          <div className={`text-[10px] font-medium ${active ? 'text-brown/70 dark:text-teal/70' : 'text-label-tertiary'} truncate`}>
+          <div className={`text-[10px] font-medium ${active ? 'text-mint/70 dark:text-teal/70' : 'text-label-tertiary'} truncate`}>
             {model}
           </div>
         )}
@@ -570,7 +586,7 @@ export function SidebarItem({
                       key={project.id}
                       onClick={(e) => { e.stopPropagation(); onMoveToProject(project.id); setShowMoveMenu(false); }}
                       className={`w-full px-3 py-2 text-left text-xs font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors ${
-                        currentProjectId === project.id ? 'text-brown dark:text-teal' : 'text-label-primary'
+                        currentProjectId === project.id ? 'text-mint dark:text-teal' : 'text-label-primary'
                       }`}
                     >
                       {project.title}
@@ -603,7 +619,7 @@ export function SidebarItem({
       {active && (
         <motion.div
           layoutId="sidebar-active"
-          className="absolute left-0 top-1 bottom-1 w-1 bg-brown dark:bg-teal rounded-full"
+          className="absolute left-0 top-1 bottom-1 w-1 bg-mint dark:bg-teal rounded-full"
         />
       )}
     </motion.div>
@@ -648,14 +664,14 @@ function FolderItem({
       >
         <div className="flex items-center gap-2.5 min-w-0 flex-grow">
           <svg 
-            className={`w-3 h-3 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-all ${isExpanded ? 'rotate-90' : ''}`} 
+            className={`w-3 h-3 text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-all ${isExpanded ? 'rotate-90' : ''}`} 
             fill="none" 
             viewBox="0 0 24 24" 
             stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
           </svg>
-          <svg className="w-4 h-4 text-label-secondary group-hover:text-brown dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4 text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
           {isEditing ? (
@@ -669,15 +685,15 @@ function FolderItem({
               }}
               onBlur={onSaveEdit}
               autoFocus
-              className="flex-grow text-sm font-medium bg-transparent outline-none border-b border-brown dark:border-teal"
+              className="flex-grow text-sm font-medium bg-transparent outline-none border-b border-mint dark:border-teal"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span className="text-sm font-medium text-label-primary group-hover:text-brown dark:group-hover:text-teal truncate">{title}</span>
+            <span className="text-sm font-medium text-label-primary group-hover:text-mint dark:group-hover:text-teal truncate">{title}</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-label-secondary group-hover:text-teal dark:group-hover:text-brown transition-colors">
+          <span className="text-[10px] font-bold text-label-secondary group-hover:text-teal dark:group-hover:text-mint transition-colors">
             {chats.length}
           </span>
           {!isEditing && (
@@ -712,7 +728,7 @@ function FolderItem({
               onClick={() => onChatSelect?.(chat.id)}
               className={`px-3 py-1.5 text-xs cursor-pointer transition-colors rounded-md ${
                 chat.id === activeChatId 
-                  ? 'text-brown dark:text-teal font-medium' 
+                  ? 'text-mint dark:text-teal font-medium' 
                   : 'text-label-secondary hover:text-label-primary'
               }`}
             >

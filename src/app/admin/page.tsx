@@ -160,32 +160,32 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-brown-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
-        <div className="text-2xl font-bold text-brown">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-mint-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
+        <div className="text-2xl font-bold text-mint">Loading...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-white via-brown-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-white via-mint-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
       {/* Animated Background Blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 -left-4 w-72 h-72 bg-brown/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob"></div>
+        <div className="absolute top-0 -left-4 w-72 h-72 bg-mint/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob"></div>
         <div className="absolute top-0 -right-4 w-72 h-72 bg-teal/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob [animation-delay:2s]"></div>
-        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-brown-300/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob [animation-delay:4s]"></div>
+        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-mint-300/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob [animation-delay:4s]"></div>
       </div>
 
       {/* Header */}
-      <div className="relative z-10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-xl border-b border-brown-200/50 dark:border-brown-700/50">
+      <div className="relative z-10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-xl border-b border-mint-200/50 dark:border-mint-700/50">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-brown-900 dark:text-brown-100">Super Admin Dashboard</h1>
-              <p className="text-sm text-brown-600 dark:text-brown-400 mt-1">Manage all AI providers and system settings</p>
+              <h1 className="text-3xl font-bold text-mint-900 dark:text-mint-100">Super Admin Dashboard</h1>
+              <p className="text-sm text-mint-600 dark:text-mint-400 mt-1">Manage all AI providers and system settings</p>
             </div>
             <button
               onClick={() => router.push('/text')}
-              className="px-6 py-3 gradient-brown-teal text-white rounded-hig-xl font-bold shadow-brown-glow hover:scale-105 transition-transform"
+              className="px-6 py-3 gradient-mint-teal text-white rounded-hig-xl font-bold shadow-mint-glow hover:scale-105 transition-transform"
             >
               Go to App →
             </button>
@@ -194,7 +194,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="relative z-10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-xl border-b border-brown-200/30 dark:border-brown-700/30">
+      <div className="relative z-10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-xl border-b border-mint-200/30 dark:border-mint-700/30">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex gap-1">
             {tabs.map(tab => (
@@ -203,13 +203,13 @@ export default function AdminDashboard() {
                 onClick={() => setActiveTab(tab)}
                 className={`px-6 py-4 font-bold text-sm transition-all relative ${
                   activeTab === tab
-                    ? 'text-brown-900 dark:text-brown-100'
-                    : 'text-brown-500 dark:text-brown-500 hover:text-brown-700 dark:hover:text-brown-300'
+                    ? 'text-mint-900 dark:text-mint-100'
+                    : 'text-mint-500 dark:text-mint-500 hover:text-mint-700 dark:hover:text-mint-300'
                 }`}
               >
                 {tab}
                 {activeTab === tab && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 gradient-brown-teal rounded-full"></div>
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 gradient-mint-teal rounded-full"></div>
                 )}
               </button>
             ))}
@@ -222,15 +222,15 @@ export default function AdminDashboard() {
         {activeTab === 'API Keys' && (
           <div className="space-y-6">
             {/* Category Tabs */}
-            <div className="flex gap-3 p-2 bg-white/60 dark:bg-[#2C2C2E]/60 backdrop-blur-xl rounded-hig-xl border border-brown-200 dark:border-brown-700 shadow-sm">
+            <div className="flex gap-3 p-2 bg-white/60 dark:bg-[#2C2C2E]/60 backdrop-blur-xl rounded-hig-xl border border-mint-200 dark:border-mint-700 shadow-sm">
               {categories.map(cat => (
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
                   className={`flex-1 px-6 py-3 rounded-hig-lg font-bold text-sm transition-all ${
                     activeCategory === cat
-                      ? 'gradient-brown-teal text-white shadow-brown-glow'
-                      : 'text-brown-600 dark:text-brown-400 hover:bg-brown-50 dark:hover:bg-brown-900/20'
+                      ? 'gradient-mint-teal text-white shadow-mint-glow'
+                      : 'text-mint-600 dark:text-mint-400 hover:bg-mint-50 dark:hover:bg-mint-900/20'
                   }`}
                 >
                   {cat}
@@ -249,12 +249,12 @@ export default function AdminDashboard() {
                 return (
                   <div
                     key={key}
-                    className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 p-6 shadow-float hover:shadow-brown-glow transition-all"
+                    className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float hover:shadow-mint-glow transition-all"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
-                        <h3 className="text-lg font-bold text-brown-900 dark:text-brown-100">{config.name}</h3>
-                        <p className="text-xs text-brown-600 dark:text-brown-400 mt-1">{config.category}</p>
+                        <h3 className="text-lg font-bold text-mint-900 dark:text-mint-100">{config.name}</h3>
+                        <p className="text-xs text-mint-600 dark:text-mint-400 mt-1">{config.category}</p>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input
@@ -263,33 +263,33 @@ export default function AdminDashboard() {
                           onChange={() => handleToggleProvider(key)}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-brown-200 dark:bg-brown-800 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-brown-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-brown peer-checked:to-teal"></div>
+                        <div className="w-11 h-6 bg-mint-200 dark:bg-mint-800 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-mint-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-mint peer-checked:to-teal"></div>
                       </label>
                     </div>
 
                     <div className="space-y-3">
                       {config.fields.key && (
                         <div>
-                          <label className="block text-xs font-bold text-brown-700 dark:text-brown-300 mb-1">API Key</label>
+                          <label className="block text-xs font-bold text-mint-700 dark:text-mint-300 mb-1">API Key</label>
                           <input
                             type="password"
                             value={providerData.key}
                             onChange={(e) => setApiKeys(prev => ({ ...prev, [key]: { ...prev[key], key: e.target.value } }))}
                             placeholder="sk-..."
-                            className="w-full px-3 py-2 bg-brown-50 dark:bg-brown-900/30 border border-brown-200 dark:border-brown-700 rounded-hig-lg text-sm text-brown-900 dark:text-brown-100 placeholder:text-brown-400 focus:ring-2 focus:ring-teal-400 outline-none"
+                            className="w-full px-3 py-2 bg-mint-50 dark:bg-mint-900/30 border border-mint-200 dark:border-mint-700 rounded-hig-lg text-sm text-mint-900 dark:text-mint-100 placeholder:text-mint-400 focus:ring-2 focus:ring-teal-400 outline-none"
                           />
                         </div>
                       )}
                       
                       {config.fields.secret && (
                         <div>
-                          <label className="block text-xs font-bold text-brown-700 dark:text-brown-300 mb-1">API Secret</label>
+                          <label className="block text-xs font-bold text-mint-700 dark:text-mint-300 mb-1">API Secret</label>
                           <input
                             type="password"
                             value={providerData.secret}
                             onChange={(e) => setApiKeys(prev => ({ ...prev, [key]: { ...prev[key], secret: e.target.value } }))}
                             placeholder="secret..."
-                            className="w-full px-3 py-2 bg-brown-50 dark:bg-brown-900/30 border border-brown-200 dark:border-brown-700 rounded-hig-lg text-sm text-brown-900 dark:text-brown-100 placeholder:text-brown-400 focus:ring-2 focus:ring-teal-400 outline-none"
+                            className="w-full px-3 py-2 bg-mint-50 dark:bg-mint-900/30 border border-mint-200 dark:border-mint-700 rounded-hig-lg text-sm text-mint-900 dark:text-mint-100 placeholder:text-mint-400 focus:ring-2 focus:ring-teal-400 outline-none"
                           />
                         </div>
                       )}
@@ -297,7 +297,7 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-2 pt-2">
                         <button
                           onClick={() => handleSaveKey(key)}
-                          className="flex-1 px-4 py-2 bg-gradient-to-r from-brown to-teal text-white rounded-hig-lg font-bold text-sm hover:scale-105 transition-transform shadow-sm"
+                          className="flex-1 px-4 py-2 bg-gradient-to-r from-mint to-teal text-white rounded-hig-lg font-bold text-sm hover:scale-105 transition-transform shadow-sm"
                         >
                           Save
                         </button>
@@ -305,13 +305,13 @@ export default function AdminDashboard() {
                           href={config.docs}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="px-4 py-2 bg-brown-100 dark:bg-brown-800 text-brown-700 dark:text-brown-300 rounded-hig-lg font-bold text-sm hover:bg-brown-200 dark:hover:bg-brown-700 transition-colors"
+                          className="px-4 py-2 bg-mint-100 dark:bg-mint-800 text-mint-700 dark:text-mint-300 rounded-hig-lg font-bold text-sm hover:bg-mint-200 dark:hover:bg-mint-700 transition-colors"
                         >
                           Docs
                         </a>
                       </div>
 
-                      <p className="text-xs text-brown-500 dark:text-brown-500 leading-relaxed">
+                      <p className="text-xs text-mint-500 dark:text-mint-500 leading-relaxed">
                         {config.guide}
                       </p>
                     </div>
@@ -323,36 +323,36 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'Users' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 p-6 shadow-float">
-            <h2 className="text-2xl font-bold text-brown-900 dark:text-brown-100 mb-6">User Management</h2>
+          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
+            <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100 mb-6">User Management</h2>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-brown-200 dark:border-brown-700">
-                    <th className="text-left py-3 px-4 text-sm font-bold text-brown-700 dark:text-brown-300">Email</th>
-                    <th className="text-left py-3 px-4 text-sm font-bold text-brown-700 dark:text-brown-300">Status</th>
-                    <th className="text-left py-3 px-4 text-sm font-bold text-brown-700 dark:text-brown-300">Created</th>
-                    <th className="text-left py-3 px-4 text-sm font-bold text-brown-700 dark:text-brown-300">Actions</th>
+                  <tr className="border-b border-mint-200 dark:border-mint-700">
+                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Email</th>
+                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Status</th>
+                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Created</th>
+                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map(user => (
-                    <tr key={user.id} className="border-b border-brown-100 dark:border-brown-800">
-                      <td className="py-4 px-4 text-sm text-brown-900 dark:text-brown-100">{user.email}</td>
+                    <tr key={user.id} className="border-b border-mint-100 dark:border-mint-800">
+                      <td className="py-4 px-4 text-sm text-mint-900 dark:text-mint-100">{user.email}</td>
                       <td className="py-4 px-4">
                         <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                           user.email_confirmed_at
                             ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300'
-                            : 'bg-brown-100 dark:bg-brown-800 text-brown-700 dark:text-brown-300'
+                            : 'bg-mint-100 dark:bg-mint-800 text-mint-700 dark:text-mint-300'
                         }`}>
                           {user.email_confirmed_at ? 'Active' : 'Pending'}
                         </span>
                       </td>
-                      <td className="py-4 px-4 text-sm text-brown-600 dark:text-brown-400">
+                      <td className="py-4 px-4 text-sm text-mint-600 dark:text-mint-400">
                         {new Date(user.created_at).toLocaleDateString()}
                       </td>
                       <td className="py-4 px-4">
-                        <button className="text-sm font-bold text-brown-600 dark:text-brown-400 hover:text-brown-900 dark:hover:text-brown-100">
+                        <button className="text-sm font-bold text-mint-600 dark:text-mint-400 hover:text-mint-900 dark:hover:text-mint-100">
                           Manage
                         </button>
                       </td>
@@ -365,15 +365,15 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'Translations' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 p-6 shadow-float">
+          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-brown-900 dark:text-brown-100">Translation Management</h2>
-                <p className="text-brown-600 dark:text-brown-400 mt-1">Manage app translations for all supported languages</p>
+                <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100">Translation Management</h2>
+                <p className="text-mint-600 dark:text-mint-400 mt-1">Manage app translations for all supported languages</p>
               </div>
               <button
                 onClick={() => router.push('/admin/translations')}
-                className="px-6 py-3 gradient-brown-teal text-white rounded-hig-xl font-bold shadow-brown-glow hover:scale-105 transition-transform"
+                className="px-6 py-3 gradient-mint-teal text-white rounded-hig-xl font-bold shadow-mint-glow hover:scale-105 transition-transform"
               >
                 Open Full Editor →
               </button>
@@ -393,13 +393,13 @@ export default function AdminDashboard() {
                 return (
                   <div
                     key={lang}
-                    className="bg-brown-50 dark:bg-brown-900/30 rounded-hig-xl p-4 border border-brown-200 dark:border-brown-700"
+                    className="bg-mint-50 dark:bg-mint-900/30 rounded-hig-xl p-4 border border-mint-200 dark:border-mint-700"
                   >
                     <div className="flex items-center gap-3 mb-2">
                       <span className="text-2xl">{langInfo[lang].flag}</span>
-                      <span className="font-bold text-brown-900 dark:text-brown-100">{langInfo[lang].name}</span>
+                      <span className="font-bold text-mint-900 dark:text-mint-100">{langInfo[lang].name}</span>
                     </div>
-                    <div className="text-xs text-brown-600 dark:text-brown-400">
+                    <div className="text-xs text-mint-600 dark:text-mint-400">
                       {lang === 'en' ? 'Base language' : 'Click editor to manage'}
                     </div>
                   </div>
@@ -410,16 +410,16 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'Settings' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 p-6 shadow-float">
-            <h2 className="text-2xl font-bold text-brown-900 dark:text-brown-100 mb-4">System Settings</h2>
-            <p className="text-brown-600 dark:text-brown-400">Global configuration options coming soon...</p>
+          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
+            <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100 mb-4">System Settings</h2>
+            <p className="text-mint-600 dark:text-mint-400">Global configuration options coming soon...</p>
           </div>
         )}
 
         {activeTab === 'Analytics' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-brown-200 dark:border-brown-700 p-6 shadow-float">
-            <h2 className="text-2xl font-bold text-brown-900 dark:text-brown-100 mb-4">Usage Analytics</h2>
-            <p className="text-brown-600 dark:text-brown-400">API usage statistics and metrics coming soon...</p>
+          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
+            <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100 mb-4">Usage Analytics</h2>
+            <p className="text-mint-600 dark:text-mint-400">API usage statistics and metrics coming soon...</p>
           </div>
         )}
       </div>

@@ -85,7 +85,7 @@ const config: Config = {
         separator: "rgb(var(--separator) / <alpha-value>)",
         fill: "rgba(var(--fill) / <alpha-value>)",
         destructive: "#FF3B30",
-        success: "#34C759",
+        success: "#00C7BE", // Apple HIG systemMint — used for tick/confirmation dots app-wide
         warning: "#FF9500",
       },
       boxShadow: {

@@ -1,7 +1,7 @@
 'use client'
 
 import AppLayout from '@/shared/ui/layout/AppLayout'
-import ChatSidebar, { SidebarItem } from '@/shared/ui/layout/ChatSidebar'
+import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
 import UnifiedControlsPanel from '@/shared/ui/layout/UnifiedControlsPanel'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useState } from 'react'
@@ -10,6 +10,14 @@ import { AUDIO_MODELS, AUDIO_DURATIONS, AUDIO_QUALITY } from '@/domains/audio-ge
 import { useRouter } from 'next/navigation'
 import { useAvailableModels } from '@/lib/use-available-models'
 import { getProviderApiKey } from '@/lib/admin-settings'
+import {
+  getActiveChatId,
+  setActiveChatId as persistActiveChatId,
+  ensureActiveChat,
+  touchChat,
+  loadHistory,
+  saveHistory,
+} from '@/lib/chat-store'
 
 type AIType = 'text' | 'image' | 'video' | 'audio'
 
@@ -37,6 +45,7 @@ export default function AudioPage() {
   const [audios, setAudios] = useState<AudioClip[]>([])
   const [errorMessage, setErrorMessage] = useState('')
   const [activeAIType, setActiveAIType] = useState<AIType>('audio')
+  const [activeChatId, setActiveChatIdState] = useState<string | null>(null)
 
   // Keep selection in sync with available models
   useEffect(() => {
@@ -44,6 +53,19 @@ export default function AudioPage() {
       setSelectedModel(availableModels[0])
     }
   }, [availableModels, selectedModel.id])
+
+  // Hydrate active chat + saved generations on mount.
+  useEffect(() => {
+    const id = getActiveChatId('audio')
+    setActiveChatIdState(id)
+    setAudios(loadHistory<AudioClip>('audio', id))
+  }, [])
+
+  const handleChatSelect = (chatId: string) => {
+    setActiveChatIdState(chatId)
+    persistActiveChatId('audio', chatId)
+    setAudios(loadHistory<AudioClip>('audio', chatId))
+  }
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,6 +75,15 @@ export default function AudioPage() {
     if (!apiKey) {
       setErrorMessage(`No API key found for ${selectedModel.brandName}. Add one in Super Admin → API Keys.`)
       return
+    }
+
+    // Create a chat on first send so it shows up in the sidebar immediately.
+    const chat = ensureActiveChat('audio', prompt, selectedModel.brandName)
+    if (chat.id !== activeChatId) {
+      setActiveChatIdState(chat.id)
+      persistActiveChatId('audio', chat.id)
+    } else {
+      touchChat(chat.id, { model: selectedModel.brandName })
     }
 
     setErrorMessage('')
@@ -85,7 +116,11 @@ export default function AudioPage() {
         duration: selectedDuration,
         createdAt: Date.now(),
       }
-      setAudios(prev => [clip, ...prev])
+      setAudios(prev => {
+        const next = [clip, ...prev]
+        saveHistory('audio', chat.id, next)
+        return next
+      })
       setPrompt('')
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Audio generation failed')
@@ -141,10 +176,11 @@ export default function AudioPage() {
   )
 
   const sidebar = (
-    <ChatSidebar>
-      <SidebarItem id="lofi-hip-hop" title="Lo-fi hip hop" active />
-      <SidebarItem id="narrative-voiceover" title="Narrative voiceover" />
-    </ChatSidebar>
+    <ChatSidebar
+      modality="audio"
+      activeChatId={activeChatId ?? undefined}
+      onChatSelect={handleChatSelect}
+    />
   )
 
   return (

@@ -55,11 +55,29 @@ export default function ApiKeysPage() {
     ? PROVIDERS
     : PROVIDERS.filter(p => p.categories.includes(filter))
 
-  // Group the visible providers by their primary category for display
+  // Group the visible providers by their primary category for display.
+  // Within each category we sort so that *connected* providers (enabled AND
+  // have an API key) appear at the top, then configured-but-disabled, then
+  // unconfigured. Within each band we alphabetise by name for stability.
+  const configuredRank = (providerId: string): number => {
+    const hasKey = Boolean(apiKeys[providerId]?.trim())
+    const enabled = enabledProviders[providerId] ?? true
+    if (hasKey && enabled) return 0
+    if (hasKey && !enabled) return 1
+    return 2
+  }
+
   const grouped: Record<ProviderCategory, typeof PROVIDERS> = { text: [], image: [], video: [], audio: [] }
   visibleProviders.forEach(p => {
     const primary = CATEGORY_ORDER.find(c => p.categories.includes(c)) || 'text'
     grouped[primary].push(p)
+  })
+  CATEGORY_ORDER.forEach(cat => {
+    grouped[cat].sort((a, b) => {
+      const rankDiff = configuredRank(a.id) - configuredRank(b.id)
+      if (rankDiff !== 0) return rankDiff
+      return a.name.localeCompare(b.name)
+    })
   })
 
   return (
@@ -103,19 +121,32 @@ export default function ApiKeysPage() {
               <motion.div variants={stagger} initial="initial" animate="animate" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {list.map(provider => {
                   const configured = Boolean(apiKeys[provider.id])
+                  const isLive = configured && (enabledProviders[provider.id] ?? true)
+                  // Visually de-emphasise providers the user hasn't set up yet so
+                  // connected ones read as the primary affordance.
+                  const cardTone = isLive
+                    ? 'bg-surface border-mint/40 ring-1 ring-mint/20'
+                    : configured
+                      ? 'bg-surface border-separator'
+                      : 'bg-surface/60 border-separator/60 opacity-60 hover:opacity-100 transition-opacity'
+                  const statusTone = isLive
+                    ? 'text-mint'
+                    : configured
+                      ? 'text-label-secondary'
+                      : 'text-label-tertiary'
                   return (
-                    <motion.div key={provider.id} variants={cardVariant} className="bg-surface border border-separator rounded-2xl shadow-sm overflow-hidden">
+                    <motion.div key={provider.id} variants={cardVariant} className={`${cardTone} border rounded-2xl shadow-sm overflow-hidden`}>
                       <div className="p-5 border-b border-separator flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white bg-apple-teal flex-shrink-0">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white flex-shrink-0 ${
+                            isLive ? 'bg-mint' : configured ? 'bg-apple-teal' : 'bg-fill'
+                          }`}>
                             {provider.name[0]}
                           </div>
                           <div className="min-w-0">
                             <h3 className="font-bold truncate">{provider.name}</h3>
-                            <div className={`text-[10px] uppercase font-bold tracking-widest ${
-                              configured ? 'text-apple-teal' : 'text-label-tertiary'
-                            }`}>
-                              {configured ? (enabledProviders[provider.id] ? 'Active' : 'Configured (off)') : 'Not configured'}
+                            <div className={`text-[10px] uppercase font-bold tracking-widest ${statusTone}`}>
+                              {isLive ? 'Connected' : configured ? 'Configured (off)' : 'Not configured'}
                             </div>
                           </div>
                         </div>

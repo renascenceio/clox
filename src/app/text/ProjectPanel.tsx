@@ -196,7 +196,7 @@ export default function ProjectPanel({
           <span className="font-bold text-sm">Project</span>
         </div>
         <div className="flex-1 flex items-center justify-center">
-          <div className="w-5 h-5 border-2 border-brown/30 border-t-brown rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-mint/30 border-t-mint rounded-full animate-spin" />
         </div>
       </div>
     )
@@ -205,7 +205,7 @@ export default function ProjectPanel({
   return (
     <div className="flex flex-col h-full">
       <div className="h-16 border-b border-separator/50 flex items-center px-6 gap-3">
-        <svg className="w-4 h-4 text-brown dark:text-teal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="w-4 h-4 text-mint dark:text-teal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
         </svg>
         <span className="font-bold text-sm truncate">{project?.title || 'Project'}</span>
@@ -253,12 +253,12 @@ export default function ProjectPanel({
                   onChange={e => { setInviteEmail(e.target.value); setInviteError('') }}
                   onKeyDown={e => e.key === 'Enter' && handleInvite()}
                   placeholder={`colleague@${project.owner_domain}`}
-                  className="flex-grow h-9 px-3 bg-white dark:bg-[#2C2C2E] border border-separator rounded-hig-lg text-xs text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/20 dark:focus:ring-teal/20 focus:border-brown dark:focus:border-teal transition-all"
+                  className="flex-grow h-9 px-3 bg-white dark:bg-[#2C2C2E] border border-separator rounded-hig-lg text-xs text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20 focus:border-mint dark:focus:border-teal transition-all"
                 />
                 <button
                   onClick={handleInvite}
                   disabled={inviting || !inviteEmail.trim()}
-                  className="h-9 px-3 gradient-brown-teal text-white text-xs font-bold rounded-hig-lg disabled:opacity-40 transition-all hover:scale-105 active:scale-95 flex-shrink-0"
+                  className="h-9 px-3 gradient-mint-teal text-white text-xs font-bold rounded-hig-lg disabled:opacity-40 transition-all hover:scale-105 active:scale-95 flex-shrink-0"
                 >
                   {inviting ? (
                     <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -284,7 +284,7 @@ export default function ProjectPanel({
             value={systemPrompt}
             onChange={e => onSystemPromptChange(e.target.value)}
             placeholder="You are a helpful assistant..."
-            className="w-full min-h-[80px] p-3 bg-white dark:bg-[#2C2C2E] border border-separator rounded-hig-lg text-xs text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/20 focus:border-brown transition-all resize-none"
+            className="w-full min-h-[80px] p-3 bg-white dark:bg-[#2C2C2E] border border-separator rounded-hig-lg text-xs text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-mint/20 focus:border-mint transition-all resize-none"
             rows={3}
           />
         </div>
@@ -292,11 +292,11 @@ export default function ProjectPanel({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-label-tertiary uppercase tracking-widest">Temperature</label>
-            <span className="text-sm font-bold text-brown">{temperature}</span>
+            <span className="text-sm font-bold text-mint">{temperature}</span>
           </div>
           <input type="range" min="0" max="2" step="0.1" value={temperature}
             onChange={e => onTemperatureChange(parseFloat(e.target.value))}
-            className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-brown"
+            className="w-full h-2 bg-surface-secondary rounded-lg appearance-none cursor-pointer accent-mint"
           />
           <div className="flex justify-between text-xs text-label-tertiary"><span>Precise</span><span>Creative</span></div>
         </div>

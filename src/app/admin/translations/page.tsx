@@ -191,7 +191,7 @@ export default function TranslationsPage() {
                 onClick={() => setSelectedLang(lang.code)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-hig-lg text-sm font-medium transition-all ${
                   selectedLang === lang.code
-                    ? 'bg-brown dark:bg-teal text-white shadow-brown-glow dark:shadow-teal-glow'
+                    ? 'bg-mint dark:bg-teal text-white shadow-mint-glow dark:shadow-teal-glow'
                     : 'bg-surface-tertiary hover:bg-fill text-label-primary'
                 }`}
               >
@@ -209,7 +209,7 @@ export default function TranslationsPage() {
               </div>
               <div className="w-24 h-2 bg-surface-tertiary rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-brown to-teal transition-all"
+                  className="h-full bg-gradient-to-r from-mint to-teal transition-all"
                   style={{ width: `${progress.percentage}%` }}
                 />
               </div>
@@ -240,7 +240,7 @@ export default function TranslationsPage() {
             Export All Languages
           </button>
 
-          <label className="flex items-center gap-2 px-4 py-2 bg-brown/10 dark:bg-teal/10 hover:bg-brown/20 dark:hover:bg-teal/20 text-brown dark:text-teal rounded-hig-lg text-sm font-medium transition-all cursor-pointer">
+          <label className="flex items-center gap-2 px-4 py-2 bg-mint/10 dark:bg-teal/10 hover:bg-mint/20 dark:hover:bg-teal/20 text-mint dark:text-teal rounded-hig-lg text-sm font-medium transition-all cursor-pointer">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
@@ -256,7 +256,7 @@ export default function TranslationsPage() {
 
           <button
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-2 px-4 py-2 gradient-brown-teal text-white rounded-hig-lg text-sm font-bold transition-all hover:shadow-brown-glow"
+            className="flex items-center gap-2 px-4 py-2 gradient-mint-teal text-white rounded-hig-lg text-sm font-bold transition-all hover:shadow-mint-glow"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -272,7 +272,7 @@ export default function TranslationsPage() {
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
           exit={{ opacity: 0, height: 0 }}
-          className="bg-brown/5 dark:bg-teal/5 border border-brown/20 dark:border-teal/20 rounded-hig-xl p-6 mb-6"
+          className="bg-mint/5 dark:bg-teal/5 border border-mint/20 dark:border-teal/20 rounded-hig-xl p-6 mb-6"
         >
           <h3 className="font-bold text-label-primary mb-4">Add New Translation</h3>
           <div className="flex gap-4">
@@ -281,19 +281,19 @@ export default function TranslationsPage() {
               value={newKey}
               onChange={(e) => setNewKey(e.target.value)}
               placeholder="Translation key (e.g., common.hello)"
-              className="flex-1 px-4 py-2 bg-surface-secondary border border-separator rounded-hig-lg text-sm outline-none focus:border-brown dark:focus:border-teal"
+              className="flex-1 px-4 py-2 bg-surface-secondary border border-separator rounded-hig-lg text-sm outline-none focus:border-mint dark:focus:border-teal"
             />
             <input
               type="text"
               value={newValue}
               onChange={(e) => setNewValue(e.target.value)}
               placeholder="Translation value"
-              className="flex-1 px-4 py-2 bg-surface-secondary border border-separator rounded-hig-lg text-sm outline-none focus:border-brown dark:focus:border-teal"
+              className="flex-1 px-4 py-2 bg-surface-secondary border border-separator rounded-hig-lg text-sm outline-none focus:border-mint dark:focus:border-teal"
             />
             <button
               onClick={handleAddNew}
               disabled={!newKey.trim() || !newValue.trim()}
-              className="px-6 py-2 gradient-brown-teal text-white rounded-hig-lg text-sm font-bold disabled:opacity-50"
+              className="px-6 py-2 gradient-mint-teal text-white rounded-hig-lg text-sm font-bold disabled:opacity-50"
             >
               Add
             </button>
@@ -318,7 +318,7 @@ export default function TranslationsPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search translations..."
-            className="w-full pl-11 pr-4 py-3 bg-surface-secondary border border-separator rounded-hig-lg text-sm outline-none focus:border-brown dark:focus:border-teal"
+            className="w-full pl-11 pr-4 py-3 bg-surface-secondary border border-separator rounded-hig-lg text-sm outline-none focus:border-mint dark:focus:border-teal"
           />
         </div>
         
@@ -385,7 +385,7 @@ export default function TranslationsPage() {
                             if (e.key === 'Enter') handleSave(key, editValue)
                             if (e.key === 'Escape') setEditingKey(null)
                           }}
-                          className="flex-1 px-3 py-1.5 bg-surface border border-brown dark:border-teal rounded-hig-lg text-sm outline-none"
+                          className="flex-1 px-3 py-1.5 bg-surface border border-mint dark:border-teal rounded-hig-lg text-sm outline-none"
                           autoFocus
                         />
                         <button
@@ -414,7 +414,7 @@ export default function TranslationsPage() {
                         setEditingKey(key)
                         setEditValue(value || englishValue)
                       }}
-                      className="w-8 h-8 flex items-center justify-center rounded-hig-lg hover:bg-surface-tertiary text-label-secondary hover:text-brown dark:hover:text-teal transition-all"
+                      className="w-8 h-8 flex items-center justify-center rounded-hig-lg hover:bg-surface-tertiary text-label-secondary hover:text-mint dark:hover:text-teal transition-all"
                       title="Edit"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

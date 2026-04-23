@@ -183,7 +183,7 @@ export default function SkillsPage() {
 
   const enabledCount = userSkills.filter(us => us.is_active).length
 
-  const inputClass = 'w-full h-10 px-3 bg-white/70 dark:bg-[#2C2C2E]/70 border border-separator rounded-hig-lg text-sm font-medium text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/30 dark:focus:ring-teal/30 focus:border-brown dark:focus:border-teal transition-all'
+  const inputClass = 'w-full h-10 px-3 bg-white/70 dark:bg-[#2C2C2E]/70 border border-separator rounded-hig-lg text-sm font-medium text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-mint/30 dark:focus:ring-teal/30 focus:border-mint dark:focus:border-teal transition-all'
   const labelClass = 'block text-xs font-bold text-label-tertiary uppercase tracking-wider mb-1'
 
   return (
@@ -207,7 +207,7 @@ export default function SkillsPage() {
             {isSuperAdmin && (
               <button
                 onClick={() => setShowCreatePanel(true)}
-                className="flex items-center gap-2 px-4 py-2 gradient-brown-teal text-white rounded-hig-lg text-sm font-bold shadow-brown-glow hover:scale-105 active:scale-95 transition-all"
+                className="flex items-center gap-2 px-4 py-2 gradient-mint-teal text-white rounded-hig-lg text-sm font-bold shadow-mint-glow hover:scale-105 active:scale-95 transition-all"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -227,7 +227,7 @@ export default function SkillsPage() {
                 onClick={() => setFilterEngine(eng)}
                 className={`px-3 py-1.5 rounded-hig-md text-xs font-bold transition-all capitalize ${
                   filterEngine === eng
-                    ? 'gradient-brown-teal text-white shadow-brown-glow'
+                    ? 'gradient-mint-teal text-white shadow-mint-glow'
                     : 'text-label-secondary hover:text-label-primary hover:bg-surface-tertiary dark:hover:bg-surface-secondary'
                 }`}
               >
@@ -242,7 +242,7 @@ export default function SkillsPage() {
                 onClick={() => setFilterTag(filterTag === tag ? '' : tag)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
                   filterTag === tag
-                    ? 'bg-brown/10 dark:bg-teal/10 border-brown dark:border-teal text-brown dark:text-teal'
+                    ? 'bg-mint/10 dark:bg-teal/10 border-mint dark:border-teal text-mint dark:text-teal'
                     : 'border-separator/30 text-label-secondary hover:border-separator'
                 }`}
               >
@@ -276,7 +276,7 @@ export default function SkillsPage() {
                     exit={{ opacity: 0, scale: 0.95 }}
                     className={`bg-surface-secondary dark:bg-surface rounded-hig-xl border transition-all ${
                       active
-                        ? 'border-brown/40 dark:border-teal/40 shadow-brown-glow'
+                        ? 'border-mint/40 dark:border-teal/40 shadow-mint-glow'
                         : 'border-separator/30 hover:border-separator'
                     }`}
                   >
@@ -300,7 +300,7 @@ export default function SkillsPage() {
                           onClick={() => toggleSkill(skill)}
                           disabled={saving === skill.id}
                           className={`w-11 h-6 rounded-full flex-shrink-0 transition-all relative ${
-                            active ? 'gradient-brown-teal shadow-brown-glow' : 'bg-surface-tertiary dark:bg-[#3A3A3C]'
+                            active ? 'gradient-mint-teal shadow-mint-glow' : 'bg-surface-tertiary dark:bg-[#3A3A3C]'
                           } ${saving === skill.id ? 'opacity-50' : ''}`}
                           aria-label={active ? 'Disable skill' : 'Enable skill'}
                         >
@@ -321,7 +321,7 @@ export default function SkillsPage() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setExpandedSkill(expanded ? null : skill.id)}
-                          className="text-xs font-medium text-brown dark:text-teal hover:underline"
+                          className="text-xs font-medium text-mint dark:text-teal hover:underline"
                         >
                           {expanded ? 'Hide prompt' : 'View prompt'}
                         </button>
@@ -425,7 +425,7 @@ export default function SkillsPage() {
                       onClick={() => setCreateTab(tab)}
                       className={`flex-1 py-2 rounded-hig-md text-xs font-bold capitalize transition-all ${
                         createTab === tab
-                          ? 'gradient-brown-teal text-white shadow-brown-glow'
+                          ? 'gradient-mint-teal text-white shadow-mint-glow'
                           : 'text-label-secondary hover:text-label-primary'
                       }`}
                     >
@@ -461,7 +461,7 @@ export default function SkillsPage() {
                       type="button"
                       onClick={fetchFromGitHub}
                       disabled={githubFetching || !githubUrl.trim()}
-                      className="w-full h-10 gradient-brown-teal text-white rounded-hig-lg text-sm font-bold shadow-brown-glow hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full h-10 gradient-mint-teal text-white rounded-hig-lg text-sm font-bold shadow-mint-glow hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {githubFetching ? (
                         <>
@@ -562,7 +562,7 @@ export default function SkillsPage() {
                         onChange={e => setNewSkill(p => ({ ...p, system_prompt: e.target.value }))}
                         required
                         rows={8}
-                        className="w-full px-3 py-2.5 bg-white/70 dark:bg-[#2C2C2E]/70 border border-separator rounded-hig-lg text-sm font-mono text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-brown/30 dark:focus:ring-teal/30 focus:border-brown dark:focus:border-teal transition-all resize-y"
+                        className="w-full px-3 py-2.5 bg-white/70 dark:bg-[#2C2C2E]/70 border border-separator rounded-hig-lg text-sm font-mono text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-mint/30 dark:focus:ring-teal/30 focus:border-mint dark:focus:border-teal transition-all resize-y"
                         placeholder="You are an expert at..."
                       />
                     </div>
@@ -572,7 +572,7 @@ export default function SkillsPage() {
                         type="button"
                         onClick={() => setNewSkill(p => ({ ...p, is_public: !p.is_public }))}
                         className={`w-10 h-5 rounded-full relative transition-all ${
-                          newSkill.is_public ? 'gradient-brown-teal shadow-brown-glow' : 'bg-surface-tertiary dark:bg-[#3A3A3C]'
+                          newSkill.is_public ? 'gradient-mint-teal shadow-mint-glow' : 'bg-surface-tertiary dark:bg-[#3A3A3C]'
                         }`}
                       >
                         <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${
@@ -591,7 +591,7 @@ export default function SkillsPage() {
                     <button
                       type="submit"
                       disabled={createSaving}
-                      className="w-full h-11 gradient-brown-teal text-white rounded-hig-lg text-sm font-bold shadow-brown-glow hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full h-11 gradient-mint-teal text-white rounded-hig-lg text-sm font-bold shadow-mint-glow hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {createSaving ? (
                         <>
