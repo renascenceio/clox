@@ -67,12 +67,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-white via-brown-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-white via-mint-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
       {/* Animated Background Blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 -left-4 w-72 h-72 bg-brown/20 rounded-full mix-blend-multiply filter blur-xl animate-blob"></div>
+        <div className="absolute top-0 -left-4 w-72 h-72 bg-mint/20 rounded-full mix-blend-multiply filter blur-xl animate-blob"></div>
         <div className="absolute top-0 -right-4 w-72 h-72 bg-teal/20 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-brown-300/20 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-4000"></div>
+        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-mint-300/20 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-4000"></div>
       </div>
 
       {/* Login Card */}
@@ -81,8 +81,8 @@ export default function LoginPage() {
         <div className="text-center mb-8 space-y-4">
           <div className="flex items-center justify-center gap-3 mb-6">
             <div className="relative">
-              <div className="absolute inset-0 gradient-brown-teal blur-lg opacity-60 animate-pulse rounded-2xl"></div>
-              <div className="relative w-16 h-16 gradient-brown-teal rounded-2xl flex items-center justify-center shadow-2xl">
+              <div className="absolute inset-0 gradient-mint-teal blur-lg opacity-60 animate-pulse rounded-2xl"></div>
+              <div className="relative w-16 h-16 gradient-mint-teal rounded-2xl flex items-center justify-center shadow-2xl">
                 <svg className="w-9 h-9 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
@@ -119,7 +119,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={loading}
-                className="w-full h-12 px-4 bg-white dark:bg-[#2C2C2E] border-2 border-[#E5E5EA] dark:border-[#3A3A3C] rounded-xl text-base font-medium text-[#1C1C1E] dark:text-white placeholder:text-[#8E8E93] dark:placeholder:text-[#636366] focus:outline-none focus:ring-2 focus:ring-brown/40 dark:focus:ring-teal/40 focus:border-brown dark:focus:border-teal transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full h-12 px-4 bg-white dark:bg-[#2C2C2E] border-2 border-[#E5E5EA] dark:border-[#3A3A3C] rounded-xl text-base font-medium text-[#1C1C1E] dark:text-white placeholder:text-[#8E8E93] dark:placeholder:text-[#636366] focus:outline-none focus:ring-2 focus:ring-mint/40 dark:focus:ring-teal/40 focus:border-mint dark:focus:border-teal transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="admin@example.com"
               />
             </div>
@@ -136,7 +136,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
-                className="w-full h-12 px-4 bg-white dark:bg-[#2C2C2E] border-2 border-[#E5E5EA] dark:border-[#3A3A3C] rounded-xl text-base font-medium text-[#1C1C1E] dark:text-white placeholder:text-[#8E8E93] dark:placeholder:text-[#636366] focus:outline-none focus:ring-2 focus:ring-brown/40 dark:focus:ring-teal/40 focus:border-brown dark:focus:border-teal transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full h-12 px-4 bg-white dark:bg-[#2C2C2E] border-2 border-[#E5E5EA] dark:border-[#3A3A3C] rounded-xl text-base font-medium text-[#1C1C1E] dark:text-white placeholder:text-[#8E8E93] dark:placeholder:text-[#636366] focus:outline-none focus:ring-2 focus:ring-mint/40 dark:focus:ring-teal/40 focus:border-mint dark:focus:border-teal transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="••••••••"
               />
             </div>
@@ -160,7 +160,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-14 gradient-brown-teal text-white rounded-xl text-lg font-bold shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
+              className="w-full h-14 gradient-mint-teal text-white rounded-xl text-lg font-bold shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -204,7 +204,7 @@ export default function LoginPage() {
           {/* Footer */}
           <div className="mt-6 text-center">
             <p className="text-xs text-[#8E8E93] dark:text-[#636366]">
-              Default: <span className="font-bold text-brown dark:text-teal">aslan@renascence.io</span> / Admin123!
+              Default: <span className="font-bold text-mint dark:text-teal">aslan@renascence.io</span> / Admin123!
             </p>
           </div>
         </div>

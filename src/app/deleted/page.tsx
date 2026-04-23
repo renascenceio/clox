@@ -106,7 +106,7 @@ export default function DeletedPage() {
             <div className="flex gap-2">
               <button
                 onClick={handleRestoreSelected}
-                className="px-4 py-2 text-sm font-bold text-brown dark:text-teal hover:bg-brown/10 dark:hover:bg-teal/10 rounded-hig-lg transition-colors"
+                className="px-4 py-2 text-sm font-bold text-mint dark:text-teal hover:bg-mint/10 dark:hover:bg-teal/10 rounded-hig-lg transition-colors"
               >
                 Restore All
               </button>
@@ -147,8 +147,8 @@ export default function DeletedPage() {
                     onClick={() => toggleSelect(item.id)}
                     className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
                       selectedItems.includes(item.id)
-                        ? 'bg-brown dark:bg-teal border-brown dark:border-teal'
-                        : 'border-separator hover:border-brown dark:hover:border-teal'
+                        ? 'bg-mint dark:bg-teal border-mint dark:border-teal'
+                        : 'border-separator hover:border-mint dark:hover:border-teal'
                     }`}
                   >
                     {selectedItems.includes(item.id) && (
@@ -161,11 +161,11 @@ export default function DeletedPage() {
                   {/* Icon */}
                   <div className={`w-10 h-10 rounded-hig-lg flex items-center justify-center ${
                     item.type === 'project' 
-                      ? 'bg-brown/10 dark:bg-teal/10' 
+                      ? 'bg-mint/10 dark:bg-teal/10' 
                       : 'bg-surface-tertiary dark:bg-surface'
                   }`}>
                     {item.type === 'project' ? (
-                      <svg className="w-5 h-5 text-brown dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-5 h-5 text-mint dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                       </svg>
                     ) : (
@@ -187,7 +187,7 @@ export default function DeletedPage() {
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => handleRestore(item.id)}
-                      className="px-3 py-1.5 text-xs font-bold text-brown dark:text-teal hover:bg-brown/10 dark:hover:bg-teal/10 rounded-hig-lg transition-colors"
+                      className="px-3 py-1.5 text-xs font-bold text-mint dark:text-teal hover:bg-mint/10 dark:hover:bg-teal/10 rounded-hig-lg transition-colors"
                     >
                       Restore
                     </button>
