@@ -165,7 +165,7 @@ export default function SettingsPage() {
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 border-2 border-mint/30 border-t-brown rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-mint/30 border-t-mint rounded-full animate-spin" />
           </div>
         ) : (
           <form onSubmit={handleSave} className="space-y-6">
