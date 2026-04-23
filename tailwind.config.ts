@@ -10,18 +10,38 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        /*
+         * Historically this palette was brown — we've remapped every shade to
+         * Apple HIG systemMint so every existing `text-brown-*`, `bg-brown-*`,
+         * and `border-brown-*` usage across the app now renders as mint without
+         * requiring per-component edits. The name is kept for backwards compat.
+         */
         brown: {
-          DEFAULT: "#A2845E", // Apple HIG Brown
-          50: "#F7F3ED",
-          100: "#EAE0D1",
-          200: "#D5C4A8",
-          300: "#C0A87F",
-          400: "#AB8C56",
-          500: "#A2845E",
-          600: "#8B6F47",
-          700: "#6F5938",
-          800: "#53432A",
-          900: "#372C1C",
+          DEFAULT: "#00C7BE", // Apple HIG systemMint (light)
+          50: "#E6F9F8",
+          100: "#BFF0EE",
+          200: "#80E3DE",
+          300: "#40D5CE",
+          400: "#00C7BE",
+          500: "#00C7BE",
+          600: "#009F98",
+          700: "#007872",
+          800: "#00504D",
+          900: "#002827",
+        },
+        // Explicit Apple HIG systemMint palette (preferred for new code).
+        mint: {
+          DEFAULT: "#00C7BE",
+          50: "#E6F9F8",
+          100: "#BFF0EE",
+          200: "#80E3DE",
+          300: "#40D5CE",
+          400: "#00C7BE",
+          500: "#00C7BE",
+          600: "#009F98",
+          700: "#007872",
+          800: "#00504D",
+          900: "#002827",
         },
         teal: {
           DEFAULT: "#5AC8C8", // Legacy HIG Teal - kept for backwards compat
@@ -73,11 +93,11 @@ const config: Config = {
         'hig-hover': "0 2px 8px rgba(0,0,0,0.1), 0 10px 24px rgba(0,0,0,0.08)",
         'float': "0 8px 16px rgba(0,0,0,0.08), 0 16px 48px rgba(0,0,0,0.12)",
         'float-lg': "0 12px 24px rgba(0,0,0,0.1), 0 24px 64px rgba(0,0,0,0.15)",
-        // Renamed visually: the CTA is now Apple Teal, so the glow tints teal too.
-        // Keeping the utility name preserves backwards compatibility across the app.
-        'brown-glow': "0 4px 16px rgba(48,176,199,0.28)",
-        'teal-glow': "0 4px 16px rgba(90,200,200,0.2)",
+        // All brand glows now tint mint/teal. Utility names retained for backwards compat.
+        'brown-glow': "0 4px 16px rgba(0,199,190,0.28)",
+        'teal-glow': "0 4px 16px rgba(48,176,199,0.28)",
         'apple-teal': "0 4px 16px rgba(48,176,199,0.28)",
+        'mint-glow': "0 4px 16px rgba(0,199,190,0.28)",
       },
       borderRadius: {
         'hig-sm': '4px',
