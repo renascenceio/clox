@@ -1,33 +1,50 @@
+/**
+ * Real image generation.
+ *
+ * Two paths are wired up, everything else returns a clear error:
+ *
+ *  - Google (Nano Banana / Imagen 3) — called directly against the Generative
+ *    Language REST API. We go through REST rather than `@ai-sdk/google` v1.x
+ *    because that package's image models are v2-spec and AI SDK 4 only
+ *    accepts v1 ("Unsupported model version" bug).
+ *
+ *  - OpenAI (DALL-E 3) — via `@ai-sdk/openai` which ships a v1-spec image
+ *    model. Requires a real OPENAI_API_KEY; AI Gateway cannot proxy image
+ *    generation calls.
+ */
+
 import { experimental_generateImage as generateImage } from 'ai'
-import { openai } from '@ai-sdk/openai'
-import { createOpenAI } from '@ai-sdk/openai'
+import { createOpenAI, openai as defaultOpenai } from '@ai-sdk/openai'
 
 export const maxDuration = 60
 
-/**
- * Maps our internal image model IDs to AI-SDK-runnable identifiers.
- *
- * Providers supported right now via the AI Gateway / AI SDK:
- *   - OpenAI (DALL-E 3, DALL-E 2)  — via @ai-sdk/openai
- *   - Google (Imagen / Nano Banana) — via AI Gateway model id string
- *
- * Everything else returns a clear "not wired up yet" error so the UI can
- * explain what's happening instead of silently falling back to a placeholder.
- */
-const IMAGE_MODEL_MAP: Record<string, { provider: string; modelId: string }> = {
-  // OpenAI — DALL-E 4 doesn't exist as a model name, it's marketing; route to
-  // the latest runnable model.
-  'dall-e-4': { provider: 'openai', modelId: 'dall-e-3' },
-  'dall-e-3': { provider: 'openai', modelId: 'dall-e-3' },
+type GoogleImageMode = 'gemini' | 'imagen'
 
-  // Google image models via AI Gateway (zero-config).
-  // Both Imagen 3 and Nano Banana share the same underlying Gemini 3 Flash
-  // Image Preview endpoint and the same GOOGLE_GENERATIVE_AI_API_KEY.
-  'imagen-3':    { provider: 'google', modelId: 'gemini-3.1-flash-image-preview' },
-  'nano-banana': { provider: 'google', modelId: 'gemini-3.1-flash-image-preview' },
+interface MappedModel {
+  provider: 'openai' | 'google'
+  modelId: string
+  googleMode?: GoogleImageMode
 }
 
-// Map our aspect-ratio strings to DALL-E 3's supported sizes.
+const IMAGE_MODEL_MAP: Record<string, MappedModel> = {
+  // OpenAI
+  'dall-e-3': { provider: 'openai', modelId: 'dall-e-3' },
+  'dall-e-4': { provider: 'openai', modelId: 'dall-e-3' },
+
+  // Google — the two models we expose in the UI. Both use the same API key
+  // (GOOGLE_GENERATIVE_AI_API_KEY), but they hit different endpoints.
+  'nano-banana': {
+    provider: 'google',
+    modelId: 'gemini-2.5-flash-image-preview',
+    googleMode: 'gemini',
+  },
+  'imagen-3': {
+    provider: 'google',
+    modelId: 'imagen-3.0-generate-002',
+    googleMode: 'imagen',
+  },
+}
+
 const OPENAI_SIZE_FROM_RATIO: Record<string, `${number}x${number}`> = {
   '1:1': '1024x1024',
   '16:9': '1792x1024',
@@ -37,6 +54,97 @@ const OPENAI_SIZE_FROM_RATIO: Record<string, `${number}x${number}`> = {
   '9:16': '1024x1792',
   '3:4': '1024x1792',
   '2:3': '1024x1792',
+}
+
+const IMAGEN_ASPECT_FROM_RATIO: Record<string, string> = {
+  '1:1': '1:1',
+  '16:9': '16:9',
+  '9:16': '9:16',
+  '4:3': '4:3',
+  '3:4': '3:4',
+  '3:2': '4:3',
+  '2:3': '3:4',
+  '21:9': '16:9',
+}
+
+function googleApiKey(clientApiKey?: string) {
+  return (
+    clientApiKey?.trim() ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    process.env.GOOGLE_API_KEY
+  )
+}
+
+async function generateWithGeminiImage(
+  modelId: string,
+  prompt: string,
+  apiKey: string,
+): Promise<{ dataUrl: string; mimeType: string }> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      // Tell Gemini we expect images back. Without this it returns text only.
+      responseModalities: ['TEXT', 'IMAGE'],
+    },
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`Gemini image API ${res.status}: ${errText}`)
+  }
+  const json = await res.json()
+  const parts = json?.candidates?.[0]?.content?.parts ?? []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const imagePart = parts.find((p: any) => p.inlineData?.data)
+  if (!imagePart) {
+    // Surface any textual refusal so the caller understands why it failed.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const textPart = parts.find((p: any) => p.text)
+    throw new Error(
+      textPart?.text
+        ? `Gemini returned no image: ${textPart.text}`
+        : 'Gemini returned no image data.',
+    )
+  }
+  const mimeType: string = imagePart.inlineData.mimeType || 'image/png'
+  return {
+    dataUrl: `data:${mimeType};base64,${imagePart.inlineData.data}`,
+    mimeType,
+  }
+}
+
+async function generateWithImagen(
+  modelId: string,
+  prompt: string,
+  ratio: string,
+  apiKey: string,
+): Promise<{ dataUrl: string; mimeType: string }> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:predict?key=${apiKey}`
+  const body = {
+    instances: [{ prompt }],
+    parameters: {
+      sampleCount: 1,
+      aspectRatio: IMAGEN_ASPECT_FROM_RATIO[ratio] ?? '1:1',
+    },
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`Imagen API ${res.status}: ${errText}`)
+  }
+  const json = await res.json()
+  const base64 = json?.predictions?.[0]?.bytesBase64Encoded
+  if (!base64) throw new Error('Imagen returned no image data.')
+  return { dataUrl: `data:image/png;base64,${base64}`, mimeType: 'image/png' }
 }
 
 export async function POST(request: Request) {
@@ -52,7 +160,12 @@ export async function POST(request: Request) {
     return Response.json({ success: false, error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { prompt, model: requestedModelId = 'dall-e-3', ratio = '1:1', apiKey: clientApiKey } = body
+  const {
+    prompt,
+    model: requestedModelId = 'nano-banana',
+    ratio = '1:1',
+    apiKey: clientApiKey,
+  } = body
 
   if (!prompt || !prompt.trim()) {
     return Response.json({ success: false, error: 'Prompt is required' }, { status: 400 })
@@ -63,7 +176,9 @@ export async function POST(request: Request) {
     return Response.json(
       {
         success: false,
-        error: `${requestedModelId} isn't wired up yet. Pick DALL-E 3 or Imagen 3 for now, or add an API key for this provider in Super Admin.`,
+        error:
+          `${requestedModelId} isn't wired to a live provider yet. ` +
+          `Pick Nano Banana / Imagen 3 (Google) or DALL-E 3 (OpenAI) for now.`,
       },
       { status: 400 },
     )
@@ -72,28 +187,29 @@ export async function POST(request: Request) {
   try {
     console.log('[v0] /api/generate-image:', {
       requestedModelId,
-      mappedTo: mapped,
+      provider: mapped.provider,
+      modelId: mapped.modelId,
       ratio,
-      hasClientKey: Boolean(clientApiKey),
     })
 
-    if (mapped.provider === 'openai') {
-      const size = OPENAI_SIZE_FROM_RATIO[ratio] ?? '1024x1024'
-      // Prefer an explicit key (client or env), fall back to the default
-      // client which picks up OPENAI_API_KEY / AI Gateway automatically.
-      const envKey = process.env.OPENAI_API_KEY
-      const key = clientApiKey?.trim() || envKey
-      const client = key ? createOpenAI({ apiKey: key }) : openai
+    if (mapped.provider === 'google') {
+      const key = googleApiKey(clientApiKey)
+      if (!key) {
+        return Response.json(
+          {
+            success: false,
+            error:
+              'Google image generation needs GOOGLE_GENERATIVE_AI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.',
+          },
+          { status: 400 },
+        )
+      }
 
-      const { image } = await generateImage({
-        model: client.image(mapped.modelId),
-        prompt,
-        size,
-      })
+      const { dataUrl } =
+        mapped.googleMode === 'imagen'
+          ? await generateWithImagen(mapped.modelId, prompt, ratio, key)
+          : await generateWithGeminiImage(mapped.modelId, prompt, key)
 
-      // `image` is a GeneratedFile with base64 + mimeType. Return a data URL
-      // the <Image> component can render directly without going through Picsum.
-      const dataUrl = `data:${image.mimeType};base64,${image.base64}`
       return Response.json({
         success: true,
         url: dataUrl,
@@ -102,13 +218,25 @@ export async function POST(request: Request) {
       })
     }
 
-    if (mapped.provider === 'google') {
-      // Google image generation via AI Gateway: pass the gateway model string
-      // directly. `experimental_generateImage` accepts any ImageModel.
+    if (mapped.provider === 'openai') {
+      const envKey = process.env.OPENAI_API_KEY
+      const key = clientApiKey?.trim() || envKey
+      if (!key) {
+        return Response.json(
+          {
+            success: false,
+            error:
+              'DALL-E needs OPENAI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys. (AI Gateway does not proxy image generation.)',
+          },
+          { status: 400 },
+        )
+      }
+      const size = OPENAI_SIZE_FROM_RATIO[ratio] ?? '1024x1024'
+      const client = key === envKey ? defaultOpenai : createOpenAI({ apiKey: key })
       const { image } = await generateImage({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        model: `${mapped.provider}/${mapped.modelId}` as any,
+        model: client.image(mapped.modelId),
         prompt,
+        size,
       })
       const dataUrl = `data:${image.mimeType};base64,${image.base64}`
       return Response.json({ success: true, url: dataUrl, prompt, model: mapped.modelId })

@@ -33,23 +33,6 @@ interface VideoClip {
 }
 
 const GALLERY_KEY = 'clox_video_gallery'
-// Different fallback clips per provider so the user can visually distinguish
-// which provider produced what even while the backend is mocked.
-const PROVIDER_PLACEHOLDER: Record<string, string> = {
-  openai: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-  runway: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  luma: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-  pika: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-  haiper: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-  stability: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-  kuaishou: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
-  zhipu: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4',
-  pixverse: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-  shengshu: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/VolkswagenGTIReview.mp4',
-  heygen: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
-  synthesia: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4',
-  did: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
-}
 
 export default function VideoPage() {
   const router = useRouter()
@@ -88,12 +71,6 @@ export default function VideoPage() {
     e.preventDefault()
     if (!prompt.trim() || isGenerating) return
 
-    const apiKey = getProviderApiKey(selectedModel.provider)
-    if (!apiKey) {
-      setErrorMessage(`No API key found for ${selectedModel.brandName}. Add one in Super Admin → API Keys.`)
-      return
-    }
-
     // Create a chat on first send so the sidebar + Recent Activity reflect it.
     const chat = ensureActiveChat('video', prompt, selectedModel.brandName)
     if (chat.id !== activeChatId) {
@@ -115,13 +92,27 @@ export default function VideoPage() {
     const timers = stages.map(s => setTimeout(() => setStatusText(s.text), s.delay))
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 5000))
+      const clientApiKey = getProviderApiKey(selectedModel.provider)
 
-      const url = PROVIDER_PLACEHOLDER[selectedModel.provider] || PROVIDER_PLACEHOLDER.runway
+      const res = await fetch('/api/generate-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          model: selectedModel.id,
+          ratio: selectedRatio,
+          duration: selectedDuration,
+          apiKey: clientApiKey || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || `Video generation failed (${res.status})`)
+      }
 
       const clip: VideoClip = {
         id: Date.now().toString(),
-        url,
+        url: data.url,
         prompt,
         brand: selectedModel.brandName,
         version: selectedModel.version || selectedModel.name,

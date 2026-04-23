@@ -14,10 +14,28 @@ import { PROVIDERS } from '@/lib/providers'
  * decide whether a model is shown / marked "Connected".
  */
 
-// AI Gateway bridges these providers with no additional per-provider key. We
-// still list OpenAI's env var separately because users may want their own key
-// for higher rate limits, but AI_GATEWAY_API_KEY alone is enough for these.
+// AI Gateway bridges these providers with no additional per-provider key.
 const AI_GATEWAY_ZERO_CONFIG = new Set(['openai', 'anthropic', 'google'])
+
+/**
+ * Some providers accept multiple env var names. The primary `envKey` on
+ * PROVIDERS is what the admin UI suggests, but Vercel integrations sometimes
+ * inject different names (e.g. ANTHROPIC_AUTH_TOKEN vs ANTHROPIC_API_KEY),
+ * so we try all known aliases and report which one was found.
+ */
+const ENV_KEY_ALIASES: Record<string, string[]> = {
+  anthropic: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'],
+  google: ['GOOGLE_GENERATIVE_AI_API_KEY', 'GOOGLE_API_KEY'],
+}
+
+function resolveEnvValueForProvider(providerId: string, defaultEnvKey: string) {
+  const names = ENV_KEY_ALIASES[providerId] ?? [defaultEnvKey]
+  for (const name of names) {
+    const v = process.env[name]
+    if (v && v.trim().length > 0) return { value: v, name }
+  }
+  return { value: undefined, name: names[0] }
+}
 
 export async function GET() {
   const aiGatewayConnected = Boolean(
@@ -29,18 +47,25 @@ export async function GET() {
 
   const statuses: Record<
     string,
-    { hasEnvKey: boolean; aiGatewayCapable: boolean; envKeyName: string }
+    {
+      hasEnvKey: boolean
+      aiGatewayCapable: boolean
+      envKeyName: string
+      /** The env var that was actually found, or undefined. Useful for debugging. */
+      envKeyFound?: string
+    }
   > = {}
 
   for (const provider of PROVIDERS) {
-    const envValue = process.env[provider.envKey]
-    const hasEnvKey = Boolean(envValue && envValue.trim().length > 0)
+    const { value, name } = resolveEnvValueForProvider(provider.id, provider.envKey)
+    const hasEnvKey = Boolean(value)
     const aiGatewayCapable = aiGatewayConnected && AI_GATEWAY_ZERO_CONFIG.has(provider.id)
 
     statuses[provider.id] = {
       hasEnvKey,
       aiGatewayCapable,
       envKeyName: provider.envKey,
+      envKeyFound: hasEnvKey ? name : undefined,
     }
   }
 

@@ -45,19 +45,41 @@ const MODEL_ID_MAP: Record<string, string> = {
   // DeepSeek / Moonshot / Alibaba / Perplexity / Zhipu — pass through (handled via OpenAI-compatible base URL)
 }
 
-// Resolve the env var that holds a provider's API key. Mirrors lib/providers.ts.
-const ENV_KEY_MAP: Record<AIProvider, string> = {
-  openai: 'OPENAI_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-  google: 'GOOGLE_GENERATIVE_AI_API_KEY',
-  mistral: 'MISTRAL_API_KEY',
-  xai: 'XAI_API_KEY',
-  cohere: 'COHERE_API_KEY',
-  deepseek: 'DEEPSEEK_API_KEY',
-  moonshot: 'MOONSHOT_API_KEY',
-  alibaba: 'DASHSCOPE_API_KEY',
-  perplexity: 'PERPLEXITY_API_KEY',
-  zhipu: 'ZHIPUAI_API_KEY',
+// Resolve the env var(s) that hold a provider's API key. Mirrors lib/providers.ts.
+// Some providers accept multiple names (e.g. the Vercel Anthropic integration
+// ships the key as ANTHROPIC_AUTH_TOKEN instead of ANTHROPIC_API_KEY), so we
+// support a prioritised list and the first non-empty one wins.
+const ENV_KEY_MAP: Record<AIProvider, string[]> = {
+  openai: ['OPENAI_API_KEY'],
+  anthropic: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'],
+  google: ['GOOGLE_GENERATIVE_AI_API_KEY', 'GOOGLE_API_KEY'],
+  mistral: ['MISTRAL_API_KEY'],
+  xai: ['XAI_API_KEY'],
+  cohere: ['COHERE_API_KEY'],
+  deepseek: ['DEEPSEEK_API_KEY'],
+  moonshot: ['MOONSHOT_API_KEY'],
+  alibaba: ['DASHSCOPE_API_KEY'],
+  perplexity: ['PERPLEXITY_API_KEY'],
+  zhipu: ['ZHIPUAI_API_KEY'],
+}
+
+/** Returns the first env-var value found for this provider, or undefined. */
+function envKeyFor(provider: AIProvider): string | undefined {
+  for (const name of ENV_KEY_MAP[provider]) {
+    const v = process.env[name]
+    if (v && v.trim().length > 0) return v
+  }
+  return undefined
+}
+
+/** Primary env var name, for display. */
+export function primaryEnvKeyName(provider: AIProvider): string {
+  return ENV_KEY_MAP[provider][0]
+}
+
+/** All env var names a provider will accept. */
+export function acceptedEnvKeyNames(provider: AIProvider): string[] {
+  return ENV_KEY_MAP[provider]
 }
 
 // OpenAI-compatible base URLs for providers that don't have a dedicated SDK.
@@ -83,7 +105,7 @@ export function resolveLanguageModel(
   clientApiKey?: string,
 ): unknown {
   const actualModelId = MODEL_ID_MAP[modelId] || modelId
-  const key = clientApiKey?.trim() || process.env[ENV_KEY_MAP[provider]]
+  const key = clientApiKey?.trim() || envKeyFor(provider)
   const aiGatewayAvailable = Boolean(
     process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL,
   )
@@ -97,8 +119,9 @@ export function resolveLanguageModel(
   }
 
   if (!key) {
+    const names = ENV_KEY_MAP[provider].join(' or ')
     throw new Error(
-      `No API key available for ${provider}. Set ${ENV_KEY_MAP[provider]} in Vercel, or add one in Super Admin > API Keys.`,
+      `No API key available for ${provider}. Set ${names} in Vercel, or add one in Super Admin > API Keys.`,
     )
   }
 

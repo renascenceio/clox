@@ -71,12 +71,6 @@ export default function AudioPage() {
     e.preventDefault()
     if (!prompt.trim() || isGenerating) return
 
-    const apiKey = getProviderApiKey(selectedModel.provider)
-    if (!apiKey) {
-      setErrorMessage(`No API key found for ${selectedModel.brandName}. Add one in Super Admin → API Keys.`)
-      return
-    }
-
     // Create a chat on first send so it shows up in the sidebar immediately.
     const chat = ensureActiveChat('audio', prompt, selectedModel.brandName)
     if (chat.id !== activeChatId) {
@@ -90,7 +84,6 @@ export default function AudioPage() {
     setIsGenerating(true)
     setStatusText(`${selectedModel.brandName} is preparing your audio…`)
 
-    // Staged status updates so the user sees actual production progress
     const stages = [
       { delay: 600, text: `${selectedModel.brandName} is analysing the brief…` },
       { delay: 1400, text: `Synthesising ${selectedModel.type === 'music' ? 'music' : 'voice'} with ${selectedModel.version}…` },
@@ -99,21 +92,33 @@ export default function AudioPage() {
     const timers = stages.map(s => setTimeout(() => setStatusText(s.text), s.delay))
 
     try {
-      // TODO: route to real provider API (ElevenLabs, Suno, etc.) from a server handler.
-      // For now simulate so the UI/progress path is validated end-to-end.
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      // Forward an optional local key (if saved in Super Admin). Server already
+      // reads env vars first, so most of the time this is undefined.
+      const clientApiKey = getProviderApiKey(selectedModel.provider)
 
-      const sampleUrl = selectedModel.type === 'music'
-        ? 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
-        : 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
+      const res = await fetch('/api/generate-audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          model: selectedModel.id,
+          apiKey: clientApiKey || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || `Audio generation failed (${res.status})`)
+      }
 
       const clip: AudioClip = {
         id: Date.now().toString(),
-        url: sampleUrl,
+        url: data.url,
         prompt,
         brand: selectedModel.brandName,
         version: selectedModel.version || selectedModel.name,
-        duration: selectedDuration,
+        // Prefer the *real* duration the provider returned (in seconds) over
+        // the user's requested target, which isn't always honoured.
+        duration: Math.round(data.durationSec ?? selectedDuration),
         createdAt: Date.now(),
       }
       setAudios(prev => {
