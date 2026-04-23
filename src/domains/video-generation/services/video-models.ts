@@ -33,6 +33,16 @@ export const VIDEO_MODELS = [
   
   // Vidu (Shengshu)
   { id: 'vidu-1.5', name: '1.5', version: '1.5', provider: 'shengshu', brandName: 'Vidu', maxDuration: 8 },
+
+  // HeyGen (avatar & lipsync)
+  { id: 'heygen-avatar-iv', name: 'Avatar IV', version: 'IV', provider: 'heygen', brandName: 'HeyGen', maxDuration: 300 },
+  { id: 'heygen-avatar-iii', name: 'Avatar III', version: 'III', provider: 'heygen', brandName: 'HeyGen', maxDuration: 300 },
+
+  // Synthesia
+  { id: 'synthesia-standard', name: 'Standard', version: 'v2', provider: 'synthesia', brandName: 'Synthesia', maxDuration: 300 },
+
+  // D-ID
+  { id: 'did-studio', name: 'Studio', version: 'v1', provider: 'did', brandName: 'D-ID', maxDuration: 300 },
 ]
 
 export const VIDEO_RESOLUTIONS = [

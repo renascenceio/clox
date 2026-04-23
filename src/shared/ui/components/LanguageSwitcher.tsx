@@ -4,43 +4,44 @@ import { useEffect, useState } from 'react'
 import { getCurrentLanguage, setCurrentLanguage } from '@/lib/translations'
 
 export default function LanguageSwitcher() {
-  const [lang, setLang] = useState<'en' | 'ru'>('en')
   const [mounted, setMounted] = useState(false)
+  const [currentLang, setCurrentLang] = useState('en')
 
   useEffect(() => {
     setMounted(true)
-    const current = getCurrentLanguage()
-    setLang(current === 'ru' ? 'ru' : 'en')
+    setCurrentLang(getCurrentLanguage())
+    const handler = (e: CustomEvent) => setCurrentLang(e.detail.langCode)
+    window.addEventListener('language-changed', handler as EventListener)
+    return () => window.removeEventListener('language-changed', handler as EventListener)
   }, [])
 
   const toggle = () => {
-    const next = lang === 'en' ? 'ru' : 'en'
-    setLang(next)
+    const next = currentLang === 'en' ? 'ru' : 'en'
+    setCurrentLang(next)
     setCurrentLanguage(next)
-    window.dispatchEvent(new CustomEvent('language-changed', { detail: { langCode: next } }))
   }
 
-  if (!mounted) return <div className="w-[58px] h-7" />
-
-  const isRu = lang === 'ru'
+  if (!mounted) return <div className="w-16 h-7" />
 
   return (
     <button
       onClick={(e) => { e.stopPropagation(); toggle() }}
       onMouseDown={(e) => e.stopPropagation()}
-      aria-label={`Switch to ${isRu ? 'English' : 'Russian'}`}
-      className="relative flex items-center h-7 w-[58px] rounded-full bg-surface-tertiary dark:bg-surface border border-separator/50 flex-shrink-0 cursor-pointer"
+      className="flex items-center gap-0.5 p-0.5 rounded-full bg-surface-tertiary dark:bg-surface border border-separator/50 transition-all hover:border-brown/40 dark:hover:border-teal/40"
+      aria-label="Toggle language"
     >
-      {/* Sliding pill */}
-      <span
-        className={`absolute top-0.5 h-6 w-6 rounded-full gradient-brown-teal shadow-sm transition-all duration-200 ease-in-out ${isRu ? 'left-[30px]' : 'left-0.5'}`}
-      />
-      {/* EN label */}
-      <span className={`absolute left-[6px] text-[10px] font-bold leading-none transition-colors duration-200 select-none ${!isRu ? 'text-white' : 'text-label-tertiary'}`}>
+      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
+        currentLang === 'en'
+          ? 'bg-brown dark:bg-teal text-white shadow-sm'
+          : 'text-label-tertiary hover:text-label-secondary'
+      }`}>
         EN
       </span>
-      {/* RU label */}
-      <span className={`absolute right-[5px] text-[10px] font-bold leading-none transition-colors duration-200 select-none ${isRu ? 'text-white' : 'text-label-tertiary'}`}>
+      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
+        currentLang === 'ru'
+          ? 'bg-brown dark:bg-teal text-white shadow-sm'
+          : 'text-label-tertiary hover:text-label-secondary'
+      }`}>
         RU
       </span>
     </button>

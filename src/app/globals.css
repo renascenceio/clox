@@ -70,12 +70,30 @@ body {
     @apply bg-white/90 dark:bg-[#1C1A18]/95 backdrop-blur-[24px] border border-separator/30;
   }
 
+  /*
+   * Primary call-to-action background.
+   * We keep the original class name so existing components pick up the new color
+   * automatically. Per request this is now Apple HIG systemTeal — a solid color
+   * rather than a gradient — with a darker variant for dark mode.
+   */
   .gradient-brown-teal {
-    background: linear-gradient(135deg, #6B5635 0%, #8B6F47 45%, #A2845E 70%, #5AC8C8 100%);
+    background: #30B0C7;
+  }
+  .dark .gradient-brown-teal {
+    background: #40C8E0;
+  }
+  .gradient-brown-teal:hover {
+    background: #268FA1;
+  }
+  .dark .gradient-brown-teal:hover {
+    background: #30B0C7;
   }
 
   .gradient-teal-brown {
-    background: linear-gradient(135deg, #5AC8C8 0%, #A2845E 100%);
+    background: #30B0C7;
+  }
+  .dark .gradient-teal-brown {
+    background: #40C8E0;
   }
 }
 
