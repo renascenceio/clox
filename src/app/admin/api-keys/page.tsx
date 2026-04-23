@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react'
 import { getAdminSettings, setProviderApiKey, setProviderEnabled } from '@/lib/admin-settings'
 import { PROVIDERS, ProviderCategory } from '@/lib/providers'
 import { useProviderStatus } from '@/lib/provider-status'
+import { getModelsForProviderInCategory } from '@/lib/provider-models'
 
 const CATEGORY_LABELS: Record<ProviderCategory, string> = {
   text: 'Text & Chat',
@@ -75,10 +76,16 @@ export default function ApiKeysPage() {
     return 4
   }
 
+  // Full parity with the front-end: a provider shows up under EVERY category
+  // it powers, not just its first. So "Google Gemini" appears under Text,
+  // Image AND Audio — and each card lists exactly which models in that
+  // category the same API key unlocks (e.g. "Powers: Imagen 3, Nano Banana"
+  // in the Image section).
   const grouped: Record<ProviderCategory, typeof PROVIDERS> = { text: [], image: [], video: [], audio: [] }
   visibleProviders.forEach(p => {
-    const primary = CATEGORY_ORDER.find(c => p.categories.includes(c)) || 'text'
-    grouped[primary].push(p)
+    p.categories.forEach(cat => {
+      grouped[cat].push(p)
+    })
   })
   CATEGORY_ORDER.forEach(cat => {
     grouped[cat].sort((a, b) => {
@@ -141,6 +148,8 @@ export default function ApiKeysPage() {
                 {list.map(provider => {
                   const state = getState(provider.id)
                   const { connected, source, hasEnvKey, aiGatewayCapable, hasLocalKey } = state
+                  // The exact front-end models this key powers in this category.
+                  const modelsInCategory = getModelsForProviderInCategory(provider.id, cat)
 
                   // Visual treatment: connected providers get the accent
                   // ring/avatar. Configured-but-off looks neutral. Unconfigured
@@ -169,7 +178,7 @@ export default function ApiKeysPage() {
                       : 'text-label-tertiary'
 
                   return (
-                    <motion.div key={provider.id} variants={cardVariant} className={`${cardTone} border rounded-2xl shadow-sm overflow-hidden`}>
+                    <motion.div key={`${cat}-${provider.id}`} variants={cardVariant} className={`${cardTone} border rounded-2xl shadow-sm overflow-hidden`}>
                       <div className="p-5 border-b border-separator flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white flex-shrink-0 ${
@@ -194,6 +203,27 @@ export default function ApiKeysPage() {
                         </button>
                       </div>
                       <div className="p-5 space-y-3">
+                        {modelsInCategory.length > 0 && (
+                          <div>
+                            <div className="text-[10px] uppercase font-bold tracking-widest text-label-tertiary mb-1.5">
+                              Powers {modelsInCategory.length} {modelsInCategory.length === 1 ? 'model' : 'models'} in {CATEGORY_LABELS[cat]}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {modelsInCategory.map(m => (
+                                <span
+                                  key={m.id}
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                    connected
+                                      ? 'bg-mint/10 border-mint/30 text-mint'
+                                      : 'bg-surface border-separator text-label-secondary'
+                                  }`}
+                                >
+                                  {m.displayName}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between">
                           <label className="text-[11px] font-bold text-label-secondary uppercase tracking-tight truncate">
                             {provider.envKey}

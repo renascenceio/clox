@@ -16,8 +16,13 @@ export const IMAGE_MODELS = [
   { id: 'flux-1-pro', name: '1 Pro', version: '1 Pro', provider: 'black-forest-labs', brandName: 'FLUX' },
   { id: 'flux-1-dev', name: '1 Dev', version: '1 Dev', provider: 'black-forest-labs', brandName: 'FLUX' },
   
-  // Imagen (Google)
+  // Imagen (Google) — high-fidelity photoreal model, runs via AI Gateway.
   { id: 'imagen-3', name: 'Imagen 3', version: '3', provider: 'google', brandName: 'Imagen' },
+
+  // Nano Banana (Google) — interleaved text + image model (Gemini 3 Flash
+  // Image Preview). Shares the Google Gemini API key with Imagen, so it's
+  // free to add here: as soon as your Google key is connected, both work.
+  { id: 'nano-banana', name: 'Nano Banana', version: 'Gemini 3 Flash', provider: 'google', brandName: 'Nano Banana' },
   
   // Ideogram
   { id: 'ideogram-3.0', name: '3.0', version: '3.0', provider: 'ideogram', brandName: 'Ideogram' },

@@ -20,8 +20,11 @@ const IMAGE_MODEL_MAP: Record<string, { provider: string; modelId: string }> = {
   'dall-e-4': { provider: 'openai', modelId: 'dall-e-3' },
   'dall-e-3': { provider: 'openai', modelId: 'dall-e-3' },
 
-  // Google Imagen via AI Gateway (zero-config)
-  'imagen-3': { provider: 'google', modelId: 'gemini-3.1-flash-image-preview' },
+  // Google image models via AI Gateway (zero-config).
+  // Both Imagen 3 and Nano Banana share the same underlying Gemini 3 Flash
+  // Image Preview endpoint and the same GOOGLE_GENERATIVE_AI_API_KEY.
+  'imagen-3':    { provider: 'google', modelId: 'gemini-3.1-flash-image-preview' },
+  'nano-banana': { provider: 'google', modelId: 'gemini-3.1-flash-image-preview' },
 }
 
 // Map our aspect-ratio strings to DALL-E 3's supported sizes.
