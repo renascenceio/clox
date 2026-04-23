@@ -1,28 +1,30 @@
 export const IMAGE_MODELS = [
-  // DALL-E (OpenAI)
+  // ---- Google (live backend; works with GOOGLE_GENERATIVE_AI_API_KEY) ----
+  // These come first so the default model selected by the UI actually works
+  // when the user only has a Google key configured.
+  { id: 'nano-banana-2',   name: 'Nano Banana 2', version: 'Gemini 3.1 Flash Image', provider: 'google', brandName: 'Nano Banana' },
+  { id: 'nano-banana-pro', name: 'Nano Banana Pro', version: 'Gemini 3 Pro Image',   provider: 'google', brandName: 'Nano Banana' },
+  { id: 'nano-banana',     name: 'Nano Banana',   version: 'Gemini 2.5 Flash Image', provider: 'google', brandName: 'Nano Banana' },
+  { id: 'imagen-4',        name: 'Imagen 4',      version: '4.0',                    provider: 'google', brandName: 'Imagen' },
+  { id: 'imagen-3',        name: 'Imagen 3',      version: '3 (routed to Imagen 4)', provider: 'google', brandName: 'Imagen' },
+
+  // ---- OpenAI (live backend; requires OPENAI_API_KEY, not provided by AI Gateway) ----
   { id: 'dall-e-4', name: 'DALL-E 4', version: '4', provider: 'openai', brandName: 'DALL-E' },
   { id: 'dall-e-3', name: 'DALL-E 3', version: '3', provider: 'openai', brandName: 'DALL-E' },
-  
+
+  // ---- Not wired to a live backend yet (returns a clear error if selected) ----
   // Midjourney
   { id: 'midjourney-v7', name: 'v7', version: 'v7', provider: 'midjourney', brandName: 'Midjourney' },
   { id: 'midjourney-v6.1', name: 'v6.1', version: 'v6.1', provider: 'midjourney', brandName: 'Midjourney' },
-  
+
   // Stable Diffusion (Stability AI)
   { id: 'stable-diffusion-3.5', name: '3.5 Large', version: '3.5 Large', provider: 'stability', brandName: 'Stable Diffusion' },
   { id: 'stable-diffusion-xl', name: 'XL 1.0', version: 'XL 1.0', provider: 'stability', brandName: 'Stable Diffusion' },
-  
+
   // FLUX (Black Forest Labs)
   { id: 'flux-1.1-pro-ultra', name: '1.1 Pro Ultra', version: '1.1 Pro Ultra', provider: 'black-forest-labs', brandName: 'FLUX' },
   { id: 'flux-1-pro', name: '1 Pro', version: '1 Pro', provider: 'black-forest-labs', brandName: 'FLUX' },
   { id: 'flux-1-dev', name: '1 Dev', version: '1 Dev', provider: 'black-forest-labs', brandName: 'FLUX' },
-  
-  // Imagen (Google) — high-fidelity photoreal model, runs via AI Gateway.
-  { id: 'imagen-3', name: 'Imagen 3', version: '3', provider: 'google', brandName: 'Imagen' },
-
-  // Nano Banana (Google) — interleaved text + image model (Gemini 3 Flash
-  // Image Preview). Shares the Google Gemini API key with Imagen, so it's
-  // free to add here: as soon as your Google key is connected, both work.
-  { id: 'nano-banana', name: 'Nano Banana', version: 'Gemini 3 Flash', provider: 'google', brandName: 'Nano Banana' },
   
   // Ideogram
   { id: 'ideogram-3.0', name: '3.0', version: '3.0', provider: 'ideogram', brandName: 'Ideogram' },

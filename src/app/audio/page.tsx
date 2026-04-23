@@ -47,7 +47,11 @@ export default function AudioPage() {
   const [activeAIType, setActiveAIType] = useState<AIType>('audio')
   const [activeChatId, setActiveChatIdState] = useState<string | null>(null)
 
-  // Keep selection in sync with available models
+  // Keep selection in sync with available models. When the current selection
+  // disappears from the connected list (e.g. provider status finishes loading
+  // and the default ElevenLabs model drops out because no key is set), jump
+  // to the first actually-available model so the next generation uses a live
+  // backend instead of erroring out.
   useEffect(() => {
     if (!availableModels.find(m => m.id === selectedModel.id) && availableModels[0]) {
       setSelectedModel(availableModels[0])

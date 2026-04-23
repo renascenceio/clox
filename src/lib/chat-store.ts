@@ -36,6 +36,70 @@ const historyKey = (modality: Modality, chatId: string) =>
   modality === 'text' ? `chat-history-${chatId}` : `${modality}-history-${chatId}`
 
 // ————————————————————————————————————————————————————————————————————————————
+// One-time migration: purge fake audio / video URLs from pre-real-backend
+// sessions. Earlier versions of the app returned SoundHelix sample MP3s and
+// Google public-sample MP4s when "generating" audio / video; those URLs are
+// now meaningless noise in users' history. We wipe them exactly once per
+// browser by bumping CLOX_STORE_VERSION.
+// ————————————————————————————————————————————————————————————————————————————
+const STORE_VERSION_KEY = 'clox_store_version'
+const CLOX_STORE_VERSION = '2'
+
+const FAKE_URL_FRAGMENTS = [
+  'soundhelix.com',
+  'commondatastorage.googleapis.com/gtv-videos-bucket',
+]
+
+function hasFakeUrl(item: unknown): boolean {
+  if (!item || typeof item !== 'object') return false
+  const url = (item as { url?: unknown }).url
+  if (typeof url !== 'string') return false
+  return FAKE_URL_FRAGMENTS.some(f => url.includes(f))
+}
+
+function runStoreMigrations(): void {
+  if (typeof window === 'undefined') return
+  const current = localStorage.getItem(STORE_VERSION_KEY)
+  if (current === CLOX_STORE_VERSION) return
+
+  try {
+    // Walk every history-* key and strip clips that point at the old samples.
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i)
+      if (!key) continue
+      const isHistoryKey =
+        key.startsWith('audio-history-') ||
+        key.startsWith('video-history-') ||
+        key.startsWith('chat-history-') ||
+        key.startsWith('image-history-')
+      if (!isHistoryKey) continue
+
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      try {
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) continue
+        const cleaned = parsed.filter(item => !hasFakeUrl(item))
+        if (cleaned.length !== parsed.length) {
+          localStorage.setItem(key, JSON.stringify(cleaned))
+        }
+      } catch {
+        /* skip corrupt entries */
+      }
+    }
+  } catch {
+    /* localStorage not available – skip */
+  }
+
+  localStorage.setItem(STORE_VERSION_KEY, CLOX_STORE_VERSION)
+}
+
+// Run migrations on module load (client-only).
+if (typeof window !== 'undefined') {
+  runStoreMigrations()
+}
+
+// ————————————————————————————————————————————————————————————————————————————
 // Chat list
 // ————————————————————————————————————————————————————————————————————————————
 

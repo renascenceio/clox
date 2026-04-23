@@ -31,10 +31,9 @@ const AUDIO_MODEL_MAP: Record<string, AudioMapEntry> = {
     modelId: 'gemini-2.5-flash-preview-tts',
     voice: 'Kore',
   },
-  // Keep the legacy id routing to the same thing so existing chats still work.
-  musiclm: {
+  'gemini-tts-3.1': {
     provider: 'google',
-    modelId: 'gemini-2.5-flash-preview-tts',
+    modelId: 'gemini-3.1-flash-tts-preview',
     voice: 'Kore',
   },
 }
