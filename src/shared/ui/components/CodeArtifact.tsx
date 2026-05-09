@@ -48,13 +48,15 @@ const LANG_EXT: Record<string, string> = {
   go: 'go', rs: 'rs', rust: 'rs', java: 'java', kt: 'kt',
   c: 'c', h: 'h', cpp: 'cpp', cs: 'cs', php: 'php', swift: 'swift',
   txt: 'txt', text: 'txt', diff: 'diff', patch: 'patch',
-  // Document specs — the *body* of the block is JSON/markdown that
-  // this component compiles into a real .docx / .pptx / .pdf at
-  // download time. These aren't proper "languages" but using them as
-  // language tags keeps the model's emit format ergonomic ("```pptx
-  // {…outline…}" reads naturally) and tells the toolbar which
-  // converter to offer.
-  pptx: 'pptx', docx: 'docx', latex: 'tex', tex: 'tex',
+  // Document specs — the *body* of the block is JSON/markdown/html
+  // that this component compiles into a real .docx / .pptx / .pdf
+  // binary at download time. These aren't proper "languages" but
+  // using them as language tags lets the toolbar label match the
+  // user's intent: when someone asks for "a PDF" the model emits
+  // ```pdf and the artifact reads "pdf · 124 lines" with the PDF
+  // export as the primary toolbar action, instead of "markdown" with
+  // PDF buried in a row of secondary buttons.
+  pptx: 'pptx', docx: 'docx', pdf: 'pdf', latex: 'tex', tex: 'tex',
 }
 
 /** Languages we know how to render in the inline preview pane. */
@@ -63,29 +65,44 @@ const PREVIEWABLE = new Set([
   'csv', 'tsv',
   'json',
   'md', 'markdown',
-  // pptx outlines preview as a rendered slide list; docx specs
+  // pptx outlines preview as a rendered slide list; docx + pdf specs
   // preview as their formatted body so the user can see what they
   // are about to download.
-  'pptx', 'docx',
+  'pptx', 'docx', 'pdf',
 ])
 
 /** Languages that should also offer an "Excel" download option. */
 const TABULAR = new Set(['csv', 'tsv'])
 
 /** Languages that get a "docx" download option. We accept Markdown
- *  (the natural way to express a document) and HTML (richer layout). */
-const DOCX_SOURCE = new Set(['markdown', 'md', 'html', 'docx'])
+ *  (the natural way to express a document), HTML (richer layout),
+ *  the dedicated `docx` tag, AND `pdf` so the user can switch
+ *  formats post-hoc if they change their mind. */
+const DOCX_SOURCE = new Set(['markdown', 'md', 'html', 'docx', 'pdf'])
 
 /** Languages that get a "pdf" download option. PDF is generated from
  *  the rendered HTML in the preview iframe, so any language that has
- *  an HTML-style preview qualifies. */
-const PDF_SOURCE = new Set(['markdown', 'md', 'html', 'svg'])
+ *  an HTML-style preview qualifies — markdown, html, svg, the
+ *  dedicated `pdf` tag, and `docx` (post-hoc switch). */
+const PDF_SOURCE = new Set(['markdown', 'md', 'html', 'svg', 'pdf', 'docx'])
 
 /** Languages that get a "pptx" download option. We only know how to
  *  build a deck from the structured `pptx` outline; HTML→PPTX is far
  *  less reliable so we leave it to the user to ask the model for the
  *  outline form when they want a real deck. */
 const PPTX_SOURCE = new Set(['pptx'])
+
+/** For each fence language, which export is the user's PRIMARY intent?
+ *  Surfacing this lets the toolbar promote the matching button so
+ *  users don't have to guess "wait, how do I download this as the
+ *  thing I asked for?". */
+const PRIMARY_EXPORT: Record<string, 'pdf' | 'docx' | 'pptx' | 'excel' | null> = {
+  pdf: 'pdf',
+  docx: 'docx',
+  pptx: 'pptx',
+  csv: 'excel',
+  tsv: 'excel',
+}
 
 /** Pull the language hint off the className react-markdown emits. */
 function readLang(className?: string): string {
@@ -170,15 +187,31 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
   // Auto-open preview for visual languages so the user gets the
   // rendered output by default rather than the raw markup. They can
   // still toggle to "code" if they want to read the source.
-  const [showPreview, setShowPreview] = useState(
+  const previewByDefault =
     lang === 'html' || lang === 'svg' || lang === 'markdown' || lang === 'md' ||
-    lang === 'pptx' || lang === 'docx',
-  )
+    lang === 'pptx' || lang === 'docx' || lang === 'pdf'
+  const [showPreview, setShowPreview] = useState(previewByDefault)
   // While a binary export is being assembled (docx / pdf / pptx) we
   // disable the buttons and label them with the in-flight verb so the
   // user gets feedback for the 200-800ms the conversion typically
   // takes on a moderately sized doc.
   const [busy, setBusy] = useState<'' | 'docx' | 'pdf' | 'pptx'>('')
+  // Defensive reset: if React reuses this component instance across
+  // messages with different fence languages (which can happen when
+  // ReactMarkdown's reconciliation lines up two assistant messages
+  // by position), the previous instance's `showPreview` / `busy`
+  // state would otherwise leak into the new artifact and the user
+  // would see, e.g., a `pdf` artifact with a stale "building docx…"
+  // busy indicator. We re-derive defaults whenever `lang` changes.
+  const prevLangRef = useRef(lang)
+  useEffect(() => {
+    if (prevLangRef.current !== lang) {
+      prevLangRef.current = lang
+      setShowPreview(previewByDefault)
+      setCopied(false)
+      setBusy('')
+    }
+  }, [lang, previewByDefault])
   const previewable = PREVIEWABLE.has(lang)
   const tabular = TABULAR.has(lang)
   const canDocx = DOCX_SOURCE.has(lang)
@@ -505,6 +538,27 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
   const lineCount = useMemo(() => code.split('\n').length, [code])
   const langLabel = lang || 'text'
 
+  /** Which export is the "primary" one for this artifact's language?
+   *  Used to promote that toolbar button to the front and bold it,
+   *  so when the user asked for a PDF and the model emitted ```pdf,
+   *  the PDF download is the obvious next step rather than just one
+   *  of several look-alike buttons. */
+  const primary = PRIMARY_EXPORT[lang] ?? null
+
+  // Map each primary kind to its handler/label so we can render once
+  // up-front and skip duplicating the same button in the secondary
+  // row. `null` primary means there's no format-specific export
+  // beyond the generic "download" — we leave the existing layout.
+  const primaryAction = (() => {
+    switch (primary) {
+      case 'pdf':   return { label: busy === 'pdf'  ? 'rendering…' : 'download pdf',   onClick: handleDownloadPdf,   busy: busy === 'pdf'  }
+      case 'docx':  return { label: busy === 'docx' ? 'building…'  : 'download docx',  onClick: handleDownloadDocx,  busy: busy === 'docx' }
+      case 'pptx':  return { label: busy === 'pptx' ? 'building…'  : 'download pptx',  onClick: handleDownloadPptx,  busy: busy === 'pptx' }
+      case 'excel': return { label: 'download excel', onClick: handleDownloadExcel, busy: false }
+      default: return null
+    }
+  })()
+
   return (
     <div
       className="my-3 overflow-hidden border"
@@ -530,6 +584,19 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
           {langLabel} · {lineCount} {lineCount === 1 ? 'line' : 'lines'}
         </span>
         <div className="flex items-center gap-1">
+          {/* PRIMARY action goes first and is visually emphasised so
+              the deliverable the user actually asked for is the
+              obvious next step. We then suppress the duplicate of
+              this same export from the secondary row below. */}
+          {primaryAction && (
+            <ToolbarButton
+              onClick={primaryAction.onClick}
+              disabled={primaryAction.busy}
+              emphasised
+            >
+              {primaryAction.label}
+            </ToolbarButton>
+          )}
           {previewable && (
             <ToolbarButton
               onClick={() => setShowPreview(s => !s)}
@@ -541,9 +608,12 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
           {/* "open" — render in a real new tab. Always available for
               HTML-style content as an escape hatch from the sandboxed
               inline iframe (which can be cramped, throttled, or
-              affected by aggressive browser sandboxing in dev). */}
+              affected by aggressive browser sandboxing in dev). The
+              `pdf` and `docx` tags also benefit because their preview
+              IS HTML under the hood. */}
           {(lang === 'html' || lang === 'svg' || lang === 'xml' ||
-            lang === 'markdown' || lang === 'md') && (
+            lang === 'markdown' || lang === 'md' ||
+            lang === 'pdf' || lang === 'docx') && (
             <ToolbarButton onClick={handleOpenExternally}>
               open
             </ToolbarButton>
@@ -552,14 +622,17 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
             {copied ? 'copied' : 'copy'}
           </ToolbarButton>
           <ToolbarButton onClick={handleDownload}>
-            download
+            source
           </ToolbarButton>
-          {tabular && (
+          {/* Secondary export buttons — only render when DIFFERENT
+              from the primary, otherwise we'd show the same option
+              twice. */}
+          {tabular && primary !== 'excel' && (
             <ToolbarButton onClick={handleDownloadExcel}>
               excel
             </ToolbarButton>
           )}
-          {canDocx && (
+          {canDocx && primary !== 'docx' && (
             <ToolbarButton
               onClick={handleDownloadDocx}
               disabled={busy === 'docx'}
@@ -567,7 +640,7 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
               {busy === 'docx' ? 'building…' : 'docx'}
             </ToolbarButton>
           )}
-          {canPptx && (
+          {canPptx && primary !== 'pptx' && (
             <ToolbarButton
               onClick={handleDownloadPptx}
               disabled={busy === 'pptx'}
@@ -575,7 +648,7 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
               {busy === 'pptx' ? 'building…' : 'pptx'}
             </ToolbarButton>
           )}
-          {canPdf && (
+          {canPdf && primary !== 'pdf' && (
             <ToolbarButton
               onClick={handleDownloadPdf}
               disabled={busy === 'pdf'}
@@ -607,13 +680,22 @@ function ToolbarButton({
   onClick,
   active,
   disabled,
+  emphasised,
   children,
 }: {
   onClick: () => void
   active?: boolean
   disabled?: boolean
+  /** When true, render with inverted ink fill so the button reads as
+   *  the primary action in the toolbar. We use this exactly once per
+   *  artifact — for the deliverable that matches the user's request
+   *  (e.g. "download pdf" on a `pdf`-tagged artifact). */
+  emphasised?: boolean
   children: React.ReactNode
 }) {
+  const fill = emphasised
+    ? { background: 'rgb(var(--ink-rgb))', color: 'rgb(var(--surface-rgb))' }
+    : { background: active ? 'rgb(var(--ink-rgb) / 0.06)' : 'transparent', color: 'rgb(var(--ink-soft-rgb))' }
   return (
     <button
       type="button"
@@ -622,13 +704,13 @@ function ToolbarButton({
       className="px-2 py-0.5 transition-colors"
       style={{
         // Hairline border, no shadow — matches the editorial system.
-        border: '1px solid var(--hairline-soft)',
+        border: emphasised ? '1px solid rgb(var(--ink-rgb))' : '1px solid var(--hairline-soft)',
         borderRadius: 2,
-        background: active ? 'rgb(var(--ink-rgb) / 0.06)' : 'transparent',
-        color: 'rgb(var(--ink-soft-rgb))',
+        ...fill,
         fontFamily: 'var(--font-geist-mono), ui-monospace, monospace',
         fontSize: 10.5,
         letterSpacing: '0.04em',
+        fontWeight: emphasised ? 600 : 400,
         cursor: disabled ? 'wait' : 'pointer',
         opacity: disabled ? 0.55 : 1,
       }}
@@ -669,10 +751,13 @@ function PreviewPane({
   if (lang === 'pptx') {
     return <PptxPreview code={code} />
   }
-  if (lang === 'docx') {
-    // docx specs are rendered through the markdown previewer because
-    // the on-the-wire format is markdown-compatible — every paragraph
-    // and heading round-trips. The download path uses the same parser.
+  if (lang === 'docx' || lang === 'pdf') {
+    // `docx` and `pdf` specs are rendered through the markdown
+    // previewer because the on-the-wire body is markdown-compatible
+    // — every paragraph, heading, list, and table round-trips. The
+    // download path uses the same parser. We accept a raw HTML body
+    // too (some models prefer to author rich documents in HTML); the
+    // markdown→HTML helper is a no-op when the body is already HTML.
     return <MarkdownPreview code={code} iframeRef={iframeRef} />
   }
   // Fallback shouldn't happen given PREVIEWABLE gating, but keep it
