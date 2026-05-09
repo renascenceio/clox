@@ -626,7 +626,7 @@ const NEXT_THEME: Record<PaletteKey, PaletteKey> = {
 }
 
 function UserMenu({
-  p, mono, serif, user,
+  p, mono,
   theme, onChangeTheme,
   language, onChangeLanguage,
   onOpenSettings, onOpenSuperAdmin, onOpenSkills, onSignOut, onDeleteAccount,
@@ -634,8 +634,6 @@ function UserMenu({
 }: {
   p: Palette
   mono: string
-  serif: string
-  user: { initial: string; name: string; plan: string; email?: string }
   theme: PaletteKey
   onChangeTheme?: (next: PaletteKey) => void
   language: AppLanguage
@@ -883,23 +881,92 @@ function Messages({
             : <AiMsg  key={m.id} p={p} mono={mono} serif={serif} m={m} />
         ))}
 
-        {isStreaming && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-            <div style={{
-              width: 28, height: 28, flex: '0 0 28px',
-              border: `1px solid ${p.ink}`, borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontFamily: serif, fontStyle: 'italic', fontSize: 14, color: p.ink,
-            }}>C</div>
-            <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: '0.04em', color: p.inkMuted, paddingTop: 8 }}>
-              composing
-              <span style={{ display: 'inline-block', width: 1, height: '0.9em', background: p.inkMuted, marginLeft: 3, verticalAlign: '-0.1em', animation: 'anthologyBlink 1s steps(2) infinite' }} />
-            </div>
-          </div>
-        )}
+        {isStreaming && <ThinkingIndicator p={p} mono={mono} serif={serif} />}
         <div ref={endRef} />
       </div>
     </div>
+  )
+}
+
+/* =====================================================================
+   Thinking indicator — walks through phases while the assistant streams
+   ("understanding → reasoning → drafting → composing"). Each phase advances
+   on a timer so the user sees real progress instead of a static "composing".
+   ===================================================================== */
+
+const THINKING_PHASES = [
+  { label: 'understanding', dwell: 1200 },
+  { label: 'reasoning',     dwell: 1700 },
+  { label: 'drafting',      dwell: 1700 },
+  { label: 'composing',     dwell: Infinity },
+]
+
+function ThinkingIndicator({ p, mono, serif }: { p: Palette; mono: string; serif: string }) {
+  const [phase, setPhase] = useState(0)
+
+  useEffect(() => {
+    if (phase >= THINKING_PHASES.length - 1) return
+    const t = window.setTimeout(() => setPhase(i => i + 1), THINKING_PHASES[phase].dwell)
+    return () => window.clearTimeout(t)
+  }, [phase])
+
+  const label = THINKING_PHASES[phase]?.label ?? 'composing'
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      <div style={{
+        width: 28, height: 28, flex: '0 0 28px',
+        border: `1px solid ${p.ink}`, borderRadius: '50%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: serif, fontStyle: 'italic', fontSize: 14, color: p.ink,
+      }}>C</div>
+      <div style={{ paddingTop: 6 }}>
+        <div style={{
+          fontFamily: mono, fontSize: 10.5, letterSpacing: '0.18em',
+          textTransform: 'uppercase', color: p.inkMuted, marginBottom: 4,
+        }}>
+          clox · status
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span
+            key={label}
+            style={{
+              fontFamily: serif, fontStyle: 'italic', fontSize: 16,
+              color: p.ink,
+              animation: 'cloxPhaseFade .4s ease-out',
+            }}
+          >{label}</span>
+          <span style={{ display: 'inline-flex', gap: 3 }} aria-hidden>
+            <Dot p={p} delay={0} />
+            <Dot p={p} delay={0.18} />
+            <Dot p={p} delay={0.36} />
+          </span>
+        </div>
+      </div>
+      <style jsx>{`
+        @keyframes cloxPhaseFade {
+          0% { opacity: 0; transform: translateY(2px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes cloxThinkPulse {
+          0%, 80%, 100% { opacity: .25; transform: scale(.85); }
+          40% { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+function Dot({ p, delay }: { p: Palette; delay: number }) {
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        width: 4, height: 4, borderRadius: '50%',
+        background: p.ink,
+        animation: `cloxThinkPulse 1.1s ease-in-out ${delay}s infinite`,
+      }}
+    />
   )
 }
 
@@ -1357,13 +1424,28 @@ function kbdStyle(p: Palette, mono: string): CSSProperties {
 }
 
 function SlashPalette({
-  p, mono, serif, models, modes, model, setModel, mode, setMode,
+  p, mono, serif, models, modes, model, setModel, mode, setMode, onClose,
 }: {
   p: Palette; mono: string; serif: string
   models: ModelOption[]; modes: ModeOption[]
   model: string; setModel: (id: string) => void
   mode: string; setMode: (id: string) => void
+  onClose?: () => void
 }) {
+  // Escape closes the palette + click-outside (chip-composer wraps it in a
+  // relatively-positioned anchor, so we hook into document listeners).
+  useEffect(() => {
+    if (!onClose) return
+    const close = onClose
+    function key(e: KeyboardEvent) { if (e.key === 'Escape') close() }
+    function clk(e: MouseEvent) {
+      const t = e.target as HTMLElement
+      if (!t.closest?.('[data-clox-slash-palette]')) close()
+    }
+    window.addEventListener('keydown', key)
+    document.addEventListener('mousedown', clk)
+    return () => { window.removeEventListener('keydown', key); document.removeEventListener('mousedown', clk) }
+  }, [onClose])
   type Item =
     | { kind: 'header'; label: string }
     | { kind: 'mode'; id: string; label: string; hint: string; active: boolean }
@@ -1385,7 +1467,7 @@ function SlashPalette({
   }, [models, modes, model, mode])
 
   return (
-    <div style={{
+    <div data-clox-slash-palette style={{
       position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0,
       background: p.surface,
       border: `1px solid ${p.hairline}`, borderRadius: 3,
