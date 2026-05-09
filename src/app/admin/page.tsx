@@ -1,428 +1,291 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+/**
+ * Super-Admin Dashboard — Pearl & Onyx editorial style.
+ *
+ * Layout (top → bottom):
+ *   1. AdminShell chrome (rail · top strip · page-head · tabs)
+ *   2. KPI strip — 5 metric cells with serif numerals + 64×22 sparklines
+ *   3. Cols (1.6fr 1fr) — stacked-area usage chart  ·  live request feed
+ *   4. Cols (1.6fr 1fr) — recent users table        ·  system status
+ *   5. Split (1fr 1fr) — feature flags              ·  model mix
+ *
+ * Data: most panels render mocked-but-believable data so the dashboard
+ * looks alive in dev. Real Supabase data (auth users) is fetched
+ * best-effort and falls back gracefully when the client lacks admin scope.
+ */
+
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { getAdminSettings, saveAdminSettings } from '@/lib/admin-settings'
+import AdminShell, {
+  AdminBtn,
+  AdminFilter,
+  AdminIconBtn,
+  AdminPanel,
+} from '@/shared/ui/admin/AdminShell'
+import UsageChart from './_components/UsageChart'
+import LiveRequestFeed from './_components/LiveRequestFeed'
+import RecentUsersTable from './_components/RecentUsersTable'
+import SystemStatus from './_components/SystemStatus'
+import FeatureFlags from './_components/FeatureFlags'
+import ModelMix from './_components/ModelMix'
 
-// COMPLETE Provider configurations with documentation links
-const PROVIDER_CONFIG = {
-  // === TEXT AI (15 providers) ===
-  openai: { name: 'OpenAI (ChatGPT)', category: 'Text AI', docs: 'https://platform.openai.com/docs', guide: 'Get API key from platform.openai.com/api-keys', fields: { key: true, secret: false, url: false } },
-  anthropic: { name: 'Anthropic Claude', category: 'Text AI', docs: 'https://docs.anthropic.com/claude', guide: 'Get API key from console.anthropic.com', fields: { key: true, secret: false, url: false } },
-  google: { name: 'Google Gemini', category: 'Text AI', docs: 'https://ai.google.dev/docs', guide: 'Get API key from makersuite.google.com/app/apikey', fields: { key: true, secret: false, url: false } },
-  meta: { name: 'Meta Llama', category: 'Text AI', docs: 'https://llama.meta.com', guide: 'Access via Replicate or Together AI', fields: { key: true, secret: false, url: false } },
-  mistral: { name: 'Mistral AI', category: 'Text AI', docs: 'https://docs.mistral.ai', guide: 'Get API key from console.mistral.ai', fields: { key: true, secret: false, url: false } },
-  xai: { name: 'xAI Grok', category: 'Text AI', docs: 'https://docs.x.ai', guide: 'Get API key from x.ai/api', fields: { key: true, secret: false, url: false } },
-  cohere: { name: 'Cohere', category: 'Text AI', docs: 'https://docs.cohere.com', guide: 'Get API key from dashboard.cohere.com', fields: { key: true, secret: false, url: false } },
-  ai21: { name: 'AI21 Labs', category: 'Text AI', docs: 'https://docs.ai21.com', guide: 'Get API key from studio.ai21.com', fields: { key: true, secret: false, url: false } },
-  deepseek: { name: 'DeepSeek', category: 'Text AI', docs: 'https://platform.deepseek.com/docs', guide: 'Get API key from platform.deepseek.com', fields: { key: true, secret: false, url: false } },
-  qwen: { name: 'Qwen (Alibaba)', category: 'Text AI', docs: 'https://help.aliyun.com/zh/dashscope', guide: 'Get API key from dashscope.aliyuncs.com', fields: { key: true, secret: false, url: false } },
-  zhipu: { name: 'GLM (Zhipu AI)', category: 'Text AI', docs: 'https://open.bigmodel.cn/dev/api', guide: 'Get API key from open.bigmodel.cn', fields: { key: true, secret: false, url: false } },
-  kimi: { name: 'Kimi (Moonshot)', category: 'Text AI', docs: 'https://platform.moonshot.cn/docs', guide: 'Get API key from platform.moonshot.cn/console', fields: { key: true, secret: false, url: false } },
-  baidu: { name: 'Baidu ERNIE', category: 'Text AI', docs: 'https://cloud.baidu.com/doc/WENXINWORKSHOP', guide: 'Get API key from console.bce.baidu.com', fields: { key: true, secret: false, url: false } },
-  perplexity: { name: 'Perplexity', category: 'Text AI', docs: 'https://docs.perplexity.ai', guide: 'Get API key from perplexity.ai/settings/api', fields: { key: true, secret: false, url: false } },
-  together: { name: 'Together AI', category: 'Text AI', docs: 'https://docs.together.ai', guide: 'Get API key from api.together.xyz/settings/api-keys', fields: { key: true, secret: false, url: false } },
-  
-  // === IMAGE AI (12 providers) ===
-  'openai-dalle': { name: 'DALL-E 3', category: 'Image AI', docs: 'https://platform.openai.com/docs/guides/images', guide: 'Uses same API key as OpenAI GPT', fields: { key: true, secret: false, url: false } },
-  midjourney: { name: 'Midjourney', category: 'Image AI', docs: 'https://docs.midjourney.com', guide: 'Use via Discord bot or unofficial API', fields: { key: true, secret: false, url: false } },
-  stability: { name: 'Stability AI (SDXL)', category: 'Image AI', docs: 'https://platform.stability.ai/docs', guide: 'Get API key from platform.stability.ai/account/keys', fields: { key: true, secret: false, url: false } },
-  replicate: { name: 'Replicate', category: 'Image AI', docs: 'https://replicate.com/docs', guide: 'Get API key from replicate.com/account/api-tokens', fields: { key: true, secret: false, url: false } },
-  ideogram: { name: 'Ideogram', category: 'Image AI', docs: 'https://ideogram.ai/api-docs', guide: 'Get API key from ideogram.ai/api', fields: { key: true, secret: false, url: false } },
-  flux: { name: 'Flux (Black Forest Labs)', category: 'Image AI', docs: 'https://docs.bfl.ml', guide: 'Access via Replicate or fal.ai', fields: { key: true, secret: false, url: false } },
-  leonardo: { name: 'Leonardo.AI', category: 'Image AI', docs: 'https://docs.leonardo.ai', guide: 'Get API key from app.leonardo.ai', fields: { key: true, secret: false, url: false } },
-  'scenario': { name: 'Scenario', category: 'Image AI', docs: 'https://docs.scenario.com', guide: 'Get API key from scenario.com', fields: { key: true, secret: false, url: false } },
-  'adobe-firefly': { name: 'Adobe Firefly', category: 'Image AI', docs: 'https://developer.adobe.com/firefly-services/docs', guide: 'Get credentials from developer.adobe.com', fields: { key: true, secret: true, url: false } },
-  getimg: { name: 'Getimg.ai', category: 'Image AI', docs: 'https://docs.getimg.ai', guide: 'Get API key from getimg.ai/dashboard/api-keys', fields: { key: true, secret: false, url: false } },
-  segmind: { name: 'Segmind', category: 'Image AI', docs: 'https://docs.segmind.com', guide: 'Get API key from segmind.com/api-keys', fields: { key: true, secret: false, url: false } },
-  'deepai': { name: 'DeepAI', category: 'Image AI', docs: 'https://deepai.org/apis', guide: 'Get API key from deepai.org/dashboard/profile', fields: { key: true, secret: false, url: false } },
-  
-  // === VIDEO AI (8 providers) ===
-  'openai-sora': { name: 'OpenAI Sora', category: 'Video AI', docs: 'https://openai.com/sora', guide: 'Currently limited access - uses OpenAI API key', fields: { key: true, secret: false, url: false } },
-  runway: { name: 'Runway Gen-3', category: 'Video AI', docs: 'https://docs.runwayml.com', guide: 'Get API key from app.runwayml.com/account', fields: { key: true, secret: true, url: false } },
-  pika: { name: 'Pika', category: 'Video AI', docs: 'https://pika.art/api', guide: 'Request API access from pika.art', fields: { key: true, secret: false, url: false } },
-  'luma-ai': { name: 'Luma AI (Dream Machine)', category: 'Video AI', docs: 'https://lumalabs.ai/api', guide: 'Get API key from lumalabs.ai', fields: { key: true, secret: false, url: false } },
-  kling: { name: 'Kling AI', category: 'Video AI', docs: 'https://kling.kuaishou.com/en', guide: 'Chinese video AI - access via web interface', fields: { key: true, secret: false, url: false } },
-  'hailuo-ai': { name: 'Hailuo MiniMax', category: 'Video AI', docs: 'https://www.hailuo.ai', guide: 'Chinese video AI from MiniMax', fields: { key: true, secret: false, url: false } },
-  synthesia: { name: 'Synthesia', category: 'Video AI', docs: 'https://docs.synthesia.io', guide: 'Enterprise API - contact sales', fields: { key: true, secret: false, url: false } },
-  heygen: { name: 'HeyGen', category: 'Video AI', docs: 'https://docs.heygen.com', guide: 'Get API key from app.heygen.com', fields: { key: true, secret: false, url: false } },
-  
-  // === AUDIO AI (10 providers) ===
-  elevenlabs: { name: 'ElevenLabs (Voice)', category: 'Audio AI', docs: 'https://elevenlabs.io/docs', guide: 'Get API key from elevenlabs.io/subscription', fields: { key: true, secret: false, url: false } },
-  'openai-tts': { name: 'OpenAI TTS', category: 'Audio AI', docs: 'https://platform.openai.com/docs/guides/text-to-speech', guide: 'Uses same API key as OpenAI GPT', fields: { key: true, secret: false, url: false } },
-  'openai-whisper': { name: 'OpenAI Whisper (STT)', category: 'Audio AI', docs: 'https://platform.openai.com/docs/guides/speech-to-text', guide: 'Uses same API key as OpenAI GPT', fields: { key: true, secret: false, url: false } },
-  resemble: { name: 'Resemble AI', category: 'Audio AI', docs: 'https://docs.resemble.ai', guide: 'Get API key from app.resemble.ai', fields: { key: true, secret: false, url: false } },
-  playht: { name: 'Play.ht', category: 'Audio AI', docs: 'https://docs.play.ht', guide: 'Get API key from play.ht/app/api-access', fields: { key: true, secret: true, url: false } },
-  murf: { name: 'Murf AI', category: 'Audio AI', docs: 'https://murf.ai/api', guide: 'Enterprise API - contact sales', fields: { key: true, secret: false, url: false } },
-  'google-tts': { name: 'Google Cloud TTS', category: 'Audio AI', docs: 'https://cloud.google.com/text-to-speech/docs', guide: 'Get credentials from console.cloud.google.com', fields: { key: true, secret: true, url: false } },
-  'azure-speech': { name: 'Azure Speech Services', category: 'Audio AI', docs: 'https://docs.microsoft.com/azure/cognitive-services/speech-service', guide: 'Get key from portal.azure.com', fields: { key: true, secret: false, url: false } },
-  suno: { name: 'Suno (Music)', category: 'Audio AI', docs: 'https://suno.com', guide: 'Currently web-only, API coming soon', fields: { key: true, secret: false, url: false } },
-  udio: { name: 'Udio (Music)', category: 'Audio AI', docs: 'https://udio.com', guide: 'Currently web-only, API coming soon', fields: { key: true, secret: false, url: false } },
+// ---------------------------------------------------------------------------
+// KPI strip
+// ---------------------------------------------------------------------------
+type Kpi = {
+  label: string
+  value: string
+  emphasis?: boolean
+  delta: string
+  deltaDown?: boolean
+  spark: number[]
+  sparkColor?: string
 }
 
-type TabType = 'API Keys' | 'Users' | 'Translations' | 'Settings' | 'Analytics'
+const KPIS: Kpi[] = [
+  {
+    label: 'Active users',
+    value: '12,431',
+    emphasis: true,
+    delta: '↑ 8.2% vs prev 30d',
+    spark: [16, 14, 15, 12, 13, 9, 11, 7, 8, 4, 6, 3],
+  },
+  {
+    label: 'Chats / day',
+    value: '88,204',
+    delta: '↑ 12.4%',
+    spark: [18, 16, 17, 12, 14, 10, 12, 9, 11, 5, 7, 4],
+  },
+  {
+    label: 'Tokens / day',
+    value: '1.84B',
+    delta: '↑ 6.1%',
+    spark: [12, 14, 10, 11, 7, 9, 6, 8, 5, 7, 4, 5],
+  },
+  {
+    label: 'p95 latency',
+    value: '412 ms',
+    delta: '↑ 38ms vs SLO',
+    deltaDown: true,
+    spark: [14, 12, 13, 11, 12, 10, 11, 8, 9, 5, 4, 3],
+    sparkColor: 'rgb(181 58 40)',
+  },
+  {
+    label: 'MRR',
+    value: '$284,120',
+    emphasis: true,
+    delta: '↑ $18.2k',
+    spark: [18, 17, 15, 16, 13, 12, 10, 11, 8, 7, 5, 3],
+    sparkColor: 'rgb(168 71 42)',
+  },
+]
 
-export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<TabType>('API Keys')
-  const [activeCategory, setActiveCategory] = useState<string>('Text AI')
-  const [apiKeys, setApiKeys] = useState<Record<string, { key: string; secret: string; url: string; enabled: boolean }>>({})
-  const [loading, setLoading] = useState(true)
-  const [users, setUsers] = useState<Array<{ id: string; email?: string; created_at: string; email_confirmed_at?: string }>>([])
+function Sparkline({ points, color = '#18181A' }: { points: number[]; color?: string }) {
+  const path = points.map((y, i) => `${i === 0 ? 'M' : 'L'}${(i * 64) / (points.length - 1)},${y}`).join(' ')
+  return (
+    <svg
+      viewBox="0 0 64 22"
+      preserveAspectRatio="none"
+      className="absolute right-4 bottom-4 w-16 h-[22px]"
+      aria-hidden
+    >
+      <path d={path} fill="none" stroke={color} strokeWidth="1" />
+    </svg>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Tabs (visual only for now — Dashboard is the only built page so far).
+// ---------------------------------------------------------------------------
+const TAB_LABELS = [
+  'Overview',
+  'Users',
+  'Workspaces',
+  'Models',
+  'Feature flags',
+  'Audit log',
+  'Billing',
+] as const
+type TabLabel = (typeof TAB_LABELS)[number]
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+export default function AdminDashboardPage() {
   const router = useRouter()
-  const supabase = createClient()
+  const [activeTab, setActiveTab] = useState<TabLabel>('Overview')
+  const [activeWindow, setActiveWindow] = useState<'30d' | '7d' | '24h'>('30d')
+  const [userCount, setUserCount] = useState<number | null>(null)
+  const [lastSync, setLastSync] = useState<string>('')
 
+  // Best-effort live user count via supabase.auth.admin (will fail without
+  // service role; that's fine, the rail/KPI fall back to the mocked total).
   useEffect(() => {
-    checkAuthAndLoadData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const supabase = createClient()
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await supabase.auth.admin.listUsers()
+        if (!cancelled && data?.users) setUserCount(data.users.length)
+      } catch {
+        // expected on non-service-role clients
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const checkAuthAndLoadData = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    
-    if (!session) {
-      router.push('/auth/login')
-      return
+  // Tick the "last sync" hint once a second so the top strip feels live.
+  useEffect(() => {
+    const tick = () => {
+      const t = new Date()
+      setLastSync(t.toTimeString().slice(0, 8))
     }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
 
-    // Load API keys from shared settings store
-    const settings = getAdminSettings()
-    const keys: Record<string, { key: string; secret: string; url: string; enabled: boolean }> = {}
-    Object.entries(settings.providers).forEach(([provider, config]) => {
-      keys[provider] = {
-        key: config.apiKey || '',
-        secret: config.apiSecret || '',
-        url: config.baseUrl || '',
-        enabled: config.enabled
-      }
-    })
-    setApiKeys(keys)
+  const userCountLabel = useMemo(() => {
+    if (userCount == null) return '12,431'
+    return userCount.toLocaleString()
+  }, [userCount])
 
-    // Load users from Supabase
-    try {
-      const { data: usersData } = await supabase.auth.admin.listUsers()
-      if (usersData?.users) {
-        setUsers(usersData.users as Array<{ id: string; email?: string; created_at: string; email_confirmed_at?: string }>)
-      }
-    } catch (error) {
-      console.error('Error loading users:', error)
-    }
-
-    setLoading(false)
-  }
-
-  const handleSaveKey = (provider: string) => {
-    const config = apiKeys[provider]
-    const settings = getAdminSettings()
-    settings.providers[provider] = {
-      enabled: config?.enabled ?? false,
-      apiKey: config?.key || '',
-      apiSecret: config?.secret || '',
-      baseUrl: config?.url || ''
-    }
-    saveAdminSettings(settings)
-    alert(`${PROVIDER_CONFIG[provider as keyof typeof PROVIDER_CONFIG].name} settings saved!`)
-  }
-
-  const handleToggleProvider = (provider: string) => {
-    setApiKeys(prev => {
-      const updated = {
-        ...prev,
-        [provider]: {
-          ...prev[provider],
-          key: prev[provider]?.key || '',
-          secret: prev[provider]?.secret || '',
-          url: prev[provider]?.url || '',
-          enabled: !prev[provider]?.enabled
-        }
-      }
-      // Save to shared settings store immediately
-      const settings = getAdminSettings()
-      Object.entries(updated).forEach(([provider, config]) => {
-        settings.providers[provider] = {
-          enabled: config.enabled,
-          apiKey: config.key || '',
-          apiSecret: config.secret || '',
-          baseUrl: config.url || ''
-        }
-      })
-      saveAdminSettings(settings)
-      return updated
-    })
-  }
-
-  const categories = ['Text AI', 'Image AI', 'Video AI', 'Audio AI']
-  const providersInCategory = Object.entries(PROVIDER_CONFIG).filter(
-    ([, config]) => config.category === activeCategory
-  )
-
-  const tabs: TabType[] = ['API Keys', 'Users', 'Translations', 'Settings', 'Analytics']
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-mint-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
-        <div className="text-2xl font-bold text-mint">Loading...</div>
-      </div>
-    )
-  }
-
+  // The dashboard page-head + top-strip configuration handed to AdminShell.
   return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-white via-mint-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
-      {/* Animated Background Blobs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 -left-4 w-72 h-72 bg-mint/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob"></div>
-        <div className="absolute top-0 -right-4 w-72 h-72 bg-teal/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob [animation-delay:2s]"></div>
-        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-mint-300/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob [animation-delay:4s]"></div>
-      </div>
-
-      {/* Header */}
-      <div className="relative z-10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-xl border-b border-mint-200/50 dark:border-mint-700/50">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-mint-900 dark:text-mint-100">Super Admin Dashboard</h1>
-              <p className="text-sm text-mint-600 dark:text-mint-400 mt-1">Manage all AI providers and system settings</p>
-            </div>
-            <button
-              onClick={() => router.push('/text')}
-              className="px-6 py-3 gradient-mint-teal text-white rounded-hig-xl font-bold shadow-mint-glow hover:scale-105 transition-transform"
+    <AdminShell
+      crumb={['admin', 'overview']}
+      here="Dashboard"
+      eyebrow={`superadmin · all workspaces · ${activeWindow === '30d' ? 'last 30d' : activeWindow}`}
+      heading={
+        <>
+          Everything that happens, <em className="italic">at a glance.</em>
+        </>
+      }
+      lead="Live posture of the Clox platform — usage, cost, latency, who's on, what's broken. Calm by default; lean in when something needs you."
+      headExtra={
+        <>
+          {(['30d', '7d', '24h'] as const).map(w => (
+            <AdminFilter key={w} active={activeWindow === w} onClick={() => setActiveWindow(w)}>
+              {w === '30d' ? 'last 30 days' : w}
+            </AdminFilter>
+          ))}
+        </>
+      }
+      tabs={TAB_LABELS.map(label => ({
+        label,
+        active: activeTab === label,
+        onClick: () => setActiveTab(label),
+        pill:
+          label === 'Users'
+            ? { text: userCountLabel }
+            : label === 'Workspaces'
+              ? { text: '408' }
+              : label === 'Audit log'
+                ? { text: '3 new', tone: 'amber' }
+                : undefined,
+      }))}
+      syncHint={`last sync ${lastSync} · live`}
+      actions={
+        <>
+          <AdminIconBtn title="Refresh">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <path
+                d="M11 6.5a4.5 4.5 0 1 1-1.32-3.18M11 1.5v3H8"
+                stroke="currentColor"
+                strokeWidth="1.1"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </AdminIconBtn>
+          <AdminIconBtn title="Export CSV">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <path
+                d="M6.5 1.5v7M3.5 5l3 3 3-3M2 11h9"
+                stroke="currentColor"
+                strokeWidth="1.1"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </AdminIconBtn>
+          <AdminBtn>⌘K&nbsp;&nbsp;jump</AdminBtn>
+          <AdminBtn primary onClick={() => router.push('/admin/api-keys')}>
+            + Manage models
+          </AdminBtn>
+        </>
+      }
+    >
+      {/* ============================== KPIs ============================== */}
+      <div
+        className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 border border-hairline rounded-card bg-surface"
+        role="group"
+        aria-label="Key metrics"
+      >
+        {KPIS.map((k, i) => (
+          <div
+            key={k.label}
+            className={`relative px-5 py-[18px] flex flex-col gap-0.5 ${
+              i < KPIS.length - 1 ? 'border-r border-hairline-soft' : ''
+            } ${i % 2 === 1 ? 'border-b md:border-b-0 border-hairline-soft' : ''}`}
+          >
+            <span className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted">
+              {k.label}
+            </span>
+            <span className="font-serif text-[34px] leading-none tracking-[-0.02em] mt-1.5">
+              {k.emphasis ? <em className="italic text-accent">{k.value}</em> : k.value}
+            </span>
+            <span
+              className={`font-mono text-[10.5px] tracking-[0.04em] mt-1 ${
+                k.deltaDown ? 'text-[rgb(181_58_40)]' : 'text-[rgb(47_143_95)]'
+              }`}
             >
-              Go to App →
-            </button>
+              {k.delta}
+            </span>
+            <Sparkline points={k.spark} color={k.sparkColor} />
           </div>
-        </div>
+        ))}
       </div>
 
-      {/* Tab Navigation */}
-      <div className="relative z-10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-xl border-b border-mint-200/30 dark:border-mint-700/30">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex gap-1">
-            {tabs.map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-6 py-4 font-bold text-sm transition-all relative ${
-                  activeTab === tab
-                    ? 'text-mint-900 dark:text-mint-100'
-                    : 'text-mint-500 dark:text-mint-500 hover:text-mint-700 dark:hover:text-mint-300'
-                }`}
-              >
-                {tab}
-                {activeTab === tab && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 gradient-mint-teal rounded-full"></div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* ============================== Cols 1 ============================== */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-[18px] mt-[18px]">
+        <AdminPanel title="Usage — by mode, last 30 days" meta="tokens (millions) · daily">
+          <UsageChart />
+        </AdminPanel>
+
+        <AdminPanel title="Live requests" meta="streaming · 24/sec">
+          <LiveRequestFeed />
+        </AdminPanel>
       </div>
 
-      {/* Content */}
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
-        {activeTab === 'API Keys' && (
-          <div className="space-y-6">
-            {/* Category Tabs */}
-            <div className="flex gap-3 p-2 bg-white/60 dark:bg-[#2C2C2E]/60 backdrop-blur-xl rounded-hig-xl border border-mint-200 dark:border-mint-700 shadow-sm">
-              {categories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`flex-1 px-6 py-3 rounded-hig-lg font-bold text-sm transition-all ${
-                    activeCategory === cat
-                      ? 'gradient-mint-teal text-white shadow-mint-glow'
-                      : 'text-mint-600 dark:text-mint-400 hover:bg-mint-50 dark:hover:bg-mint-900/20'
-                  }`}
-                >
-                  {cat}
-                  <span className="ml-2 text-xs opacity-70">
-                    ({Object.values(PROVIDER_CONFIG).filter(p => p.category === cat).length})
-                  </span>
-                </button>
-              ))}
-            </div>
+      {/* ============================== Cols 2 ============================== */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-[18px] mt-[18px]">
+        <AdminPanel
+          title="Recent users"
+          meta={`${userCountLabel} total · 408 workspaces`}
+        >
+          <RecentUsersTable />
+        </AdminPanel>
 
-            {/* Provider Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {providersInCategory.map(([key, config]) => {
-                const providerData = apiKeys[key] || { key: '', secret: '', url: '', enabled: false }
-                
-                return (
-                  <div
-                    key={key}
-                    className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float hover:shadow-mint-glow transition-all"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-bold text-mint-900 dark:text-mint-100">{config.name}</h3>
-                        <p className="text-xs text-mint-600 dark:text-mint-400 mt-1">{config.category}</p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={providerData.enabled}
-                          onChange={() => handleToggleProvider(key)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-mint-200 dark:bg-mint-800 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-mint-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-mint peer-checked:to-teal"></div>
-                      </label>
-                    </div>
-
-                    <div className="space-y-3">
-                      {config.fields.key && (
-                        <div>
-                          <label className="block text-xs font-bold text-mint-700 dark:text-mint-300 mb-1">API Key</label>
-                          <input
-                            type="password"
-                            value={providerData.key}
-                            onChange={(e) => setApiKeys(prev => ({ ...prev, [key]: { ...prev[key], key: e.target.value } }))}
-                            placeholder="sk-..."
-                            className="w-full px-3 py-2 bg-mint-50 dark:bg-mint-900/30 border border-mint-200 dark:border-mint-700 rounded-hig-lg text-sm text-mint-900 dark:text-mint-100 placeholder:text-mint-400 focus:ring-2 focus:ring-teal-400 outline-none"
-                          />
-                        </div>
-                      )}
-                      
-                      {config.fields.secret && (
-                        <div>
-                          <label className="block text-xs font-bold text-mint-700 dark:text-mint-300 mb-1">API Secret</label>
-                          <input
-                            type="password"
-                            value={providerData.secret}
-                            onChange={(e) => setApiKeys(prev => ({ ...prev, [key]: { ...prev[key], secret: e.target.value } }))}
-                            placeholder="secret..."
-                            className="w-full px-3 py-2 bg-mint-50 dark:bg-mint-900/30 border border-mint-200 dark:border-mint-700 rounded-hig-lg text-sm text-mint-900 dark:text-mint-100 placeholder:text-mint-400 focus:ring-2 focus:ring-teal-400 outline-none"
-                          />
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2 pt-2">
-                        <button
-                          onClick={() => handleSaveKey(key)}
-                          className="flex-1 px-4 py-2 bg-gradient-to-r from-mint to-teal text-white rounded-hig-lg font-bold text-sm hover:scale-105 transition-transform shadow-sm"
-                        >
-                          Save
-                        </button>
-                        <a
-                          href={config.docs}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-4 py-2 bg-mint-100 dark:bg-mint-800 text-mint-700 dark:text-mint-300 rounded-hig-lg font-bold text-sm hover:bg-mint-200 dark:hover:bg-mint-700 transition-colors"
-                        >
-                          Docs
-                        </a>
-                      </div>
-
-                      <p className="text-xs text-mint-500 dark:text-mint-500 leading-relaxed">
-                        {config.guide}
-                      </p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'Users' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
-            <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100 mb-6">User Management</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-mint-200 dark:border-mint-700">
-                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Email</th>
-                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Status</th>
-                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Created</th>
-                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(user => (
-                    <tr key={user.id} className="border-b border-mint-100 dark:border-mint-800">
-                      <td className="py-4 px-4 text-sm text-mint-900 dark:text-mint-100">{user.email}</td>
-                      <td className="py-4 px-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          user.email_confirmed_at
-                            ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300'
-                            : 'bg-mint-100 dark:bg-mint-800 text-mint-700 dark:text-mint-300'
-                        }`}>
-                          {user.email_confirmed_at ? 'Active' : 'Pending'}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4 text-sm text-mint-600 dark:text-mint-400">
-                        {new Date(user.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="py-4 px-4">
-                        <button className="text-sm font-bold text-mint-600 dark:text-mint-400 hover:text-mint-900 dark:hover:text-mint-100">
-                          Manage
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'Translations' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100">Translation Management</h2>
-                <p className="text-mint-600 dark:text-mint-400 mt-1">Manage app translations for all supported languages</p>
-              </div>
-              <button
-                onClick={() => router.push('/admin/translations')}
-                className="px-6 py-3 gradient-mint-teal text-white rounded-hig-xl font-bold shadow-mint-glow hover:scale-105 transition-transform"
-              >
-                Open Full Editor →
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {['en', 'es', 'fr', 'de', 'ja', 'zh', 'ko', 'ru'].map(lang => {
-                const langInfo: Record<string, { name: string; flag: string }> = {
-                  en: { name: 'English', flag: '🇺🇸' },
-                  es: { name: 'Spanish', flag: '🇪🇸' },
-                  fr: { name: 'French', flag: '🇫🇷' },
-                  de: { name: 'German', flag: '🇩🇪' },
-                  ja: { name: 'Japanese', flag: '🇯🇵' },
-                  zh: { name: 'Chinese', flag: '🇨🇳' },
-                  ko: { name: 'Korean', flag: '🇰🇷' },
-                  ru: { name: 'Russian', flag: '🇷🇺' },
-                }
-                return (
-                  <div
-                    key={lang}
-                    className="bg-mint-50 dark:bg-mint-900/30 rounded-hig-xl p-4 border border-mint-200 dark:border-mint-700"
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="text-2xl">{langInfo[lang].flag}</span>
-                      <span className="font-bold text-mint-900 dark:text-mint-100">{langInfo[lang].name}</span>
-                    </div>
-                    <div className="text-xs text-mint-600 dark:text-mint-400">
-                      {lang === 'en' ? 'Base language' : 'Click editor to manage'}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'Settings' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
-            <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100 mb-4">System Settings</h2>
-            <p className="text-mint-600 dark:text-mint-400">Global configuration options coming soon...</p>
-          </div>
-        )}
-
-        {activeTab === 'Analytics' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
-            <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100 mb-4">Usage Analytics</h2>
-            <p className="text-mint-600 dark:text-mint-400">API usage statistics and metrics coming soon...</p>
-          </div>
-        )}
+        <AdminPanel title="System status" meta="all regions · 7d">
+          <SystemStatus />
+        </AdminPanel>
       </div>
-    </div>
+
+      {/* ============================== Split ============================== */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-[18px] mt-[18px]">
+        <AdminPanel title="Feature flags" meta="14 flags · 3 rolling out">
+          <FeatureFlags />
+        </AdminPanel>
+
+        <AdminPanel title="Model mix" meta="last 24h · share of completions">
+          <ModelMix />
+        </AdminPanel>
+      </div>
+    </AdminShell>
   )
 }

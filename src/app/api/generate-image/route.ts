@@ -31,16 +31,36 @@ const IMAGE_MODEL_MAP: Record<string, MappedModel> = {
   'dall-e-3': { provider: 'openai', modelId: 'dall-e-3' },
   'dall-e-4': { provider: 'openai', modelId: 'dall-e-3' },
 
-  // Google — the two models we expose in the UI. Both use the same API key
-  // (GOOGLE_GENERATIVE_AI_API_KEY), but they hit different endpoints.
+  // Google — all three entries share the same GOOGLE_GENERATIVE_AI_API_KEY
+  // but hit different endpoints. Names verified from ai.google.dev/gemini-api
+  // docs (April 2026). Preview slugs are unstable and may need bumping again
+  // when Google promotes / retires them.
   'nano-banana': {
     provider: 'google',
-    modelId: 'gemini-2.5-flash-image-preview',
+    modelId: 'gemini-2.5-flash-image', // Nano Banana (stable)
     googleMode: 'gemini',
   },
+  'nano-banana-2': {
+    provider: 'google',
+    modelId: 'gemini-3.1-flash-image-preview', // Nano Banana 2
+    googleMode: 'gemini',
+  },
+  'nano-banana-pro': {
+    provider: 'google',
+    modelId: 'gemini-3-pro-image-preview', // Nano Banana Pro
+    googleMode: 'gemini',
+  },
+  // Imagen 3 was superseded by Imagen 4 on the Gemini API. We keep the
+  // legacy 'imagen-3' id so existing selections don't break, but route it
+  // to imagen-4.0-generate-001 which is the current public model.
   'imagen-3': {
     provider: 'google',
-    modelId: 'imagen-3.0-generate-002',
+    modelId: 'imagen-4.0-generate-001',
+    googleMode: 'imagen',
+  },
+  'imagen-4': {
+    provider: 'google',
+    modelId: 'imagen-4.0-generate-001',
     googleMode: 'imagen',
   },
 }

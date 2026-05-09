@@ -38,10 +38,12 @@ interface ChatSidebarProps {
 const FOLDERS_KEY = 'clox_folders'
 
 export default function ChatSidebar({ activeChatId, onChatSelect, modality }: ChatSidebarProps) {
-  const [search, setSearch] = useState('')
+  // The search input + new-menu now live in AppLayout's left rail. Search state
+  // is intentionally kept (always '' here) so the existing filter pipeline
+  // below continues to work without a refactor.
+  const search = ''
   const [chats, setChats] = useState<Chat[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
-  const [showNewMenu, setShowNewMenu] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [showProjectSettings, setShowProjectSettings] = useState<string | null>(null)
@@ -68,6 +70,16 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
     }
   }, [])
 
+  // The new-chat button now lives in AppLayout's rail header. It dispatches a
+  // global `clox-new-chat` event so this sidebar (which owns the chat list)
+  // can mint a new thread of the active modality and select it.
+  useEffect(() => {
+    const onNewChat = () => handleNewChat()
+    window.addEventListener('clox-new-chat', onNewChat)
+    return () => window.removeEventListener('clox-new-chat', onNewChat)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chats, modality])
+
   // Write-through helpers that keep local state and shared store aligned.
   const saveChats = (newChats: Chat[]) => {
     setChats(newChats)
@@ -90,33 +102,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
       modality: m,
     }
     saveChats([newChat, ...chats])
-    setShowNewMenu(false)
     onChatSelect?.(newChat.id)
-  }
-
-  const handleNewProject = () => {
-    const m: Modality = modality ?? 'text'
-    const newProject: Chat = {
-      id: `project_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      title: 'New Project',
-      model: '',
-      createdAt: Date.now(),
-      type: 'project',
-      modality: m,
-    }
-    saveChats([newProject, ...chats])
-    setShowNewMenu(false)
-    onChatSelect?.(newProject.id)
-  }
-
-  const handleNewFolder = () => {
-    const newFolder: Folder = {
-      id: `folder_${Date.now()}`,
-      title: 'New Folder',
-      createdAt: Date.now()
-    }
-    saveFolders([newFolder, ...folders])
-    setShowNewMenu(false)
   }
 
   const handleDeleteChat = (id: string) => {
@@ -204,83 +190,14 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
     chats.filter(c => c.folderId === folderId)
 
   return (
-    <div className="flex flex-col h-full bg-surface dark:bg-surface-secondary">
-      <div className="p-5 space-y-4">
-        {/* Search Bar with Add Button */}
-        <div className="flex items-center gap-2">
-          <div className="relative group flex-grow">
-            <input
-              type="text"
-              placeholder="Search chats..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-9 pl-9 pr-4 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20 focus:border-mint/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
-            />
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-secondary/40 group-focus-within:text-mint transition-colors">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-          </div>
-
-          {/* New Menu with Colored + Button */}
-          <div className="relative">
-            <button 
-              onClick={() => setShowNewMenu(!showNewMenu)}
-              className="w-9 h-9 gradient-mint-teal text-white rounded-hig-lg font-bold transition-all shadow-mint-glow hover:shadow-hig-hover hover:scale-105 active:scale-95 flex items-center justify-center flex-shrink-0"
-              title="Create new"
-            >
-              <span className="text-xl leading-none">+</span>
-            </button>
-            {showNewMenu && (
-              <div className="absolute top-full right-0 mt-2 w-48 bg-surface dark:bg-surface-secondary border border-separator rounded-hig-lg shadow-float z-50 overflow-hidden">
-                <button
-                  onClick={handleNewChat}
-                  className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
-                >
-                  <svg className="w-4 h-4 text-mint dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  New Chat
-                </button>
-                <button
-                  onClick={handleNewProject}
-                  className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
-                >
-                  <svg className="w-4 h-4 text-mint dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  New Project
-                </button>
-                <button
-                  onClick={handleNewFolder}
-                  className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
-                >
-                  <svg className="w-4 h-4 text-mint dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                  </svg>
-                  New Folder
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-grow overflow-y-auto px-3 space-y-6 custom-scrollbar pb-10">
-        {/* Recent Activity */}
-        <div className="space-y-1">
-          <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest flex justify-between items-center">
-            <span>Recent Activity</span>
-            {filteredChats.filter(c => c.type !== 'project').length > 0 && (
-              <span className="text-label-tertiary">{filteredChats.filter(c => c.type !== 'project').length}</span>
-            )}
-          </div>
+    <div className="flex flex-col h-full">
+      <div className="flex-grow overflow-y-auto px-2 space-y-5 custom-scrollbar pb-3">
+        {/* Recent Activity — header lives in AppLayout's rail (mono "recent" eyebrow). */}
+        <div className="space-y-0.5 pt-1">
           <div className="space-y-0.5">
             {filteredChats.filter(c => c.type !== 'project').length === 0 ? (
-              <div className="px-3 py-4 text-xs text-label-tertiary text-center">
-                No chats yet. Click + New to start.
+              <div className="px-4 py-3 font-mono text-[10px] tracking-[0.04em] text-ink-muted">
+                no chats yet — press ⌘N
               </div>
             ) : (
               filteredChats.filter(c => c.type !== 'project').map(chat => (
@@ -309,9 +226,9 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
 
         {/* Projects */}
         {filteredChats.filter(c => c.type === 'project').length > 0 && (
-          <div className="space-y-1">
-            <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest">
-              Projects
+          <div className="space-y-0.5">
+            <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted px-4 mb-1.5">
+              projects
             </div>
             <div className="space-y-2">
               {filteredChats.filter(c => c.type === 'project').map(project => (
@@ -338,7 +255,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                         e.stopPropagation()
                         openProjectSettings(project.id)
                       }}
-                      className="p-1.5 rounded-lg hover:bg-surface-tertiary dark:hover:bg-surface text-label-tertiary hover:text-mint dark:hover:text-teal transition-colors"
+                      className="p-1.5 hover:bg-rail-soft text-ink-muted hover:text-ink transition-colors"
                       title="Project Settings"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -349,7 +266,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                   </div>
                   {/* Chats within this project */}
                   {getChatsByProject(project.id).length > 0 && (
-                    <div className="ml-4 pl-3 border-l border-separator/30 space-y-0.5">
+                    <div className="ml-7 pl-3 border-l border-hairline-soft space-y-0">
                       {getChatsByProject(project.id).map(chat => (
                         <SidebarItem
                           key={chat.id}
@@ -377,9 +294,9 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
 
         {/* Folders */}
         {folders.length > 0 && (
-          <div className="space-y-1">
-            <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest">
-              Folders
+          <div className="space-y-0.5">
+            <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted px-4 mb-1.5">
+              folders
             </div>
             <div className="space-y-0.5">
               {folders.map(folder => (
@@ -407,27 +324,25 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
 
       {/* Project Settings Modal */}
       {showProjectSettings && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowProjectSettings(null)}>
-          <div className="bg-surface-secondary dark:bg-[#2C2C2E] rounded-hig-2xl border border-separator shadow-float w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-separator">
-              <h3 className="text-lg font-bold text-label-primary">Project Settings</h3>
-              <p className="text-xs text-label-tertiary mt-1">Configure default settings for this project</p>
+        <div className="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowProjectSettings(null)}>
+          <div className="bg-surface border border-hairline w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-hairline">
+              <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">project</div>
+              <h3 className="font-serif italic text-2xl text-ink mt-1">Settings</h3>
             </div>
-            <div className="p-6 space-y-4">
-              {/* System Prompt */}
+            <div className="px-6 py-5 space-y-5">
               <div>
-                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">System Prompt</label>
+                <label className="block font-mono text-[10px] tracking-[0.04em] text-ink-muted mb-2 uppercase">system prompt</label>
                 <textarea
                   value={projectSettings.systemPrompt}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, systemPrompt: e.target.value }))}
                   placeholder="Enter a system prompt for this project..."
-                  className="w-full h-24 p-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-sm outline-none focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20 resize-none"
+                  className="w-full h-24 p-3 bg-bg border border-hairline rounded-card text-sm text-ink outline-none focus:border-ink/40 resize-none"
                 />
               </div>
-              {/* Temperature */}
               <div>
-                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">
-                  Temperature: {projectSettings.temperature}
+                <label className="block font-mono text-[10px] tracking-[0.04em] text-ink-muted mb-2 uppercase">
+                  temperature — {projectSettings.temperature}
                 </label>
                 <input
                   type="range"
@@ -436,13 +351,12 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                   step="0.1"
                   value={projectSettings.temperature}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))}
-                  className="w-full accent-mint dark:accent-teal"
+                  className="w-full accent-accent"
                 />
               </div>
-              {/* Max Tokens */}
               <div>
-                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">
-                  Max Tokens: {projectSettings.maxTokens}
+                <label className="block font-mono text-[10px] tracking-[0.04em] text-ink-muted mb-2 uppercase">
+                  max tokens — {projectSettings.maxTokens}
                 </label>
                 <input
                   type="range"
@@ -451,16 +365,15 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                   step="256"
                   value={projectSettings.maxTokens}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, maxTokens: parseInt(e.target.value) }))}
-                  className="w-full accent-mint dark:accent-teal"
+                  className="w-full accent-accent"
                 />
               </div>
-              {/* Model Selection */}
               <div>
-                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">Default Model</label>
+                <label className="block font-mono text-[10px] tracking-[0.04em] text-ink-muted mb-2 uppercase">default model</label>
                 <select
                   value={projectSettings.modelId}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, modelId: e.target.value }))}
-                  className="w-full p-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-sm outline-none focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20"
+                  className="w-full p-3 bg-bg border border-hairline rounded-card text-sm text-ink outline-none focus:border-ink/40"
                 >
                   <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                   <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
@@ -470,18 +383,18 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                 </select>
               </div>
             </div>
-            <div className="p-6 border-t border-separator flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-hairline flex justify-end gap-2">
               <button
                 onClick={() => setShowProjectSettings(null)}
-                className="px-4 py-2 text-sm font-bold text-label-primary hover:bg-surface-tertiary dark:hover:bg-surface rounded-hig-lg transition-colors"
+                className="px-4 py-2 font-mono text-[11px] tracking-[0.04em] uppercase text-ink-soft hover:text-ink transition-colors"
               >
-                Cancel
+                cancel
               </button>
               <button
                 onClick={saveProjectSettings}
-                className="px-4 py-2 text-sm font-bold gradient-mint-teal text-white rounded-hig-lg shadow-mint-glow hover:scale-105 transition-transform"
+                className="px-4 py-2 font-mono text-[11px] tracking-[0.04em] uppercase bg-ink text-bg hover:bg-ink-soft transition-colors"
               >
-                Save Settings
+                save
               </button>
             </div>
           </div>
@@ -528,9 +441,8 @@ export function SidebarItem({
   const [showMoveMenu, setShowMoveMenu] = useState(false)
   return (
     <motion.div
-      whileHover={{ x: 4 }}
       onClick={onClick}
-      className={`group px-3 py-2.5 rounded-hig-lg cursor-pointer transition-all flex items-center justify-between relative hover:bg-surface-tertiary dark:hover:bg-surface`}
+      className={`group relative pl-4 pr-2 py-2 cursor-pointer transition-colors flex items-center justify-between hover:bg-rail-soft ${active ? 'bg-rail-soft' : ''}`}
     >
       <div className="flex-grow min-w-0 mr-2">
         {isEditing ? (
@@ -544,16 +456,16 @@ export function SidebarItem({
             }}
             onBlur={onSaveEdit}
             autoFocus
-            className="w-full text-sm font-bold bg-transparent outline-none border-b border-mint dark:border-teal"
+            className="w-full text-[13px] font-medium bg-transparent outline-none border-b border-ink"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <div className={`text-sm font-bold truncate ${active ? 'text-mint dark:text-teal' : 'text-label-primary'}`}>
+          <div className={`text-[13px] truncate ${active ? 'text-ink font-medium' : 'text-ink-soft'}`}>
             {title}
           </div>
         )}
         {model && !isEditing && (
-          <div className={`text-[10px] font-medium ${active ? 'text-mint/70 dark:text-teal/70' : 'text-label-tertiary'} truncate`}>
+          <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted truncate mt-0.5">
             {model}
           </div>
         )}
@@ -619,7 +531,7 @@ export function SidebarItem({
       {active && (
         <motion.div
           layoutId="sidebar-active"
-          className="absolute left-0 top-1 bottom-1 w-1 bg-mint dark:bg-teal rounded-full"
+          className="absolute left-0 top-0 bottom-0 w-[2px] bg-ink"
         />
       )}
     </motion.div>
@@ -660,19 +572,19 @@ function FolderItem({
     <div>
       <div 
         onClick={() => setIsExpanded(!isExpanded)}
-        className="group px-3 py-2 rounded-hig-lg cursor-pointer transition-all hover:bg-surface-tertiary dark:hover:bg-surface flex items-center justify-between"
+        className="group px-4 py-2 cursor-pointer transition-colors hover:bg-rail-soft flex items-center justify-between"
       >
         <div className="flex items-center gap-2.5 min-w-0 flex-grow">
           <svg 
-            className={`w-3 h-3 text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-all ${isExpanded ? 'rotate-90' : ''}`} 
+            className={`w-3 h-3 text-ink-muted transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
             fill="none" 
             viewBox="0 0 24 24" 
             stroke="currentColor"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
           </svg>
-          <svg className="w-4 h-4 text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          <svg className="w-4 h-4 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
           {isEditing ? (
             <input
@@ -685,15 +597,15 @@ function FolderItem({
               }}
               onBlur={onSaveEdit}
               autoFocus
-              className="flex-grow text-sm font-medium bg-transparent outline-none border-b border-mint dark:border-teal"
+              className="flex-grow text-[13px] bg-transparent outline-none border-b border-ink"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span className="text-sm font-medium text-label-primary group-hover:text-mint dark:group-hover:text-teal truncate">{title}</span>
+            <span className="text-[13px] text-ink-soft truncate">{title}</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-label-secondary group-hover:text-teal dark:group-hover:text-mint transition-colors">
+          <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted">
             {chats.length}
           </span>
           {!isEditing && (
@@ -721,15 +633,15 @@ function FolderItem({
         </div>
       </div>
       {isExpanded && chats.length > 0 && (
-        <div className="ml-6 mt-1 space-y-0.5">
+        <div className="ml-9 mt-0.5 space-y-0">
           {chats.map(chat => (
             <div 
               key={chat.id}
               onClick={() => onChatSelect?.(chat.id)}
-              className={`px-3 py-1.5 text-xs cursor-pointer transition-colors rounded-md ${
+              className={`px-2 py-1.5 text-[12px] cursor-pointer transition-colors ${
                 chat.id === activeChatId 
-                  ? 'text-mint dark:text-teal font-medium' 
-                  : 'text-label-secondary hover:text-label-primary'
+                  ? 'text-ink font-medium' 
+                  : 'text-ink-soft hover:text-ink'
               }`}
             >
               {chat.title}

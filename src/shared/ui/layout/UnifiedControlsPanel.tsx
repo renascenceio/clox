@@ -1,5 +1,13 @@
 'use client'
 
+/*
+ * Editorial controls panel — pearl & onyx, hairline-only.
+ * Used by image / video / audio surfaces. The prop contract is unchanged so
+ * existing pages keep wiring up the same way; only the visual language
+ * cascades to the new system (mono labels, paper buttons with ink active state,
+ * no glass, no gradients).
+ */
+
 import { useState } from 'react'
 
 interface Model {
@@ -23,20 +31,19 @@ interface UnifiedControlsPanelProps {
   models: Model[]
   selectedModel: Model
   onModelChange: (model: Model) => void
-  
-  // Common controls
+
   aspectRatios?: SelectOption[]
   selectedAspectRatio?: string
   onAspectRatioChange?: (ratio: string) => void
-  
+
   qualityLevels?: SelectOption[]
   selectedQuality?: string
   onQualityChange?: (quality: string) => void
-  
+
   stylePresets?: SelectOption[]
   selectedStyle?: string
   onStyleChange?: (style: string) => void
-  
+
   durations?: SelectOption[]
   selectedDuration?: number
   onDurationChange?: (duration: number) => void
@@ -61,296 +68,228 @@ export default function UnifiedControlsPanel({
   onDurationChange,
 }: UnifiedControlsPanelProps) {
   const [selectedBrand, setSelectedBrand] = useState<string>(selectedModel.brandName || selectedModel.provider)
-  
-  // Get unique brands
+
   const brands = Array.from(new Set(models.map(m => m.brandName || m.provider)))
   const brandModels = models.filter(m => (m.brandName || m.provider) === selectedBrand)
-  
+
   const handleBrandChange = (brand: string) => {
     setSelectedBrand(brand)
-    // Auto-select first model of this brand
     const firstModel = models.find(m => (m.brandName || m.provider) === brand)
-    if (firstModel) {
-      onModelChange(firstModel)
-    }
+    if (firstModel) onModelChange(firstModel)
   }
 
   return (
     <div className="h-full flex flex-col bg-surface">
       {/* Header */}
-      <div className="p-6 border-b border-separator/50">
-        <h2 className="text-lg font-bold text-label-primary mb-1">
-          {type.charAt(0).toUpperCase() + type.slice(1)} Settings
-        </h2>
-        <p className="text-xs text-label-tertiary">
-          Configure your generation parameters
-        </p>
+      <div className="px-6 pt-5 pb-4 border-b border-hairline">
+        <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-muted">configure</div>
+        <h3 className="font-serif italic text-2xl text-ink mt-1">
+          {type[0].toUpperCase() + type.slice(1)}
+        </h3>
       </div>
 
-      {/* Scrollable Controls */}
-      <div className="flex-grow overflow-y-auto custom-scrollbar p-6 space-y-8">
-        {/* Model Selection */}
-        <div className="space-y-4">
-          <label className="text-[11px] font-bold text-label-secondary uppercase tracking-widest">
-            AI Model
-          </label>
-          
-          {/* Brand/Provider Dropdown */}
+      {/* Scrollable controls */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-5 space-y-7">
+
+        {/* Model — brand + version */}
+        <Section label="model">
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-label-tertiary">Brand</label>
             <select
               value={selectedBrand}
               onChange={(e) => handleBrandChange(e.target.value)}
-              className="w-full h-12 px-4 bg-surface border-2 border-separator/50 rounded-hig-xl text-base font-bold focus:ring-2 focus:ring-mint/20 focus:border-mint outline-none transition-all"
+              className="w-full h-9 px-3 bg-bg border border-hairline rounded-card text-[13px] text-ink outline-none focus:border-ink/40 transition-colors"
             >
               {brands.map(brand => (
-                <option key={brand} value={brand}>
-                  {brand}
-                </option>
+                <option key={brand} value={brand}>{brand}</option>
               ))}
             </select>
-          </div>
-          
-          {/* Version Dropdown */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-label-tertiary">Version</label>
             <select
               value={selectedModel.id}
               onChange={(e) => onModelChange(brandModels.find(m => m.id === e.target.value)!)}
-              className="w-full h-12 px-4 bg-surface border-2 border-separator/50 rounded-hig-xl text-base font-bold focus:ring-2 focus:ring-teal/20 focus:border-teal outline-none transition-all"
+              className="w-full h-9 px-3 bg-bg border border-hairline rounded-card text-[13px] text-ink outline-none focus:border-ink/40 transition-colors"
             >
               {brandModels.map(model => (
-                <option key={model.id} value={model.id}>
-                  {model.version || model.name}
-                </option>
+                <option key={model.id} value={model.id}>{model.version || model.name}</option>
               ))}
             </select>
           </div>
-          
-          <div className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-mint-50 to-teal-50 border border-mint-200 rounded-hig-xl">
-            <div className="w-2 h-2 bg-mint rounded-full animate-pulse"></div>
-            <span className="text-xs text-mint-700 font-bold">
-              {selectedBrand} • {selectedModel.version || selectedModel.name}
-            </span>
+          <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted mt-2">
+            {selectedBrand.toLowerCase()} · {(selectedModel.version || selectedModel.name).toLowerCase()}
           </div>
-        </div>
+        </Section>
 
-        {/* Aspect Ratio - Image & Video */}
+        {/* Aspect ratio */}
         {aspectRatios && onAspectRatioChange && (
-          <div className="space-y-4">
-            <label className="text-[11px] font-bold text-label-secondary uppercase tracking-widest">
-              Aspect Ratio
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {aspectRatios.map(ratio => (
-                <button
-                  key={ratio.value}
-                  onClick={() => onAspectRatioChange(ratio.value as string)}
-                  className={`h-11 rounded-hig-xl border text-xs font-semibold flex items-center justify-center transition-all ${
-                    selectedAspectRatio === ratio.value
-                      ? 'bg-teal-50 border-teal-500 text-teal-700 shadow-teal-glow'
-                      : 'bg-surface border-separator hover:border-teal-300 hover:bg-teal-50/50'
-                  }`}
-                >
-                  {ratio.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Section label="aspect ratio">
+            <PaperGrid
+              cols={2}
+              options={aspectRatios}
+              selected={selectedAspectRatio}
+              onChange={(v) => onAspectRatioChange(v as string)}
+            />
+          </Section>
         )}
 
         {/* Quality */}
         {qualityLevels && onQualityChange && (
-          <div className="space-y-4">
-            <label className="text-[11px] font-bold text-label-secondary uppercase tracking-widest">
-              Quality
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {qualityLevels.map(quality => (
-                <button
-                  key={quality.value}
-                  onClick={() => onQualityChange(quality.value as string)}
-                  className={`h-11 rounded-hig-xl border text-xs font-semibold transition-all ${
-                    selectedQuality === quality.value
-                      ? 'bg-mint-50 border-mint-500 text-mint-700 shadow-mint-glow'
-                      : 'bg-surface border-separator hover:border-mint-300 hover:bg-mint-50/50'
-                  }`}
-                >
-                  {quality.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Section label="quality">
+            <PaperGrid
+              cols={3}
+              options={qualityLevels}
+              selected={selectedQuality}
+              onChange={(v) => onQualityChange(v as string)}
+            />
+          </Section>
         )}
 
-        {/* Style Presets - Image */}
+        {/* Style presets */}
         {stylePresets && onStyleChange && (
-          <div className="space-y-4">
-            <label className="text-[11px] font-bold text-label-secondary uppercase tracking-widest">
-              Style Preset
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {stylePresets.map(style => (
-                <button
-                  key={style.value}
-                  onClick={() => onStyleChange(style.value as string)}
-                  className={`h-10 rounded-hig-xl border text-xs font-semibold transition-all ${
-                    selectedStyle === style.value
-                      ? 'bg-teal-50 border-teal-500 text-teal-700'
-                      : 'bg-surface border-separator hover:border-teal-300'
-                  }`}
-                >
-                  {style.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Section label="style">
+            <PaperGrid
+              cols={2}
+              options={stylePresets}
+              selected={selectedStyle}
+              onChange={(v) => onStyleChange(v as string)}
+            />
+          </Section>
         )}
 
-        {/* Duration - Video & Audio */}
+        {/* Duration */}
         {durations && onDurationChange && (
-          <div className="space-y-4">
-            <label className="text-[11px] font-bold text-label-secondary uppercase tracking-widest">
-              Duration
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {durations.map(duration => (
-                <button
-                  key={duration.value}
-                  onClick={() => onDurationChange(duration.value as number)}
-                  className={`h-11 rounded-hig-xl border text-xs font-semibold transition-all ${
-                    selectedDuration === duration.value
-                      ? 'bg-mint-50 border-mint-500 text-mint-700 shadow-mint-glow'
-                      : 'bg-surface border-separator hover:border-mint-300 hover:bg-mint-50/50'
-                  }`}
-                >
-                  {duration.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Section label="duration">
+            <PaperGrid
+              cols={2}
+              options={durations}
+              selected={selectedDuration}
+              onChange={(v) => onDurationChange(Number(v))}
+            />
+          </Section>
         )}
 
-        {/* Advanced Settings Expandable */}
+        {/* Advanced */}
         <details className="group">
-          <summary className="flex items-center justify-between cursor-pointer list-none px-4 py-3 bg-surface-secondary rounded-hig-xl border border-separator/30 hover:bg-fill transition-all">
-            <span className="text-xs font-bold text-label-primary">Advanced Settings</span>
-            <svg 
-              className="w-4 h-4 text-label-tertiary group-open:rotate-180 transition-transform" 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          <summary className="flex items-center justify-between cursor-pointer list-none px-3 py-2 border border-hairline-soft rounded-sharp hover:border-hairline transition-colors">
+            <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-muted">advanced</span>
+            <svg className="w-3 h-3 text-ink-muted group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
             </svg>
           </summary>
-          
-          <div className="mt-4 space-y-4 px-2">
-            {/* Temperature - Text */}
-            {type === 'text' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-label-secondary">Temperature</label>
-                  <span className="text-xs font-bold text-mint">0.7</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="2" 
-                  step="0.1" 
-                  defaultValue="0.7"
-                  className="w-full h-2 bg-surface-secondary rounded-full appearance-none cursor-pointer accent-mint"
-                />
-              </div>
-            )}
-            
-            {/* Max Tokens - Text */}
-            {type === 'text' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-label-secondary">Max Tokens</label>
-                  <span className="text-xs font-bold text-mint">2048</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="256" 
-                  max="32000" 
-                  step="256" 
-                  defaultValue="2048"
-                  className="w-full h-2 bg-surface-secondary rounded-full appearance-none cursor-pointer accent-mint"
-                />
-              </div>
-            )}
-            
-            {/* Guidance Scale - Image */}
+
+          <div className="mt-4 space-y-5 px-1">
             {type === 'image' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-label-secondary">Guidance Scale</label>
-                  <span className="text-xs font-bold text-teal">7.5</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="1" 
-                  max="20" 
-                  step="0.5" 
-                  defaultValue="7.5"
-                  className="w-full h-2 bg-surface-secondary rounded-full appearance-none cursor-pointer accent-teal"
-                />
-              </div>
+              <>
+                <NumberRange label="guidance scale" min={1} max={20} step={0.5} defaultValue={7.5} />
+                <NumberRange label="steps" min={10} max={150} step={10} defaultValue={50} />
+              </>
             )}
-            
-            {/* Steps - Image */}
-            {type === 'image' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-label-secondary">Steps</label>
-                  <span className="text-xs font-bold text-teal">50</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="10" 
-                  max="150" 
-                  step="10" 
-                  defaultValue="50"
-                  className="w-full h-2 bg-surface-secondary rounded-full appearance-none cursor-pointer accent-teal"
-                />
-              </div>
-            )}
-            
-            {/* Seed */}
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-label-secondary">Seed (Optional)</label>
-              <input 
-                type="number" 
-                placeholder="Random"
-                className="w-full h-10 px-3 bg-fill border border-separator/30 rounded-hig-xl text-xs focus:ring-2 focus:ring-mint/20 outline-none"
+              <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-muted">seed</div>
+              <input
+                type="number"
+                placeholder="random"
+                className="w-full h-9 px-3 bg-bg border border-hairline rounded-card font-mono text-[12px] text-ink placeholder:text-ink-muted outline-none focus:border-ink/40"
               />
             </div>
           </div>
         </details>
 
-        {/* Cost Estimate */}
-        <div className="p-4 bg-gradient-to-br from-mint-50 to-teal-50 border border-mint-200 rounded-hig-2xl">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-label-secondary uppercase tracking-widest">Est. Cost</span>
-            <span className="text-lg font-bold text-mint">$0.05</span>
+        {/* Cost estimate */}
+        <div className="border-t border-hairline-soft pt-4">
+          <div className="flex items-baseline justify-between">
+            <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-muted">est. cost</span>
+            <span className="font-serif italic text-[20px] text-ink">$0.05</span>
           </div>
-          <p className="text-[10px] text-label-tertiary leading-relaxed">
-            Based on current settings and selected model
+          <p className="font-mono text-[10px] tracking-[0.04em] text-ink-muted mt-1">
+            per generation, current settings
           </p>
         </div>
       </div>
 
-      {/* Footer Actions */}
-      <div className="p-6 border-t border-separator/50 space-y-3">
-        <button className="w-full h-11 gradient-mint-teal text-white rounded-hig-2xl font-bold shadow-float hover:shadow-hig-hover hover:scale-105 active:scale-95 transition-all">
-          Apply Settings
+      {/* Footer */}
+      <div className="px-6 py-3 border-t border-hairline flex items-center justify-between">
+        <button className="font-mono text-[11px] tracking-[0.04em] uppercase text-ink-soft hover:text-ink transition-colors">
+          reset
         </button>
-        <button className="w-full h-10 bg-surface-secondary border border-separator/30 rounded-hig-xl text-sm font-semibold text-label-secondary hover:bg-fill transition-all">
-          Reset to Defaults
+        <button className="px-3 h-7 bg-ink text-bg font-mono text-[10px] tracking-[0.18em] uppercase hover:bg-ink-soft transition-colors">
+          apply
         </button>
       </div>
+    </div>
+  )
+}
+
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-2">
+      <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-muted">{label}</div>
+      {children}
+    </section>
+  )
+}
+
+function PaperGrid({
+  cols,
+  options,
+  selected,
+  onChange,
+}: {
+  cols: 2 | 3
+  options: SelectOption[]
+  selected?: string | number
+  onChange: (v: string | number) => void
+}) {
+  return (
+    <div className={`grid ${cols === 3 ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5`}>
+      {options.map(option => {
+        const active = String(selected) === String(option.value)
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={`h-9 px-2 border rounded-sharp font-mono text-[11px] tracking-[0.04em] transition-colors ${
+              active
+                ? 'bg-ink text-bg border-ink'
+                : 'bg-bg text-ink-soft border-hairline hover:border-hairline hover:text-ink'
+            }`}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function NumberRange({
+  label,
+  min,
+  max,
+  step,
+  defaultValue,
+}: {
+  label: string
+  min: number
+  max: number
+  step: number
+  defaultValue: number
+}) {
+  const [value, setValue] = useState<number>(defaultValue)
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-muted">{label}</span>
+        <span className="font-mono text-[11px] tracking-[0.04em] text-accent">{value}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => setValue(parseFloat(e.target.value))}
+        className="w-full accent-accent"
+      />
     </div>
   )
 }

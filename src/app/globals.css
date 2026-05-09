@@ -2,47 +2,181 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Anthology — Pearl & Onyx
+ * Editorial × productivity design system.
+ *
+ *   • Two real themes: pearl (light) and onyx (dark). Six alternates
+ *     (linen / mist / slate / frost / pearl-light / pearl-neutral) are
+ *     wired as data-theme attributes and selectable from the user panel.
+ *   • Type — three faces, three jobs:
+ *       --font-sans   Geist          (body, UI, nav)
+ *       --font-mono   Geist Mono     (meta — timestamps, model names, eyebrows)
+ *       --font-serif  Newsreader     (display titles, pull quotes, AI mark)
+ *   • One accent only (Terracotta light / Ember dark). No gradients.
+ *     Surfaces shift in tone, structure comes from 1px hairlines.
+ *   • Sharp radii: 2px default / 3px cards / 4px composer / full only on avatars.
+ *
+ * Backwards compatibility: every legacy semantic var name (--background,
+ * --surface, --label-primary, --separator, --fill) has been REMAPPED to
+ * Pearl/Onyx values so existing utility classes (`bg-surface`,
+ * `text-label-primary`, `border-separator`) cascade automatically.
+ */
+
 @layer base {
-  :root {
-    --background: #F2F2F7;
-    --foreground: #1C1C1E;
-    
-    /* Light mode colors (RGB values for alpha support) */
-    --surface: 255 255 255;
-    --surface-secondary: 242 242 247;
-    --surface-tertiary: 250 250 250;
-    --label-primary: 28 28 30;
-    --label-secondary: 99 99 102;
-    --label-tertiary: 142 142 147;
-    --separator: 229 229 234;
-    --fill: 120 120 128;
+  :root,
+  [data-theme='pearl'] {
+    /* ---------- Editorial tokens (preferred for new code) ---------------- */
+    --bg:             #F1EFE9;          /* pearl */
+    --surface-rgb:    250 249 244;      /* bone */
+    --surface-alt-rgb:228 226 219;      /* mist deep */
+    --rail-rgb:       230 228 220;      /* mist */
+    --rail-soft-rgb:  236 234 226;
+    --ink-rgb:        24 24 26;         /* onyx */
+    --ink-soft-rgb:   82 82 79;         /* graphite */
+    --ink-muted-rgb:  142 140 134;      /* stone */
+    --accent-rgb:     168 71 42;        /* terracotta */
+    --hairline:       rgba(24, 24, 26, 0.14);
+    --hairline-soft:  rgba(24, 24, 26, 0.07);
+
+    /* You / AI authorship */
+    --you-bg-rgb:     24 24 26;         /* ink-on-paper turn */
+    --you-fg-rgb:     250 249 244;
+    --ai-bg-rgb:      250 249 244;
+
+    /* ---------- Legacy semantic names (kept stable) ---------------------- */
+    --background:     #F1EFE9;
+    --foreground:     #18181A;
+    --surface:                 var(--surface-rgb);
+    --surface-secondary:       241 239 233;   /* bg */
+    --surface-tertiary:        var(--rail-soft-rgb);
+    --label-primary:           var(--ink-rgb);
+    --label-secondary:         var(--ink-soft-rgb);
+    --label-tertiary:          var(--ink-muted-rgb);
+    --separator:               220 218 209;   /* hairline flattened on bg */
+    --fill:                    var(--surface-alt-rgb);
   }
 
-  .dark {
-    /*
-     * FULLY DARK mode with mint/teal accents.
-     * All surface and label values use cool neutrals (a very subtle teal cast)
-     * so the UI never reads warm/brown. Accent colors come from the mint and
-     * apple-teal Tailwind palettes.
-     */
-    --background: #0A1213;
-    --foreground: #E8F4F5;
+  .dark,
+  [data-theme='onyx'],
+  .dark[data-theme='onyx'] {
+    --bg:             #14130E;          /* tar */
+    --surface-rgb:    28 26 20;         /* soot */
+    --surface-alt-rgb:38 36 28;         /* charcoal */
+    --rail-rgb:       16 15 11;         /* pitch */
+    --rail-soft-rgb:  22 20 15;
+    --ink-rgb:        236 229 211;      /* parchment */
+    --ink-soft-rgb:   156 148 132;      /* sand */
+    --ink-muted-rgb:  110 103 90;       /* driftwood */
+    --accent-rgb:     210 116 82;       /* ember */
+    --hairline:       rgba(236, 229, 211, 0.14);
+    --hairline-soft:  rgba(236, 229, 211, 0.06);
 
-    --surface: 15 20 21;
-    --surface-secondary: 8 13 14;
-    --surface-tertiary: 22 28 29;
-    --label-primary: 232 244 245;
-    --label-secondary: 150 166 170;
-    --label-tertiary: 110 125 128;
-    --separator: 45 55 58;
-    --fill: 75 90 93;
+    --you-bg-rgb:     236 229 211;
+    --you-fg-rgb:     20 19 14;
+    --ai-bg-rgb:      28 26 20;
+
+    --background:     #14130E;
+    --foreground:     #ECE5D3;
+    --surface:                 var(--surface-rgb);
+    --surface-secondary:       20 19 14;
+    --surface-tertiary:        var(--rail-soft-rgb);
+    --label-primary:           var(--ink-rgb);
+    --label-secondary:         var(--ink-soft-rgb);
+    --label-tertiary:          var(--ink-muted-rgb);
+    --separator:               47 44 36;
+    --fill:                    var(--surface-alt-rgb);
   }
+
+  /* Alternate light palettes — pickable from user settings via data-theme. */
+  [data-theme='pearl-light'] {
+    --bg: #F4F3EE; --surface-rgb: 252 251 247; --surface-alt-rgb: 232 230 223;
+    --rail-rgb: 234 233 225; --rail-soft-rgb: 240 239 231;
+    --ink-rgb: 26 26 27; --ink-soft-rgb: 86 86 79; --ink-muted-rgb: 148 146 138;
+    --accent-rgb: 168 71 42;
+    --hairline: rgba(26,26,27,0.12); --hairline-soft: rgba(26,26,27,0.05);
+    --you-bg-rgb: 26 26 27; --you-fg-rgb: 252 251 247; --ai-bg-rgb: 252 251 247;
+    --background: #F4F3EE; --foreground: #1A1A1B;
+    --surface: var(--surface-rgb); --surface-secondary: 244 243 238;
+    --surface-tertiary: var(--rail-soft-rgb);
+    --label-primary: var(--ink-rgb); --label-secondary: var(--ink-soft-rgb); --label-tertiary: var(--ink-muted-rgb);
+    --separator: 224 222 213; --fill: var(--surface-alt-rgb);
+  }
+  [data-theme='pearl-neutral'] {
+    --bg: #EFEFEC; --surface-rgb: 249 249 246; --surface-alt-rgb: 226 226 222;
+    --rail-rgb: 229 229 225; --rail-soft-rgb: 235 235 231;
+    --ink-rgb: 23 24 25; --ink-soft-rgb: 81 82 79; --ink-muted-rgb: 139 140 134;
+    --accent-rgb: 160 68 40;
+    --hairline: rgba(23,24,25,0.13); --hairline-soft: rgba(23,24,25,0.06);
+    --you-bg-rgb: 23 24 25; --you-fg-rgb: 249 249 246; --ai-bg-rgb: 249 249 246;
+    --background: #EFEFEC; --foreground: #171819;
+    --surface: var(--surface-rgb); --surface-secondary: 239 239 236;
+    --surface-tertiary: var(--rail-soft-rgb);
+    --label-primary: var(--ink-rgb); --label-secondary: var(--ink-soft-rgb); --label-tertiary: var(--ink-muted-rgb);
+    --separator: 219 219 215; --fill: var(--surface-alt-rgb);
+  }
+  [data-theme='linen'] {
+    --bg: #EDECE5; --surface-rgb: 247 246 240; --surface-alt-rgb: 222 221 212;
+    --rail-rgb: 224 223 214; --rail-soft-rgb: 230 229 220;
+    --ink-rgb: 22 23 26; --ink-soft-rgb: 77 79 82; --ink-muted-rgb: 138 140 141;
+    --accent-rgb: 154 79 50;
+    --hairline: rgba(22,23,26,0.16); --hairline-soft: rgba(22,23,26,0.08);
+    --you-bg-rgb: 22 23 26; --you-fg-rgb: 247 246 240; --ai-bg-rgb: 247 246 240;
+    --background: #EDECE5; --foreground: #16171A;
+    --surface: var(--surface-rgb); --surface-secondary: 237 236 229;
+    --surface-tertiary: var(--rail-soft-rgb);
+    --label-primary: var(--ink-rgb); --label-secondary: var(--ink-soft-rgb); --label-tertiary: var(--ink-muted-rgb);
+    --separator: 217 215 205; --fill: var(--surface-alt-rgb);
+  }
+  [data-theme='mist'] {
+    --bg: #E4E7E2; --surface-rgb: 240 242 238; --surface-alt-rgb: 213 217 211;
+    --rail-rgb: 216 219 213; --rail-soft-rgb: 222 225 219;
+    --ink-rgb: 21 24 26; --ink-soft-rgb: 71 81 84; --ink-muted-rgb: 128 137 139;
+    --accent-rgb: 138 74 44;
+    --hairline: rgba(21,24,26,0.16); --hairline-soft: rgba(21,24,26,0.07);
+    --you-bg-rgb: 21 24 26; --you-fg-rgb: 240 242 238; --ai-bg-rgb: 240 242 238;
+    --background: #E4E7E2; --foreground: #15181A;
+    --surface: var(--surface-rgb); --surface-secondary: 228 231 226;
+    --surface-tertiary: var(--rail-soft-rgb);
+    --label-primary: var(--ink-rgb); --label-secondary: var(--ink-soft-rgb); --label-tertiary: var(--ink-muted-rgb);
+    --separator: 209 213 207; --fill: var(--surface-alt-rgb);
+  }
+  [data-theme='slate'] {
+    --bg: #E1E3E4; --surface-rgb: 238 239 240; --surface-alt-rgb: 210 213 215;
+    --rail-rgb: 213 216 218; --rail-soft-rgb: 220 222 223;
+    --ink-rgb: 19 22 26; --ink-soft-rgb: 68 74 80; --ink-muted-rgb: 124 129 134;
+    --accent-rgb: 149 80 54;
+    --hairline: rgba(19,22,26,0.16); --hairline-soft: rgba(19,22,26,0.07);
+    --you-bg-rgb: 19 22 26; --you-fg-rgb: 238 239 240; --ai-bg-rgb: 238 239 240;
+    --background: #E1E3E4; --foreground: #13161A;
+    --surface: var(--surface-rgb); --surface-secondary: 225 227 228;
+    --surface-tertiary: var(--rail-soft-rgb);
+    --label-primary: var(--ink-rgb); --label-secondary: var(--ink-soft-rgb); --label-tertiary: var(--ink-muted-rgb);
+    --separator: 207 209 211; --fill: var(--surface-alt-rgb);
+  }
+  [data-theme='frost'] {
+    --bg: #E6E9EC; --surface-rgb: 241 243 245; --surface-alt-rgb: 211 216 221;
+    --rail-rgb: 215 220 224; --rail-soft-rgb: 222 226 230;
+    --ink-rgb: 17 22 27; --ink-soft-rgb: 64 74 83; --ink-muted-rgb: 121 130 139;
+    --accent-rgb: 138 74 54;
+    --hairline: rgba(17,22,27,0.16); --hairline-soft: rgba(17,22,27,0.07);
+    --you-bg-rgb: 17 22 27; --you-fg-rgb: 241 243 245; --ai-bg-rgb: 241 243 245;
+    --background: #E6E9EC; --foreground: #11161B;
+    --surface: var(--surface-rgb); --surface-secondary: 230 233 236;
+    --surface-tertiary: var(--rail-soft-rgb);
+    --label-primary: var(--ink-rgb); --label-secondary: var(--ink-soft-rgb); --label-tertiary: var(--ink-muted-rgb);
+    --separator: 211 215 219; --fill: var(--surface-alt-rgb);
+  }
+}
+
+html {
+  background: var(--background);
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "SF Pro Text", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -56,152 +190,179 @@ body {
     background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(120, 120, 128, 0.2);
-    border-radius: 10px;
+    background: rgba(var(--ink-muted-rgb) / 0.32);
+    border-radius: 1px;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(120, 120, 128, 0.3);
-  }
-
-  .shadow-hig {
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06);
-  }
-
-  .glass {
-    @apply bg-white/80 backdrop-blur-xl border border-white/20;
-  }
-
-  .glass-float {
-    @apply bg-white/90 dark:bg-[#0F1A1B]/95 backdrop-blur-[24px] border border-separator/30;
+    background: rgba(var(--ink-muted-rgb) / 0.5);
   }
 
   /*
-   * Primary brand gradient: Apple HIG systemMint → systemTeal.
-   * All legacy `.gradient-brown-teal` / `.gradient-teal-brown` usages are
-   * aliased to the same mint→teal gradient so nothing across the app still
-   * renders brown. A `.text-gradient-mint-teal` helper is exposed for gradient
-   * headings/text.
+   * Editorial system uses hairline borders, not shadows. The legacy
+   * `.shadow-hig` and `.glass*` helpers are aliased to "border + soft fill"
+   * equivalents so existing usages cascade without per-component edits.
+   */
+  .shadow-hig {
+    box-shadow: none;
+    border: 1px solid var(--hairline-soft);
+  }
+  .glass,
+  .glass-float {
+    background: rgb(var(--surface-rgb) / 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--hairline-soft);
+  }
+
+  /*
+   * The old mint→teal brand gradient is deprecated. All legacy aliases
+   * (`gradient-mint-teal`, `gradient-brown-teal`, `gradient-teal-brown`,
+   * `text-gradient-mint-teal`) now render the single Terracotta accent so
+   * the system's "no gradients, one accent" rule holds across the app.
    */
   .gradient-mint-teal,
   .gradient-brown-teal,
   .gradient-teal-brown {
-    background: linear-gradient(135deg, #00C7BE 0%, #30B0C7 100%);
-  }
-  .dark .gradient-mint-teal,
-  .dark .gradient-brown-teal,
-  .dark .gradient-teal-brown {
-    background: linear-gradient(135deg, #63E6E2 0%, #40C8E0 100%);
+    background: rgb(var(--accent-rgb));
   }
   .gradient-mint-teal:hover,
   .gradient-brown-teal:hover,
   .gradient-teal-brown:hover {
-    background: linear-gradient(135deg, #00A89F 0%, #268FA1 100%);
+    background: rgb(var(--accent-rgb) / 0.92);
   }
-  .dark .gradient-mint-teal:hover,
-  .dark .gradient-brown-teal:hover,
-  .dark .gradient-teal-brown:hover {
-    background: linear-gradient(135deg, #40C8E0 0%, #30B0C7 100%);
+  .text-gradient-mint-teal {
+    color: rgb(var(--accent-rgb));
+    background: none;
+    -webkit-text-fill-color: currentColor;
   }
 
-  /* Gradient text helper — apply to inline spans/headings. */
-  .text-gradient-mint-teal {
-    background: linear-gradient(135deg, #00C7BE 0%, #30B0C7 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
+  /* Editorial primitives — small reusable building blocks. */
+  .eyebrow {
+    font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgb(var(--ink-muted-rgb));
   }
-  .dark .text-gradient-mint-teal {
-    background: linear-gradient(135deg, #63E6E2 0%, #40C8E0 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
+  .meta {
+    font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: rgb(var(--ink-muted-rgb));
   }
+  .display-title {
+    font-family: var(--font-newsreader), Georgia, "Times New Roman", serif;
+    font-style: italic;
+    letter-spacing: -0.01em;
+    color: rgb(var(--ink-rgb));
+  }
+  .pullquote {
+    font-family: var(--font-newsreader), Georgia, "Times New Roman", serif;
+    font-style: italic;
+    font-size: 17px;
+    line-height: 1.5;
+    padding-left: 14px;
+    border-left: 2px solid rgb(var(--ink-rgb));
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Prose — AI response typography.
+ * Body in Geist with editorial rhythm (1.7 line-height, 1.15em paragraph
+ * gap). Headings use Newsreader italic so generated structure feels
+ * authored, not rendered.
+ * -------------------------------------------------------------------------- */
+
+.prose {
+  color: rgb(var(--ink-rgb));
 }
 
 .prose pre {
-  @apply bg-fill rounded-hig-md border border-separator/50 !important;
+  background: rgb(var(--surface-alt-rgb)) !important;
+  border: 1px solid var(--hairline-soft) !important;
+  border-radius: 3px !important;
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace !important;
 }
 
 .prose code {
-  @apply font-mono !important;
-  color: #00A89F !important; /* mint-600 */
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace !important;
+  color: rgb(var(--accent-rgb)) !important;
+  background: rgb(var(--surface-alt-rgb) / 0.6);
+  padding: 0.06em 0.32em;
+  border-radius: 2px;
 }
 .dark .prose code {
-  color: #63E6E2 !important; /* mint (dark) */
+  background: rgb(var(--surface-alt-rgb) / 0.5);
 }
 
-/*
- * AI response typography.
- * Paragraphs get a roomier vertical rhythm than default prose-sm so walls of
- * text are easier to scan, and each heading level (H1–H4) has a clearly
- * distinct size and weight so AI-generated structure is visible at a glance.
- * These selectors use !important to win over the Tailwind Typography plugin's
- * inline margin/size values that ship with `prose` / `prose-sm`.
- */
 .prose p {
   margin-top: 1.15em !important;
   margin-bottom: 1.15em !important;
   line-height: 1.7 !important;
+  color: rgb(var(--ink-rgb));
 }
 .prose p:first-child { margin-top: 0 !important; }
 .prose p:last-child  { margin-bottom: 0 !important; }
 
-/* Heading hierarchy — sizes step down noticeably between levels. */
+/* Heading hierarchy — Newsreader italic, sharp size jumps. */
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-family: var(--font-newsreader), Georgia, "Times New Roman", serif !important;
+  font-style: italic !important;
+  letter-spacing: -0.012em;
+  color: rgb(var(--ink-rgb));
+}
 .prose h1 {
   font-size: 1.75em !important;
-  line-height: 1.25 !important;
-  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  font-weight: 500 !important;
   margin-top: 1.6em !important;
   margin-bottom: 0.6em !important;
-  letter-spacing: -0.015em;
 }
 .prose h2 {
-  font-size: 1.45em !important;
-  line-height: 1.3 !important;
-  font-weight: 700 !important;
+  font-size: 1.4em !important;
+  line-height: 1.25 !important;
+  font-weight: 500 !important;
   margin-top: 1.5em !important;
   margin-bottom: 0.55em !important;
-  letter-spacing: -0.01em;
 }
 .prose h3 {
-  font-size: 1.2em !important;
-  line-height: 1.35 !important;
-  font-weight: 600 !important;
+  font-size: 1.18em !important;
+  line-height: 1.3 !important;
+  font-weight: 500 !important;
   margin-top: 1.35em !important;
   margin-bottom: 0.5em !important;
 }
 .prose h4 {
   font-size: 1.05em !important;
   line-height: 1.4 !important;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
   margin-top: 1.2em !important;
   margin-bottom: 0.4em !important;
-  text-transform: none;
 }
 .prose h5 {
-  font-size: 0.95em !important;
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace !important;
+  font-size: 0.78em !important;
   line-height: 1.4 !important;
   font-weight: 600 !important;
-  margin-top: 1.1em !important;
-  margin-bottom: 0.35em !important;
-  color: var(--foreground);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-top: 1.4em !important;
+  margin-bottom: 0.4em !important;
+  color: rgb(var(--ink-muted-rgb));
 }
 .prose h6 {
-  font-size: 0.85em !important;
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace !important;
+  font-size: 0.72em !important;
   line-height: 1.4 !important;
   font-weight: 600 !important;
-  margin-top: 1em !important;
-  margin-bottom: 0.3em !important;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: rgb(var(--label-secondary));
+  margin-top: 1.2em !important;
+  margin-bottom: 0.3em !important;
+  color: rgb(var(--ink-muted-rgb));
 }
-/* First heading in a message shouldn't push a huge gap above itself. */
 .prose > :first-child { margin-top: 0 !important; }
 
-/* Lists breathe a touch more than the default prose-sm packing. */
 .prose ul, .prose ol {
   margin-top: 1em !important;
   margin-bottom: 1em !important;
@@ -213,4 +374,50 @@ body {
 .prose li > p {
   margin-top: 0.35em !important;
   margin-bottom: 0.35em !important;
+}
+
+.prose blockquote {
+  font-family: var(--font-newsreader), Georgia, "Times New Roman", serif !important;
+  font-style: italic !important;
+  font-size: 1.05em !important;
+  line-height: 1.5 !important;
+  padding-left: 14px !important;
+  margin-left: 0 !important;
+  border-left: 2px solid rgb(var(--ink-rgb)) !important;
+  color: rgb(var(--ink-rgb)) !important;
+  quotes: none !important;
+}
+
+.prose a {
+  color: rgb(var(--accent-rgb)) !important;
+  text-decoration: underline;
+  text-decoration-color: rgb(var(--accent-rgb) / 0.4);
+  text-underline-offset: 2px;
+}
+.prose a:hover {
+  text-decoration-color: rgb(var(--accent-rgb));
+}
+
+/* Native caret blink for the composer's ghost cursor. */
+@keyframes editorial-caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.editorial-caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.1em;
+  background: currentColor;
+  margin-left: 1px;
+  vertical-align: -0.18em;
+  animation: editorial-caret-blink 1s steps(2) infinite;
+}
+
+/* Landing-page audio waveform pulse — used by the inline composer demo. */
+@keyframes landingWave {
+  0%, 100% { height: 12%; }
+  50%      { height: 88%; }
+}
+.landing-wave-bar {
+  animation: landingWave 1.4s ease-in-out infinite;
 }
