@@ -25,6 +25,119 @@ interface IncomingMessage {
 // more if it matters.
 const INLINE_TEXT_CAP_BYTES = 80 * 1024
 
+/** Pull the raw bytes out of a `data:` URL. Returns null for malformed
+ *  URLs. Used by both the text-decode and the binary-decode paths. */
+function dataUrlToBuffer(url: string): { mime: string; buf: Buffer } | null {
+  if (!url.startsWith('data:')) return null
+  const comma = url.indexOf(',')
+  if (comma === -1) return null
+  const meta = url.slice(5, comma)
+  const payload = url.slice(comma + 1)
+  const mime = meta.split(';')[0] || 'application/octet-stream'
+  try {
+    if (meta.includes(';base64')) {
+      return { mime, buf: Buffer.from(payload, 'base64') }
+    }
+    return { mime, buf: Buffer.from(decodeURIComponent(payload), 'utf8') }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Extract readable text from an Office / PDF binary attachment.
+ *
+ * Supported types:
+ *   - .docx  (mammoth, raw text)
+ *   - .xlsx / .xls / .ods (SheetJS, CSV per sheet)
+ *   - .pdf   (pdfjs-dist, page-by-page text)
+ *
+ * The result is plain UTF-8 text the model can read inline. We cap
+ * each extraction at the same `INLINE_TEXT_CAP_BYTES` ceiling we use
+ * for raw text uploads so a 200-page PDF doesn't blow the prompt.
+ */
+async function extractBinaryText(mime: string, name: string, buf: Buffer): Promise<string | null> {
+  // .docx — mammoth gives us clean paragraph text.
+  if (
+    mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    /\.docx$/i.test(name)
+  ) {
+    try {
+      const mammoth = await import('mammoth')
+      const out = await mammoth.extractRawText({ buffer: buf })
+      return capInlineText(out.value || '')
+    } catch (e) {
+      console.error('[v0] docx extract failed', e)
+      return null
+    }
+  }
+
+  // Spreadsheets — SheetJS reads xlsx, xls, ods, and a handful of
+  // legacy formats. We emit one CSV block per sheet so the model
+  // reasons about the workbook structure naturally.
+  if (
+    mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    mime === 'application/vnd.ms-excel' ||
+    /\.(xlsx|xls|ods)$/i.test(name)
+  ) {
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.read(buf, { type: 'buffer' })
+      const blocks = wb.SheetNames.map((sheetName: string) => {
+        const sheet = wb.Sheets[sheetName]
+        const csv = XLSX.utils.sheet_to_csv(sheet)
+        return `### Sheet: ${sheetName}\n\`\`\`csv\n${csv}\n\`\`\``
+      })
+      return capInlineText(blocks.join('\n\n'))
+    } catch (e) {
+      console.error('[v0] xlsx extract failed', e)
+      return null
+    }
+  }
+
+  // .pdf — pdfjs-dist runs on Node when we point it at the legacy
+  // build. Text-only extraction is plenty for the model; for layout-
+  // dependent docs the user will usually paste a screenshot anyway.
+  if (mime === 'application/pdf' || /\.pdf$/i.test(name)) {
+    try {
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      // The API route has no DOM and no Worker. pdfjs runs single-
+      // threaded when `GlobalWorkerOptions.workerSrc` is left empty
+      // and we pass plain init options; the type definitions don't
+      // expose every legacy escape hatch (e.g. `disableWorker`), so
+      // we cast through `unknown` to keep the overrides we actually
+      // want without disabling the rest of the route's typing.
+      const loadingTask = pdfjs.getDocument({
+        data: new Uint8Array(buf),
+        isEvalSupported: false,
+        useSystemFonts: false,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any)
+      const pdf = await loadingTask.promise
+      const pages: string[] = []
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i)
+        const tc = await page.getTextContent()
+        const text = (tc.items as Array<{ str?: string }>)
+          .map(it => it.str ?? '')
+          .join(' ')
+        pages.push(`--- Page ${i} ---\n${text}`)
+      }
+      return capInlineText(pages.join('\n\n'))
+    } catch (e) {
+      console.error('[v0] pdf extract failed', e)
+      return null
+    }
+  }
+
+  return null
+}
+
+function capInlineText(s: string): string {
+  if (s.length <= INLINE_TEXT_CAP_BYTES) return s
+  return s.slice(0, INLINE_TEXT_CAP_BYTES) + '\n…[truncated]'
+}
+
 /**
  * Decode a `data:` URL containing UTF-8 text. Returns null for binary
  * payloads or malformed URLs. We deliberately accept only the data-url
@@ -68,8 +181,13 @@ function isInlineableTextType(ct: string): boolean {
 }
 
 /** Convert a useChat message with `experimental_attachments` into the
- *  multimodal `content: ContentPart[]` shape that streamText expects. */
-function inflateAttachments(raw: unknown): unknown {
+ *  multimodal `content: ContentPart[]` shape that streamText expects.
+ *
+ *  This is async because Office / PDF extraction relies on dynamic
+ *  imports of mammoth / pdfjs / xlsx — those libraries are several
+ *  hundred KB each and we don't want them in the route's startup cost
+ *  when no binary attachment is present. */
+async function inflateAttachments(raw: unknown): Promise<unknown> {
   const m = raw as IncomingMessage
   const atts = m.experimental_attachments
   if (!Array.isArray(atts) || atts.length === 0) return m
@@ -82,10 +200,13 @@ function inflateAttachments(raw: unknown): unknown {
   for (const att of atts) {
     if (!att?.url) continue
     const ct = att.contentType ?? ''
+    const name = att.name ?? 'file'
     if (ct.startsWith('image/')) {
       // streamText accepts both data URLs and remote URLs in the `image` field.
       parts.push({ type: 'image', image: att.url })
-    } else if (isInlineableTextType(ct)) {
+      continue
+    }
+    if (isInlineableTextType(ct)) {
       // Inline the decoded text so the model can actually read CSVs,
       // JSON files, source code, markdown notes, etc. Wrap each one in
       // a fenced block tagged with the filename + content-type so the
@@ -94,11 +215,10 @@ function inflateAttachments(raw: unknown): unknown {
       if (decoded == null) {
         parts.push({
           type: 'text',
-          text: `[Attachment: ${att.name ?? 'file'} (${ct}) — could not decode]`,
+          text: `[Attachment: ${name} (${ct}) — could not decode]`,
         })
         continue
       }
-      const name = att.name ?? 'file'
       parts.push({
         type: 'text',
         text: [
@@ -108,13 +228,32 @@ function inflateAttachments(raw: unknown): unknown {
           '```',
         ].join('\n'),
       })
-    } else {
-      // Binary / unknown — reference it by name only.
-      parts.push({
-        type: 'text',
-        text: `[Attachment: ${att.name ?? 'file'} (${ct || 'application/octet-stream'})]`,
-      })
+      continue
     }
+
+    // Binary path — try to extract text from .docx / .xlsx / .pdf so
+    // the model can analyse Office documents without bouncing through
+    // a manual copy-paste step. Anything we can't extract falls back
+    // to the name-only reference so the model at least knows it's
+    // there.
+    const decoded = dataUrlToBuffer(att.url)
+    if (decoded) {
+      const extracted = await extractBinaryText(decoded.mime || ct, name, decoded.buf)
+      if (extracted != null) {
+        parts.push({
+          type: 'text',
+          text: [
+            `Attached file: ${name} (${ct || decoded.mime})`,
+            extracted,
+          ].join('\n'),
+        })
+        continue
+      }
+    }
+    parts.push({
+      type: 'text',
+      text: `[Attachment: ${name} (${ct || 'application/octet-stream'})]`,
+    })
   }
 
   // If we ended up with only one text part, return it as a string for
@@ -143,35 +282,65 @@ function inflateAttachments(raw: unknown): unknown {
  *   model identity / tone is the user's system prompt's job.
  */
 const CLOX_CAPABILITIES_PREAMBLE = [
-  'You are running inside Clox, a workspace that renders every fenced',
-  'code block in your reply as a downloadable, previewable artifact.',
-  'You can therefore "produce files" by emitting them as fenced code',
-  'blocks with the right language tag — the user will get Copy /',
-  'Download / Preview controls on each block automatically.',
+  'You are running inside Clox, a full-capability AI workspace. The chat',
+  'surface renders every fenced code block in your reply as a downloadable,',
+  'previewable artifact with Copy / Download / Preview controls — and for',
+  'document-style blocks, real binary export to Microsoft Office and PDF.',
+  'You can therefore "produce files" with the same fluency as ChatGPT,',
+  'Claude, or Gemini in their native UIs.',
   '',
-  'Supported artifact types:',
-  '  • ```html / ```svg — rendered live in a sandboxed preview iframe',
-  '  • ```csv          — downloadable as CSV or Excel (.xlsx)',
-  '  • ```json         — pretty-printed, downloadable as .json',
-  '  • ```markdown     — rendered as formatted text, downloadable as .md',
-  '  • ```javascript / ```typescript / ```python / ```sql / ```bash …',
-  '    any source-code language is downloadable with the right extension',
+  'NEVER tell the user you "can\'t generate Excel/Word/PowerPoint/PDF",',
+  '"only output text", or "can\'t create files". You CAN. Pick the right',
+  'fenced language tag below and the workspace handles the binary build.',
   '',
-  'When the user asks for "an Excel sheet", "a spreadsheet", "a CSV",',
-  '"a report", or "a document": emit the data as a fenced ```csv (or',
-  '```html for richly formatted reports) block — DO NOT refuse on the',
-  'grounds that you are text-based. The user will download it from',
-  'the artifact toolbar. For multi-sheet workbooks, emit one ```csv',
-  'block per sheet, each preceded by a heading naming the sheet.',
+  'Artifact types and what the user sees:',
+  '  • ```html / ```svg     — sandboxed live preview iframe; pdf export',
+  '  • ```markdown          — rendered preview; downloadable as .md, .docx, .pdf',
+  '  • ```csv / ```tsv      — table preview; downloadable as CSV/TSV or .xlsx',
+  '  • ```json              — pretty-printed; downloadable as .json',
+  '  • ```pptx              — JSON outline → real PowerPoint .pptx file',
+  '  • ```docx              — markdown body → real Word .docx file',
+  '  • ```latex / ```tex    — downloadable as .tex',
+  '  • ```python / ```sql / ```javascript / ```typescript / ```bash / …',
+  '    any source-code language; downloadable with the right extension',
   '',
-  'When the user uploads a file, its contents are inlined inside a',
-  'fenced block earlier in the conversation under "Attached file: …".',
-  'Read it, analyse it, and answer accordingly — including writing',
-  'analysis scripts (Python / JavaScript / SQL) as artifacts the user',
-  'can download and run locally.',
+  'Format-picking guide for common requests:',
+  '  • "Excel" / "spreadsheet" / "CSV"   →  ```csv  (one block per sheet,',
+  '      each preceded by a "### Sheet: <name>" heading for multi-sheet',
+  '      workbooks)',
+  '  • "Word doc" / "report" / "memo"    →  ```markdown  (or ```docx if',
+  '      you want strict heading/list semantics; the body is markdown)',
+  '  • "PowerPoint" / "slide deck"       →  ```pptx  with the JSON shape:',
+  '      { "title": "Deck title", "slides": [',
+  '        { "title": "Slide 1", "bullets": ["…","…"], "notes": "…" },',
+  '        { "title": "Slide 2", "body": "free-form paragraph" }',
+  '      ] }',
+  '  • "PDF"                             →  ```markdown or ```html — the',
+  '      "pdf" toolbar button paginates the rendered preview to A4',
+  '  • "Chart" / "visualisation"         →  ```html with inline <script>',
+  '      (Chart.js / D3 / vanilla SVG) — the sandbox allows scripts',
+  '  • "Web page" / "interactive demo"   →  ```html — sandbox allows',
+  '      scripts, forms, popups (no parent-origin access)',
+  '  • "Diagram" / "flowchart"           →  ```svg  or ```html with',
+  '      inline mermaid via <script type="module">',
   '',
-  'Default to producing the actual artifact the user asked for rather',
-  'than describing how they could build it themselves.',
+  'When the user uploads a file, its contents are inlined earlier in the',
+  'conversation under "Attached file: …". Clox already extracts text from:',
+  '  • plain text, source code, JSON, YAML, CSV, markdown',
+  '  • Word .docx (full body text)',
+  '  • Excel .xlsx / .xls / .ods (one CSV block per sheet)',
+  '  • PDF (page-by-page text extraction)',
+  'Read these inline, analyse them, and respond with concrete answers —',
+  'including emitting analysis scripts (Python pandas / JavaScript / SQL)',
+  'as artifacts the user can download and run locally on their machine.',
+  '',
+  'Defaults to remember:',
+  '  • Always produce the artifact the user asked for. Don\'t describe',
+  '    how they could build it themselves unless they ask.',
+  '  • Prefer real, populated content over placeholder TODOs. If you are',
+  '    inferring values from context, say so briefly and proceed.',
+  '  • For long-form documents, structure with headings and lists so the',
+  '    .docx / .pdf export looks professional out of the box.',
 ].join('\n')
 
 export async function POST(req: Request) {
@@ -239,7 +408,13 @@ export async function POST(req: Request) {
     // image parts natively; text-only models will simply ignore them. PDFs and
     // other non-image types are referenced by name so the model knows they
     // exist even if it cannot decode them.
-    const inflatedMessages = (Array.isArray(messages) ? messages : []).map(inflateAttachments)
+    // Run the inflate step in parallel — each message's binary
+    // attachments may need a 100-300ms extraction pass, and a typical
+    // chat with one or two prior turns gets to the model noticeably
+    // faster when we let them run concurrently rather than serially.
+    const inflatedMessages = await Promise.all(
+      (Array.isArray(messages) ? messages : []).map(inflateAttachments),
+    )
 
     const caller = await getCallerForLogging()
 
