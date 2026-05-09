@@ -7,5 +7,7 @@ import { redirect } from 'next/navigation'
  * forwards to the composer with the video modality preselected.
  */
 export default function LegacyVideoRedirect() {
-  redirect('/text?mode=video')
+  // Forward to the unified chat surface. Modality is selected from the
+  // in-composer slash menu — there is no longer a per-modality URL.
+  redirect('/text')
 }

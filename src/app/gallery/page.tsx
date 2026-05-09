@@ -152,12 +152,12 @@ export default function GalleryPage() {
   // Tile actions ---------------------------------------------------------
   function open(it: GalleryItem) {
     if (typeof window !== 'undefined') {
+      // Stash the originating chat id so /text can rehydrate the same
+      // thread on landing. Modality is read off the chat record, not
+      // the URL — the slash-menu mode picker takes it from there.
       localStorage.setItem(`activeChatId:${it.kind}`, it.chatId)
     }
-    // The /image, /video, /audio routes are now thin server-side redirects
-    // to /text?mode=…; route there directly so the user gets a single hop.
-    const mode = it.kind === 'image' ? 'image' : it.kind === 'video' ? 'video' : 'voice'
-    chrome.router.push(`/text?mode=${mode}`)
+    chrome.router.push('/text')
   }
   function archiveItem(it: GalleryItem) {
     setGenerationArchived(it.kind, it.chatId, { id: it.itemId, url: it.url }, true)
@@ -322,7 +322,7 @@ function GenerationsBody({
           Nothing here yet
         </div>
         <div style={{ fontSize: 13, color: p.inkMuted, marginBottom: 18 }}>
-          Generate something in <a href="/text?mode=image" style={{ color: p.accent }}>image</a>, <a href="/text?mode=video" style={{ color: p.accent }}>video</a>, or <a href="/text?mode=voice" style={{ color: p.accent }}>voice</a> mode and it will collect here.
+          Open <a href="/text" style={{ color: p.accent }}>chat</a> and pick image, video, or voice from the slash menu — your generations will collect here.
         </div>
       </div>
     )
