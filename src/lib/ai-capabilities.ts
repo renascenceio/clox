@@ -646,7 +646,11 @@ const IMAGE_CAPABILITIES: Capability[] = [
       style: { type: 'select', label: 'Style', default: 'vivid',
         options: [{ value: 'vivid', label: 'Vivid' }, { value: 'natural', label: 'Natural' }],
       },
-      count: { ...COUNT_FIELD, max: 1 },
+      // OpenAI's DALL-E 3 endpoint only accepts `n: 1` per request
+      // (DALL-E 4 / gpt-image-1 supports `n` up to 10). The route runs
+      // N parallel calls server-side so the picker can offer 1-4 here
+      // and stay consistent with Nano Banana / Imagen / SD / FLUX.
+      count: COUNT_FIELD,
     },
   },
   {
@@ -665,7 +669,10 @@ const IMAGE_CAPABILITIES: Capability[] = [
       style: { type: 'select', label: 'Style', default: 'vivid',
         options: [{ value: 'vivid', label: 'Vivid' }, { value: 'natural', label: 'Natural' }],
       },
-      count: { ...COUNT_FIELD, max: 1 },
+      // Same loop-N-times treatment as DALL-E 4 above. Each parallel
+      // call costs one credit, so the picker tops out at 4 to keep the
+      // surprise factor low; raise the cap here if billing UX changes.
+      count: COUNT_FIELD,
     },
   },
 

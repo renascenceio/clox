@@ -373,6 +373,10 @@ export async function POST(request: Request) {
     prompt?: string
     model?: string
     ratio?: string
+    /** Number of images to generate (1-4). Most providers accept this
+     *  natively; DALL-E 3 only supports `n: 1` per request, so we loop
+     *  N parallel calls and merge the results. */
+    count?: number
     apiKey?: string
     projectId?: string | null
     chatId?: string | null
@@ -387,10 +391,15 @@ export async function POST(request: Request) {
     prompt,
     model: requestedModelId = 'nano-banana',
     ratio = '1:1',
+    count: rawCount,
     apiKey: clientApiKey,
     projectId,
     chatId,
   } = body
+
+  // Clamp to a sane range so a malformed payload doesn't accidentally
+  // burn 50 credits on a single send.
+  const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)))
 
   const caller = await getCallerForLogging()
   if (projectId && caller) {
@@ -426,87 +435,100 @@ export async function POST(request: Request) {
       provider: mapped.provider,
       modelId: mapped.modelId,
       ratio,
+      count,
     })
 
-    let result: { dataUrl: string; mimeType: string } | null = null
-
+    // ---- key-resolution pass --------------------------------------
+    // We resolve the provider key ONCE before fanning out. Returning a
+    // Response from inside the per-call helper would short-circuit
+    // `Promise.all` in unhelpful ways (you'd get one Response and N-1
+    // results), so missing-key errors stay here at the route level.
+    let providerKey: string | null = null
+    let openaiUseDefaultClient = false
     if (mapped.provider === 'google') {
-      const key = googleApiKey(clientApiKey)
-      if (!key) {
+      providerKey = googleApiKey(clientApiKey) ?? null
+      if (!providerKey) {
         return Response.json(
-          {
-            success: false,
-            error: 'Google image generation needs GOOGLE_GENERATIVE_AI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.',
-          },
+          { success: false, error: 'Google image generation needs GOOGLE_GENERATIVE_AI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.' },
           { status: 400 },
         )
       }
-      result =
-        mapped.googleMode === 'imagen'
-          ? await generateWithImagen(mapped.modelId, prompt, ratio, key)
-          : await generateWithGeminiImage(mapped.modelId, prompt, key)
     } else if (mapped.provider === 'openai') {
       const envKey = process.env.OPENAI_API_KEY
-      const key = clientApiKey?.trim() || envKey
-      if (!key) {
+      providerKey = clientApiKey?.trim() || envKey || null
+      openaiUseDefaultClient = providerKey === envKey
+      if (!providerKey) {
         return Response.json(
-          {
-            success: false,
-            error: 'DALL-E needs OPENAI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.',
-          },
+          { success: false, error: 'DALL-E needs OPENAI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.' },
           { status: 400 },
         )
-      }
-      const size = OPENAI_SIZE_FROM_RATIO[ratio] ?? '1024x1024'
-      const client = key === envKey ? defaultOpenai : createOpenAI({ apiKey: key })
-      const { image } = await generateImage({
-        model: client.image(mapped.modelId),
-        prompt,
-        size,
-      })
-      result = {
-        dataUrl: `data:${image.mimeType};base64,${image.base64}`,
-        mimeType: image.mimeType,
       }
     } else if (mapped.provider === 'stability') {
-      const key = clientApiKey?.trim() || process.env.STABILITY_API_KEY
-      if (!key) {
+      providerKey = clientApiKey?.trim() || process.env.STABILITY_API_KEY || null
+      if (!providerKey) {
         return Response.json(
-          {
-            success: false,
-            error: 'Stable Diffusion needs STABILITY_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.',
-          },
+          { success: false, error: 'Stable Diffusion needs STABILITY_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.' },
           { status: 400 },
         )
       }
-      result = await generateWithStability(mapped, prompt, ratio, key)
     } else if (mapped.provider === 'bfl') {
-      const key = clientApiKey?.trim() || process.env.BFL_API_KEY
-      if (!key) {
+      providerKey = clientApiKey?.trim() || process.env.BFL_API_KEY || null
+      if (!providerKey) {
         return Response.json(
-          {
-            success: false,
-            error: 'FLUX needs BFL_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys (api.bfl.ai).',
-          },
+          { success: false, error: 'FLUX needs BFL_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys (api.bfl.ai).' },
           { status: 400 },
         )
       }
-      result = await generateWithBfl(mapped, prompt, ratio, key)
     } else if (mapped.provider === 'ideogram') {
-      const key = clientApiKey?.trim() || process.env.IDEOGRAM_API_KEY
-      if (!key) {
+      providerKey = clientApiKey?.trim() || process.env.IDEOGRAM_API_KEY || null
+      if (!providerKey) {
         return Response.json(
-          {
-            success: false,
-            error: 'Ideogram needs IDEOGRAM_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.',
-          },
+          { success: false, error: 'Ideogram needs IDEOGRAM_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.' },
           { status: 400 },
         )
       }
-      result = await generateWithIdeogram(mapped, prompt, ratio, key)
     }
 
-    if (!result) {
+    // Single-call generator → one image. We run it `count` times in
+    // parallel below so every provider gets the same multi-image UX
+    // even when its native API only supports n=1 (DALL-E 3, Imagen
+    // single-call, Nano Banana :generateContent).
+    const generateOne = async (): Promise<{ dataUrl: string; mimeType: string } | null> => {
+      const key = providerKey!  // Already validated above.
+      if (mapped.provider === 'google') {
+        return mapped.googleMode === 'imagen'
+          ? await generateWithImagen(mapped.modelId, prompt, ratio, key)
+          : await generateWithGeminiImage(mapped.modelId, prompt, key)
+      }
+      if (mapped.provider === 'openai') {
+        const size = OPENAI_SIZE_FROM_RATIO[ratio] ?? '1024x1024'
+        const client = openaiUseDefaultClient ? defaultOpenai : createOpenAI({ apiKey: key })
+        const { image } = await generateImage({
+          model: client.image(mapped.modelId),
+          prompt,
+          size,
+        })
+        return {
+          dataUrl: `data:${image.mimeType};base64,${image.base64}`,
+          mimeType: image.mimeType,
+        }
+      }
+      if (mapped.provider === 'stability') return await generateWithStability(mapped, prompt, ratio, key)
+      if (mapped.provider === 'bfl')       return await generateWithBfl(mapped, prompt, ratio, key)
+      if (mapped.provider === 'ideogram')  return await generateWithIdeogram(mapped, prompt, ratio, key)
+      return null
+    }
+
+    // Fan out `count` calls in parallel. `Promise.all` is fine here
+    // because most providers cost a flat per-image rate; if any single
+    // call fails we surface its error (the user expects all-or-nothing
+    // for a small N, and partial results would be confusing in the
+    // composer).
+    const tasks = Array.from({ length: count }, () => generateOne())
+    const settled = await Promise.all(tasks)
+    const results = settled.filter((r): r is { dataUrl: string; mimeType: string } => Boolean(r))
+
+    if (results.length === 0) {
       return Response.json(
         { success: false, error: `Unsupported provider: ${mapped.provider}` },
         { status: 400 },
@@ -514,20 +536,26 @@ export async function POST(request: Request) {
     }
 
     if (caller) {
-      void recordUsage({
-        userId: caller.userId,
-        domain: caller.domain,
-        provider: mapped.provider,
-        model: requestedModelId,
-        modality: 'image',
-        chatType: 'image',
-        projectId: projectId ?? null,
-        chatId: chatId ?? null,
-      })
+      // Record one usage row per generated image so the cost ledger
+      // matches what the user actually got back.
+      for (let i = 0; i < results.length; i++) {
+        void recordUsage({
+          userId: caller.userId,
+          domain: caller.domain,
+          provider: mapped.provider,
+          model: requestedModelId,
+          modality: 'image',
+          chatType: 'image',
+          projectId: projectId ?? null,
+          chatId: chatId ?? null,
+        })
+      }
     }
     return Response.json({
       success: true,
-      url: result.dataUrl,
+      // Back-compat: existing callers read `url`. New callers read `urls`.
+      url: results[0].dataUrl,
+      urls: results.map(r => r.dataUrl),
       prompt,
       model: mapped.modelId,
     })

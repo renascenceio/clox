@@ -504,13 +504,18 @@ export default function TextPage() {
       const skillsPrefix = buildSkillsPromptPrefix(activeSkillIds)
       const composedPrompt = skillsPrefix + promptText
 
-      let result: { url?: string; durationSec?: number; error?: string } = {}
+      let result: { url?: string; urls?: string[]; durationSec?: number; error?: string } = {}
       if (modality === 'image') {
         const ratio = (imageParams.aspectRatio as string | undefined) ?? '1:1'
+        // The image picker exposes a 1-4 count for every model. Pass it
+        // through so the route can fan out parallel calls (DALL-E 3 only
+        // accepts n=1 natively, so the server loops; other providers
+        // honour `count` directly).
+        const count = Math.max(1, Math.min(4, Number(imageParams.count) || 1))
         const res = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: composedPrompt, model: selectedImageModel.id, ratio, apiKey }),
+          body: JSON.stringify({ prompt: composedPrompt, model: selectedImageModel.id, ratio, count, apiKey }),
         })
         result = await res.json()
         if (!res.ok || !result.url) throw new Error(result.error || `Image generation failed (${res.status})`)
@@ -543,6 +548,11 @@ export default function TextPage() {
                 content: '',
                 clox_pending: false,
                 clox_media_url: result.url,
+                // Capture the full set when the route returned multiple
+                // images (image-only for now). Falls back to a single
+                // entry so the renderer's grid path also works for
+                // legacy single-image responses.
+                clox_media_urls: result.urls ?? (result.url ? [result.url] : undefined),
                 clox_media_kind: modality,
                 clox_media_duration: result.durationSec,
               }
@@ -657,6 +667,14 @@ export default function TextPage() {
       const errored  = Boolean(m.clox_error)
       const mediaKind = m.clox_media_kind as 'image' | 'video' | 'audio' | undefined
       const mediaUrl  = m.clox_media_url  as string | undefined
+      // Multi-image responses (DALL-E count > 1, etc.) ride on
+      // `clox_media_urls`. Fall back to the single-url path so legacy
+      // messages still render.
+      const mediaUrls = Array.isArray(m.clox_media_urls)
+        ? (m.clox_media_urls as string[])
+        : mediaUrl
+          ? [mediaUrl]
+          : []
       let body: React.ReactNode
       if (pending) {
         body = (
@@ -670,10 +688,27 @@ export default function TextPage() {
             {String(m.content ?? 'Generation failed')}
           </span>
         )
-      } else if (mediaKind === 'image' && mediaUrl) {
+      } else if (mediaKind === 'image' && mediaUrls.length > 0) {
+        // 1 → full size; 2 → side by side; 3-4 → 2x2 grid. Each cell
+        // caps so a 4-up doesn't blow out the chat column width.
+        const cols = mediaUrls.length === 1 ? 1 : 2
+        const cellMax = mediaUrls.length === 1 ? 360 : 220
         body = (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={mediaUrl} alt="generated" style={{ maxWidth: 360, borderRadius: 2, display: 'block' }} />
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${cols}, minmax(0, ${cellMax}px))`,
+            gap: 6,
+          }}>
+            {mediaUrls.map((u, idx) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={idx}
+                src={u}
+                alt={`generated ${idx + 1}`}
+                style={{ width: '100%', borderRadius: 2, display: 'block' }}
+              />
+            ))}
+          </div>
         )
       } else if (mediaKind === 'video' && mediaUrl) {
         body = (
