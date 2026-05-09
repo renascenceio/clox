@@ -23,6 +23,7 @@ import {
 } from 'react'
 import { I } from './icons'
 import { useDictation, type DictationState } from './useDictation'
+import { useFileDrop } from './useFileDrop'
 import {
   PALETTES,
   MONO_STACK,
@@ -316,6 +317,19 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
   const [configOpen, setConfigOpen] = useState(initialConfigOpen)
   const [cmdkOpen, setCmdkOpen] = useState(initialCmdkOpen)
 
+  // Page-level drag-and-drop. Files dropped anywhere on the chat
+  // surface (header, transcript, composer) flow into the same
+  // `onAttach` channel the paperclip button uses, so the rest of
+  // the pipeline (preview chips, useChat's experimental_attachments,
+  // server-side handling) needs zero changes. We disable the hook
+  // entirely when the host page didn't pass an `onAttach` handler —
+  // a chat in a read-only context shouldn't show a drop overlay
+  // that would silently swallow the user's file.
+  const { active: dropActive, handlers: dropHandlers } = useFileDrop({
+    onFiles: onAttach,
+    enabled: Boolean(onAttach),
+  })
+
   // Global shortcuts — ⌘K palette, ⌘. config, ⌘N new chat.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -378,6 +392,11 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
       />
 
       <main
+        // `position: relative` anchors the drop overlay below to the
+        // main column rather than the whole viewport — the overlay
+        // covers exactly the chat surface and respects the config
+        // panel's right margin so it doesn't bleed under it.
+        {...dropHandlers}
         style={{
           flex: 1,
           display: 'flex',
@@ -385,6 +404,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
           minWidth: 0,
           marginRight: configOpen ? 320 : 0,
           transition: 'margin-right .22s ease',
+          position: 'relative',
         }}
       >
         <TopStrip
@@ -467,6 +487,86 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
           />
         )}
         </>
+        )}
+
+        {/* Drag-and-drop overlay. Rendered as the last child of <main>
+            so it stacks on top of the transcript + composer, but
+            inside the same positioning context (config panel margin,
+            etc.). pointer-events stay enabled because the overlay
+            itself needs to receive `dragleave` and `drop` events —
+            children with pointer-events:none would lose those.
+
+            Visual treatment follows the editorial palette: a soft
+            ink-tinted scrim with a single dashed hairline rectangle
+            and a centred caption. We deliberately avoid colour
+            accents so the overlay reads as part of the surface
+            rather than a separate UI layer. */}
+        {dropActive && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 40,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 24,
+              background: 'rgb(var(--ink-rgb) / 0.04)',
+              backdropFilter: 'blur(2px)',
+              WebkitBackdropFilter: 'blur(2px)',
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                border: `2px dashed ${p.ink}`,
+                borderRadius: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgb(var(--surface-rgb) / 0.85)',
+              }}
+            >
+              <div style={{ textAlign: 'center', maxWidth: 320 }}>
+                <div
+                  style={{
+                    fontFamily: mono,
+                    fontSize: 10,
+                    letterSpacing: '0.22em',
+                    textTransform: 'uppercase',
+                    color: p.inkMuted,
+                    marginBottom: 10,
+                  }}
+                >
+                  Drop to attach
+                </div>
+                <div
+                  style={{
+                    fontFamily: serif,
+                    fontSize: 18,
+                    lineHeight: 1.35,
+                    color: p.ink,
+                  }}
+                >
+                  Release to add files to this chat
+                </div>
+                <div
+                  style={{
+                    fontFamily: mono,
+                    fontSize: 11,
+                    color: p.inkSoft,
+                    marginTop: 10,
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  images · pdfs · text · csv · json
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </main>
 
