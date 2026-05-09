@@ -1,7 +1,24 @@
 'use client'
 
-import { motion, Transition, Variants } from 'framer-motion'
+/*
+ * Editorial × productivity shell — Anthology / Pearl & Onyx.
+ * Keeps the existing surface contract (children + sidebar + optional rightPanel)
+ * so every page that already uses AppLayout cascades into the new design with
+ * zero refactor. The shell itself contributes:
+ *
+ *   • a 248px left rail   — brand wordmark, ⌘K search row, primary nav with
+ *                            an active 2px accent bar, the (caller-supplied)
+ *                            recent thread list, user footer
+ *   • a main column        — borderless, the page draws its own top strip
+ *   • an optional right    — sharp hairline panel for project/config drawers
+ *
+ * No shadows, no gradients, no glass. Hairline-only structure.
+ */
+
+import { Transition, Variants } from 'framer-motion'
 import { ReactNode, useState, useEffect, useCallback } from 'react'
+import { usePathname } from 'next/navigation'
+import Link from 'next/link'
 import ThemeToggle from '@/shared/ui/components/ThemeToggle'
 import LanguageSwitcher from '@/shared/ui/components/LanguageSwitcher'
 import Avatar from '@/shared/ui/components/Avatar'
@@ -10,19 +27,19 @@ import { createClient } from '@/lib/supabase/client'
 export const spring: Transition = { type: "spring", stiffness: 380, damping: 30 }
 
 export const pageVariants: Variants = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.25, 0.1, 0.25, 1] } },
-  exit:    { opacity: 0, y: -8, transition: { duration: 0.2 } }
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.25, 0.1, 0.25, 1] } },
+  exit:    { opacity: 0, y: -4, transition: { duration: 0.16 } }
 }
 
 export const stagger: Variants = {
   initial: {},
-  animate: { transition: { staggerChildren: 0.08 } }
+  animate: { transition: { staggerChildren: 0.05 } }
 }
 
 export const cardVariant: Variants = {
-  initial: { opacity: 0, y: 20, scale: 0.98 },
-  animate: { opacity: 1, y: 0, scale: 1, transition: { ...spring, duration: 0.5 } }
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.28 } }
 }
 
 interface AppLayoutProps {
@@ -39,7 +56,26 @@ interface UserProfile {
   avatarSeed: string
 }
 
+/* Primary nav — maps to the four chat surfaces + gallery + history. */
+const PRIMARY_NAV: { href: string; label: string; icon: ReactNode; count?: number | null }[] = [
+  { href: '/text',  label: 'Chat',    icon: <NavIcon path="M2 3h9v6H6L3 11.5V9H2z" /> },
+  { href: '/image', label: 'Image',   icon: <NavIcon path="M1.5 2.5h10v8h-10z M1.5 8.5L4 6l2 2 2-2.5 3.5 3.5" extra="M4.5 5a.7.7 0 110-1.4.7.7 0 010 1.4z" /> },
+  { href: '/video', label: 'Video',   icon: <NavIcon path="M1.5 3h7v7h-7z M9 5l3-1.5v6L9 8z" /> },
+  { href: '/audio', label: 'Audio',   icon: <NavIcon path="M5 2v9 M3 4v5 M7 3v7 M9 5v3 M1 5v3 M11 4v5" /> },
+  { href: '/gallery', label: 'Gallery', icon: <NavIcon path="M1.5 2.5h10v8h-10z M1.5 8.5L4 6l2 2 2-2.5 3.5 3.5" /> },
+]
+
+function NavIcon({ path, extra }: { path: string; extra?: string }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
+      <path d={path} stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+      {extra && <path d={extra} fill="currentColor" />}
+    </svg>
+  )
+}
+
 export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutProps) {
+  const pathname = usePathname()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [profile, setProfile] = useState<UserProfile>({
     email: '',
@@ -73,9 +109,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     })
   }, [])
 
-  useEffect(() => {
-    loadProfile()
-  }, [loadProfile])
+  useEffect(() => { loadProfile() }, [loadProfile])
 
   // Close menu on outside click
   useEffect(() => {
@@ -87,6 +121,18 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showUserMenu])
+
+  // Open the global ⌘K palette by dispatching an event the page can listen for.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('clox-open-palette'))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const handleSignOut = async () => {
     const supabase = createClient()
@@ -113,161 +159,196 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     : profile.role || 'User'
 
   return (
-    <div className="flex h-screen relative bg-gradient-to-br from-surface-secondary via-surface-tertiary to-surface-secondary text-label-primary font-sans selection:bg-teal/20 overflow-hidden p-6 gap-6">
-      {/* Background Blobs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 -left-10 w-[500px] h-[500px] bg-mint/20 dark:bg-mint-400/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow opacity-60 dark:opacity-70" />
-        <div className="absolute top-40 -right-10 w-[500px] h-[500px] bg-teal/20 dark:bg-teal-400/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow [animation-delay:3s] opacity-60 dark:opacity-70" />
-        <div className="absolute bottom-20 left-1/3 w-[500px] h-[500px] bg-mint-300/20 dark:bg-mint-500/15 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl animate-blob-slow [animation-delay:6s] opacity-60 dark:opacity-70" />
-      </div>
+    <div className="flex h-screen bg-bg text-ink overflow-hidden">
 
-      {/* Left Sidebar */}
-      <aside className="w-[280px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 flex flex-col z-20 overflow-hidden">
-        <div className="h-16 border-b border-separator/50 flex items-center px-4 bg-gradient-to-br from-mint/5 to-teal/5 dark:from-mint/10 dark:to-teal/10">
-          <div className="w-9 h-9 gradient-mint-teal rounded-hig-lg flex items-center justify-center shadow-mint-glow">
-            <span className="text-white font-bold text-base">C</span>
-          </div>
+      {/* ============================================================== */}
+      {/* Left rail                                                      */}
+      {/* ============================================================== */}
+
+      <aside
+        className="flex-none w-[248px] flex flex-col bg-rail text-ink border-r border-hairline"
+        aria-label="Workspace navigation"
+      >
+        {/* Brand row — wordmark + version chip + new-chat affordance */}
+        <div className="flex items-center justify-between px-[18px] pt-4 pb-3">
+          <Link href="/text" className="flex items-baseline gap-2 select-none">
+            <span className="font-serif italic text-[19px] tracking-[-0.01em] leading-none text-ink">
+              Clox
+            </span>
+            <span className="font-mono text-[9.5px] tracking-[0.14em] uppercase text-ink-muted">
+              0.4
+            </span>
+          </Link>
+          <button
+            type="button"
+            title="New chat (⌘N)"
+            onClick={() => window.dispatchEvent(new CustomEvent('clox-new-chat'))}
+            className="w-[26px] h-[26px] inline-flex items-center justify-center border border-hairline-soft rounded-sharp text-ink-soft hover:text-ink hover:border-hairline transition-colors"
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden>
+              <path d="M5.5 1v9M1 5.5h9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+            <span className="sr-only">New chat</span>
+          </button>
         </div>
 
-        <div className="flex-grow overflow-y-auto custom-scrollbar p-4">
+        {/* ⌘K — search & jump */}
+        <div className="px-[14px] pb-[10px]">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('clox-open-palette'))}
+            className="w-full flex items-center gap-2 px-[10px] py-[7px] bg-rail-soft border border-hairline-soft rounded-sharp font-mono text-[11px] text-ink-muted hover:border-hairline transition-colors"
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden>
+              <circle cx="4.5" cy="4.5" r="3.2" stroke="currentColor" strokeWidth="1.1" />
+              <path d="m7 7 2.5 2.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+            </svg>
+            <span className="flex-1 text-left">search & jump</span>
+            <span className="opacity-80">⌘K</span>
+          </button>
+        </div>
+
+        {/* Primary nav with active 2px accent bar on the left edge */}
+        <nav className="px-2 pb-2" aria-label="Primary">
+          {PRIMARY_NAV.map(n => {
+            const active = pathname?.startsWith(n.href) ?? false
+            return (
+              <Link
+                key={n.href}
+                href={n.href}
+                className={`relative flex items-center gap-2.5 px-[10px] py-[7px] rounded-sharp text-[13px] ${
+                  active
+                    ? 'bg-bg text-ink font-medium'
+                    : 'text-ink hover:bg-rail-soft'
+                }`}
+              >
+                {active && <span className="absolute left-0 top-[6px] bottom-[6px] w-[2px] bg-ink" />}
+                <span className={active ? 'text-ink' : 'text-ink-soft'}>{n.icon}</span>
+                <span className="flex-1">{n.label}</span>
+                {n.count != null && (
+                  <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted">{n.count}</span>
+                )}
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Recent threads — caller-supplied. We just frame it with a hairline. */}
+        <div className="flex-1 min-h-0 border-t border-hairline-soft pt-1.5 overflow-y-auto custom-scrollbar">
+          <div className="flex items-center justify-between px-[18px] pt-2.5 pb-1">
+            <span className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted">recent</span>
+            <Link href="/gallery" className="font-mono text-[9.5px] tracking-[0.06em] text-ink-muted hover:text-ink">see all →</Link>
+          </div>
           {sidebar}
         </div>
 
-        <div className="p-4 border-t border-separator/50 bg-surface-secondary/30 dark:bg-surface-tertiary/30 space-y-3">
-          {/* Footer links */}
-          <div className="flex items-center justify-center gap-4">
-            <a href="/gallery" className="flex items-center gap-2 px-3 py-2 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
-              <svg className="w-4 h-4 text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              <span className="text-xs font-medium text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors">Gallery</span>
-            </a>
-            <a href="/deleted" className="flex items-center gap-2 px-3 py-2 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-all group">
-              <svg className="w-4 h-4 text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              <span className="text-xs font-medium text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors">Deleted</span>
-            </a>
-          </div>
-
-          {/* User tile + dropdown */}
-          <div className="relative" data-user-menu>
-            <div
-              onClick={() => setShowUserMenu(v => !v)}
-              className="flex items-center gap-3 p-3 bg-surface-tertiary dark:bg-surface rounded-hig-xl border border-separator shadow-sm group cursor-pointer hover:shadow-hig-hover transition-all active:scale-95 hover:border-mint dark:hover:border-teal"
-            >
-              <Avatar seed={profile.avatarSeed || undefined} size={40} className="group-hover:scale-105 transition-transform shadow-mint-glow" />
-              <div className="flex-grow min-w-0">
-                <div className="text-sm font-bold truncate text-label-primary capitalize">
-                  {profile.firstName || '\u00a0'}
-                </div>
-                <div className="text-[10px] font-bold text-mint dark:text-teal uppercase tracking-widest">
-                  {roleLabel}
-                </div>
+        {/* User footer */}
+        <div className="px-[14px] py-2.5 border-t border-hairline-soft relative" data-user-menu>
+          <button
+            type="button"
+            onClick={() => setShowUserMenu(v => !v)}
+            className="w-full flex items-center gap-2.5 group"
+          >
+            <Avatar seed={profile.avatarSeed || undefined} size={24} className="rounded-full" />
+            <div className="flex-1 min-w-0 text-left">
+              <div className="text-[12.5px] leading-tight truncate text-ink capitalize">
+                {profile.firstName || '\u00a0'}
               </div>
-              {isFreeDomain ? (
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-mint/10 dark:bg-teal/10 rounded-hig-lg border border-mint/20 dark:border-teal/20">
-                  <span className="text-xs font-bold text-mint dark:text-teal">Pro</span>
-                  <div className="w-1.5 h-1.5 bg-mint dark:bg-teal rounded-full" />
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-secondary/60 dark:bg-surface-tertiary/60 rounded-hig-lg border border-separator/30">
-                  <span className="text-xs font-bold text-teal-600 dark:text-teal-400">${profile.balance}</span>
-                  <div className="w-1.5 h-1.5 bg-success rounded-full animate-pulse" />
-                </div>
-              )}
+              <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted truncate">
+                {roleLabel.toLowerCase()}
+                {' · '}
+                {isFreeDomain
+                  ? 'pro'
+                  : <span className="text-ink-soft">${profile.balance}</span>}
+              </div>
             </div>
+            <span
+              className="w-[26px] h-[26px] inline-flex items-center justify-center border border-hairline-soft rounded-sharp text-ink-soft group-hover:text-ink group-hover:border-hairline transition-colors"
+              aria-hidden
+            >
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <circle cx="6.5" cy="6.5" r="1.4" stroke="currentColor" strokeWidth="1.1" />
+                <path d="M6.5 1.5v1.5M6.5 10v1.5M1.5 6.5h1.5M10 6.5h1.5M3 3l1 1M9 9l1 1M3 10l1-1M9 4l1-1"
+                      stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+              </svg>
+            </span>
+          </button>
 
-            {/* Dropdown menu */}
-            {showUserMenu && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 bg-surface-secondary dark:bg-[#2C2C2E] rounded-hig-xl border border-separator/50 shadow-float overflow-hidden z-50">
-                <div className="p-1.5 space-y-0.5">
+          {showUserMenu && (
+            <div className="absolute bottom-[calc(100%-2px)] left-2.5 right-2.5 mb-1 bg-surface border border-hairline rounded-card overflow-hidden z-50">
+              <div className="p-1">
+                <Link href="/settings" className="h-9 flex items-center gap-2.5 px-2.5 rounded-sharp hover:bg-rail-soft text-ink">
+                  <MenuIcon path="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  <span className="text-[12.5px] flex-1">Settings</span>
+                </Link>
 
-                  {/* User Settings */}
-                  <a href="/settings" className="h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
-                    <svg className="w-4 h-4 text-label-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    <span className="text-sm font-medium text-label-primary flex-grow">Settings</span>
-                  </a>
-
-                  {/* Language */}
-                  <div className="h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
-                    <svg className="w-4 h-4 text-label-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
-                    </svg>
-                    <span className="text-sm font-medium text-label-primary flex-grow">Language</span>
-                    <LanguageSwitcher />
-                  </div>
-
-                  {/* Theme */}
-                  <div className="h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
-                    <svg className="w-4 h-4 text-label-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                    </svg>
-                    <span className="text-sm font-medium text-label-primary flex-grow">Theme</span>
-                    <ThemeToggle />
-                  </div>
-
-                  {/* Super Admin — only for super_admin */}
-                  {isSuperAdmin && (
-                    <>
-                      <a href="/admin" className="h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
-                        <svg className="w-4 h-4 text-label-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                        <span className="text-sm font-medium text-label-primary flex-grow">Super Admin</span>
-                      </a>
-                      <a href="/skills" className="h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-surface-tertiary dark:hover:bg-surface transition-colors">
-                        <svg className="w-4 h-4 text-label-secondary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                        </svg>
-                        <span className="text-sm font-medium text-label-primary flex-grow">Skills</span>
-                      </a>
-                    </>
-                  )}
-
-                  <div className="h-px bg-separator/30 mx-3 my-1" />
-
-                  <button onClick={handleSignOut} className="w-full h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
-                    <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    <span className="text-sm font-medium text-red-600 dark:text-red-400 flex-grow">Sign out</span>
-                  </button>
-
-                  <button onClick={handleDeleteAccount} className="w-full h-10 flex items-center gap-3 px-3 rounded-hig-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-left">
-                    <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    <span className="text-sm font-medium text-red-400 dark:text-red-500 flex-grow">Delete account</span>
-                  </button>
-
+                <div className="h-9 flex items-center gap-2.5 px-2.5 rounded-sharp text-ink">
+                  <MenuIcon path="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10" />
+                  <span className="text-[12.5px] flex-1">Language</span>
+                  <LanguageSwitcher />
                 </div>
+
+                <div className="h-9 flex items-center gap-2.5 px-2.5 rounded-sharp text-ink">
+                  <MenuIcon path="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  <span className="text-[12.5px] flex-1">Theme</span>
+                  <ThemeToggle />
+                </div>
+
+                {isSuperAdmin && (
+                  <>
+                    <div className="h-px bg-hairline-soft mx-2 my-1" />
+                    <Link href="/admin" className="h-9 flex items-center gap-2.5 px-2.5 rounded-sharp hover:bg-rail-soft text-ink">
+                      <MenuIcon path="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      <span className="text-[12.5px] flex-1">Super Admin</span>
+                    </Link>
+                    <Link href="/skills" className="h-9 flex items-center gap-2.5 px-2.5 rounded-sharp hover:bg-rail-soft text-ink">
+                      <MenuIcon path="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      <span className="text-[12.5px] flex-1">Skills</span>
+                    </Link>
+                  </>
+                )}
+
+                <div className="h-px bg-hairline-soft mx-2 my-1" />
+
+                <button onClick={handleSignOut} className="w-full h-9 flex items-center gap-2.5 px-2.5 rounded-sharp hover:bg-rail-soft text-left text-ink">
+                  <MenuIcon path="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  <span className="text-[12.5px] flex-1">Sign out</span>
+                </button>
+                <button onClick={handleDeleteAccount} className="w-full h-9 flex items-center gap-2.5 px-2.5 rounded-sharp hover:bg-rail-soft text-left text-ink-muted">
+                  <MenuIcon path="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  <span className="text-[12.5px] flex-1">Delete account</span>
+                </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-grow flex flex-col min-w-0 relative z-10">
-        <div className="flex-grow relative overflow-y-auto scroll-smooth custom-scrollbar rounded-hig-2xl">
-          {children}
-        </div>
+      {/* ============================================================== */}
+      {/* Main column                                                     */}
+      {/* ============================================================== */}
+
+      <main className="flex-1 min-w-0 flex flex-col bg-bg overflow-hidden">
+        {children}
       </main>
 
-      {/* Right Panel */}
+      {/* ============================================================== */}
+      {/* Right panel — sharp hairline, no rounded glass                  */}
+      {/* ============================================================== */}
+
       {rightPanel && (
-        <motion.aside
-          initial={{ x: "100%" }}
-          animate={{ x: 0 }}
-          transition={spring}
-          className="w-[320px] glass-float rounded-hig-2xl shadow-float flex-shrink-0 z-20 overflow-hidden"
-        >
+        <aside className="flex-none w-[320px] bg-surface border-l border-hairline overflow-hidden">
           {rightPanel}
-        </motion.aside>
+        </aside>
       )}
     </div>
+  )
+}
+
+function MenuIcon({ path }: { path: string }) {
+  return (
+    <svg className="w-3.5 h-3.5 text-ink-soft flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d={path} />
+    </svg>
   )
 }

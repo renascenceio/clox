@@ -38,10 +38,12 @@ interface ChatSidebarProps {
 const FOLDERS_KEY = 'clox_folders'
 
 export default function ChatSidebar({ activeChatId, onChatSelect, modality }: ChatSidebarProps) {
-  const [search, setSearch] = useState('')
+  // The search input + new-menu now live in AppLayout's left rail. Search state
+  // is intentionally kept (always '' here) so the existing filter pipeline
+  // below continues to work without a refactor.
+  const search = ''
   const [chats, setChats] = useState<Chat[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
-  const [showNewMenu, setShowNewMenu] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [showProjectSettings, setShowProjectSettings] = useState<string | null>(null)
@@ -68,6 +70,16 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
     }
   }, [])
 
+  // The new-chat button now lives in AppLayout's rail header. It dispatches a
+  // global `clox-new-chat` event so this sidebar (which owns the chat list)
+  // can mint a new thread of the active modality and select it.
+  useEffect(() => {
+    const onNewChat = () => handleNewChat()
+    window.addEventListener('clox-new-chat', onNewChat)
+    return () => window.removeEventListener('clox-new-chat', onNewChat)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chats, modality])
+
   // Write-through helpers that keep local state and shared store aligned.
   const saveChats = (newChats: Chat[]) => {
     setChats(newChats)
@@ -90,33 +102,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
       modality: m,
     }
     saveChats([newChat, ...chats])
-    setShowNewMenu(false)
     onChatSelect?.(newChat.id)
-  }
-
-  const handleNewProject = () => {
-    const m: Modality = modality ?? 'text'
-    const newProject: Chat = {
-      id: `project_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      title: 'New Project',
-      model: '',
-      createdAt: Date.now(),
-      type: 'project',
-      modality: m,
-    }
-    saveChats([newProject, ...chats])
-    setShowNewMenu(false)
-    onChatSelect?.(newProject.id)
-  }
-
-  const handleNewFolder = () => {
-    const newFolder: Folder = {
-      id: `folder_${Date.now()}`,
-      title: 'New Folder',
-      createdAt: Date.now()
-    }
-    saveFolders([newFolder, ...folders])
-    setShowNewMenu(false)
   }
 
   const handleDeleteChat = (id: string) => {
@@ -204,83 +190,14 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
     chats.filter(c => c.folderId === folderId)
 
   return (
-    <div className="flex flex-col h-full bg-surface dark:bg-surface-secondary">
-      <div className="p-5 space-y-4">
-        {/* Search Bar with Add Button */}
-        <div className="flex items-center gap-2">
-          <div className="relative group flex-grow">
-            <input
-              type="text"
-              placeholder="Search chats..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-9 pl-9 pr-4 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-xs focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20 focus:border-mint/30 dark:focus:border-teal/30 outline-none transition-all placeholder:text-label-tertiary text-label-primary font-medium"
-            />
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-label-secondary/40 group-focus-within:text-mint transition-colors">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M14 14L11.1 11.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-          </div>
-
-          {/* New Menu with Colored + Button */}
-          <div className="relative">
-            <button 
-              onClick={() => setShowNewMenu(!showNewMenu)}
-              className="w-9 h-9 gradient-mint-teal text-white rounded-hig-lg font-bold transition-all shadow-mint-glow hover:shadow-hig-hover hover:scale-105 active:scale-95 flex items-center justify-center flex-shrink-0"
-              title="Create new"
-            >
-              <span className="text-xl leading-none">+</span>
-            </button>
-            {showNewMenu && (
-              <div className="absolute top-full right-0 mt-2 w-48 bg-surface dark:bg-surface-secondary border border-separator rounded-hig-lg shadow-float z-50 overflow-hidden">
-                <button
-                  onClick={handleNewChat}
-                  className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
-                >
-                  <svg className="w-4 h-4 text-mint dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  New Chat
-                </button>
-                <button
-                  onClick={handleNewProject}
-                  className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
-                >
-                  <svg className="w-4 h-4 text-mint dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  New Project
-                </button>
-                <button
-                  onClick={handleNewFolder}
-                  className="w-full px-4 py-3 text-left text-sm font-medium hover:bg-surface-tertiary dark:hover:bg-surface transition-colors flex items-center gap-3"
-                >
-                  <svg className="w-4 h-4 text-mint dark:text-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                  </svg>
-                  New Folder
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-grow overflow-y-auto px-3 space-y-6 custom-scrollbar pb-10">
-        {/* Recent Activity */}
-        <div className="space-y-1">
-          <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest flex justify-between items-center">
-            <span>Recent Activity</span>
-            {filteredChats.filter(c => c.type !== 'project').length > 0 && (
-              <span className="text-label-tertiary">{filteredChats.filter(c => c.type !== 'project').length}</span>
-            )}
-          </div>
+    <div className="flex flex-col h-full">
+      <div className="flex-grow overflow-y-auto px-2 space-y-5 custom-scrollbar pb-3">
+        {/* Recent Activity — header lives in AppLayout's rail (mono "recent" eyebrow). */}
+        <div className="space-y-0.5 pt-1">
           <div className="space-y-0.5">
             {filteredChats.filter(c => c.type !== 'project').length === 0 ? (
-              <div className="px-3 py-4 text-xs text-label-tertiary text-center">
-                No chats yet. Click + New to start.
+              <div className="px-4 py-3 font-mono text-[10px] tracking-[0.04em] text-ink-muted">
+                no chats yet — press ⌘N
               </div>
             ) : (
               filteredChats.filter(c => c.type !== 'project').map(chat => (
