@@ -34,6 +34,11 @@ export default function ModelsAdminPage() {
   const { aiGatewayConnected, getState, refresh } = useProviderStatus()
 
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
+  // Some providers (Kling/Kuaishou, Baidu ERNIE, Play.ht, Azure Speech…)
+  // authenticate with a key + secret pair. Tracking the secret in its own
+  // map keeps the existing single-key code paths unchanged while letting
+  // dual-credential providers round-trip both halves through the form.
+  const [apiSecrets, setApiSecrets] = useState<Record<string, string>>({})
   const [enabledProviders, setEnabledProviders] = useState<Record<string, boolean>>({})
   const [editingProvider, setEditingProvider] = useState<string | null>(null)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
@@ -42,19 +47,29 @@ export default function ModelsAdminPage() {
   useEffect(() => {
     const settings = getAdminSettings()
     const keys: Record<string, string> = {}
+    const secrets: Record<string, string> = {}
     const enabled: Record<string, boolean> = {}
     PROVIDERS.forEach(p => {
       keys[p.id] = settings.providers[p.id]?.apiKey || ''
+      secrets[p.id] = settings.providers[p.id]?.apiSecret || ''
       enabled[p.id] = settings.providers[p.id]?.enabled ?? true
     })
     setApiKeys(keys)
+    setApiSecrets(secrets)
     setEnabledProviders(enabled)
   }, [])
 
-  const handleSaveKey = (providerId: string, apiKey: string) => {
-    const trimmed = apiKey.trim()
-    setProviderApiKey(providerId, trimmed)
-    setApiKeys(prev => ({ ...prev, [providerId]: trimmed }))
+  // Save handler accepts an optional secret. For single-key providers we
+  // pass `undefined` and `setProviderApiKey`'s existing logic skips the
+  // secret field entirely, so we don't disturb their stored data.
+  const handleSaveKey = (providerId: string, apiKey: string, apiSecret?: string) => {
+    const trimmedKey = apiKey.trim()
+    const trimmedSecret = apiSecret?.trim()
+    setProviderApiKey(providerId, trimmedKey, trimmedSecret)
+    setApiKeys(prev => ({ ...prev, [providerId]: trimmedKey }))
+    if (trimmedSecret !== undefined) {
+      setApiSecrets(prev => ({ ...prev, [providerId]: trimmedSecret }))
+    }
     setEditingProvider(null)
     const name = PROVIDERS.find(p => p.id === providerId)?.name
     setSavedMessage(`${name} key saved`)
@@ -273,54 +288,84 @@ export default function ModelsAdminPage() {
                         </div>
                       )}
 
-                      {/* Key field */}
+                      {/* Key field — single input by default, but providers
+                          with `requiresSecret: true` (Kling, Baidu ERNIE,
+                          Play.ht, Azure Speech) need an Access Key + Secret
+                          Key pair. We surface both via `KeyEditor`'s
+                          `secretInitial` / `secretLabel` props. */}
                       <div className="border-t border-hairline-soft pt-3">
                         {editingProvider === provider.id ? (
                           <KeyEditor
                             initial={apiKeys[provider.id] ?? ''}
-                            onSave={v => handleSaveKey(provider.id, v)}
+                            secretInitial={provider.requiresSecret ? (apiSecrets[provider.id] ?? '') : undefined}
+                            keyLabel={provider.requiresSecret ? 'Access Key' : 'API Key'}
+                            secretLabel="Secret Key"
+                            onSave={(v, s) => handleSaveKey(provider.id, v, s)}
                             onCancel={() => setEditingProvider(null)}
                           />
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="password"
-                              value={
-                                // `hasLocalKey` comes from `useProviderStatus`,
-                                // which hydrates synchronously, but `apiKeys`
-                                // is populated by a post-paint effect. On the
-                                // first render after reload `apiKeys[provider.id]`
-                                // can be undefined while `hasLocalKey` is already
-                                // true, so we read the length defensively and
-                                // fall back to a fixed-length mask. Once the
-                                // effect runs the real length comes through.
-                                hasLocalKey
-                                  ? '\u2022'.repeat(Math.min(apiKeys[provider.id]?.length ?? 12, 32))
-                                  : ''
-                              }
-                              readOnly
-                              placeholder={
-                                hasEnvKey
-                                  ? 'Using Vercel env var'
-                                  : aiGatewayCapable
-                                    ? 'Using AI Gateway (optional override)'
-                                    : 'No key configured'
-                              }
-                              className="flex-1 h-9 px-2.5 bg-bg border border-hairline-soft rounded-sharp font-mono text-[11.5px] text-ink placeholder:text-ink-muted outline-none"
-                              aria-label={`${provider.name} api key`}
-                            />
-                            <AdminBtn onClick={() => setEditingProvider(provider.id)}>
-                              {hasLocalKey ? 'Edit' : 'Add key'}
-                            </AdminBtn>
-                            {provider.docsUrl && (
-                              <a
-                                href={provider.docsUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-mono text-[10px] tracking-[0.06em] uppercase text-ink-soft hover:text-ink transition-colors"
-                              >
-                                docs ↗
-                              </a>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="password"
+                                value={
+                                  // `hasLocalKey` comes from `useProviderStatus`,
+                                  // which hydrates synchronously, but `apiKeys`
+                                  // is populated by a post-paint effect. On the
+                                  // first render after reload `apiKeys[provider.id]`
+                                  // can be undefined while `hasLocalKey` is already
+                                  // true, so we read the length defensively and
+                                  // fall back to a fixed-length mask. Once the
+                                  // effect runs the real length comes through.
+                                  hasLocalKey
+                                    ? '\u2022'.repeat(Math.min(apiKeys[provider.id]?.length ?? 12, 32))
+                                    : ''
+                                }
+                                readOnly
+                                placeholder={
+                                  hasEnvKey
+                                    ? 'Using Vercel env var'
+                                    : aiGatewayCapable
+                                      ? 'Using AI Gateway (optional override)'
+                                      : provider.requiresSecret
+                                        ? 'No access key configured'
+                                        : 'No key configured'
+                                }
+                                className="flex-1 h-9 px-2.5 bg-bg border border-hairline-soft rounded-sharp font-mono text-[11.5px] text-ink placeholder:text-ink-muted outline-none"
+                                aria-label={`${provider.name} ${provider.requiresSecret ? 'access' : 'api'} key`}
+                              />
+                              <AdminBtn onClick={() => setEditingProvider(provider.id)}>
+                                {hasLocalKey ? 'Edit' : provider.requiresSecret ? 'Add keys' : 'Add key'}
+                              </AdminBtn>
+                              {provider.docsUrl && (
+                                <a
+                                  href={provider.docsUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-mono text-[10px] tracking-[0.06em] uppercase text-ink-soft hover:text-ink transition-colors"
+                                >
+                                  docs ↗
+                                </a>
+                              )}
+                            </div>
+
+                            {/* Secret-key preview row, only for dual-credential
+                                providers. Shown disabled to make the
+                                "two-field" reality obvious without forcing
+                                edit mode. */}
+                            {provider.requiresSecret && (
+                              <input
+                                type="password"
+                                value={
+                                  apiSecrets[provider.id]
+                                    ? '\u2022'.repeat(Math.min(apiSecrets[provider.id].length, 32))
+                                    : ''
+                                }
+                                readOnly
+                                placeholder="No secret key configured"
+                                className="h-9 px-2.5 bg-bg border border-hairline-soft rounded-sharp font-mono text-[11.5px] text-ink placeholder:text-ink-muted outline-none"
+                                aria-label={`${provider.name} secret key`}
+                              />
                             )}
                           </div>
                         )}
@@ -393,34 +438,81 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
   )
 }
 
+/**
+ * Single- or dual-credential editor.
+ *
+ * For most providers we render a single text field labelled "API Key".
+ * Dual-credential providers (`requiresSecret: true` in `PROVIDERS`) get
+ * a second field for the secret. Caller decides which mode by passing
+ * `secretInitial` (string for dual, `undefined` for single).
+ *
+ * `onSave(value, secret)` is invoked with the trimmed values; `secret`
+ * is `undefined` in single-credential mode so the upstream save handler
+ * can pass it through to `setProviderApiKey` without touching stored
+ * secrets that the user didn't intend to change.
+ */
 function KeyEditor({
   initial,
+  secretInitial,
+  keyLabel = 'API Key',
+  secretLabel = 'Secret Key',
   onSave,
   onCancel,
 }: {
   initial: string
-  onSave: (v: string) => void
+  secretInitial?: string
+  keyLabel?: string
+  secretLabel?: string
+  onSave: (v: string, s?: string) => void
   onCancel: () => void
 }) {
   const [value, setValue] = useState(initial)
+  const [secret, setSecret] = useState(secretInitial ?? '')
+  const dualMode = secretInitial !== undefined
+
+  const submit = () => onSave(value, dualMode ? secret : undefined)
+
   return (
-    <div className="flex items-center gap-2">
-      <input
-        type="text"
-        autoFocus
-        value={value}
-        onChange={e => setValue(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter') onSave(value)
-          else if (e.key === 'Escape') onCancel()
-        }}
-        placeholder="Paste API key…"
-        className="flex-1 h-9 px-2.5 bg-bg border border-ink rounded-sharp font-mono text-[11.5px] text-ink outline-none"
-      />
-      <AdminBtn primary onClick={() => onSave(value)}>
-        Save
-      </AdminBtn>
-      <AdminBtn onClick={onCancel}>Cancel</AdminBtn>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          autoFocus
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') submit()
+            else if (e.key === 'Escape') onCancel()
+          }}
+          placeholder={dualMode ? `Paste ${keyLabel.toLowerCase()}…` : 'Paste API key…'}
+          aria-label={keyLabel}
+          className="flex-1 h-9 px-2.5 bg-bg border border-ink rounded-sharp font-mono text-[11.5px] text-ink outline-none"
+        />
+        {!dualMode && (
+          <>
+            <AdminBtn primary onClick={submit}>Save</AdminBtn>
+            <AdminBtn onClick={onCancel}>Cancel</AdminBtn>
+          </>
+        )}
+      </div>
+      {dualMode && (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={secret}
+            onChange={e => setSecret(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') submit()
+              else if (e.key === 'Escape') onCancel()
+            }}
+            placeholder={`Paste ${secretLabel.toLowerCase()}…`}
+            aria-label={secretLabel}
+            className="flex-1 h-9 px-2.5 bg-bg border border-ink rounded-sharp font-mono text-[11.5px] text-ink outline-none"
+          />
+          <AdminBtn primary onClick={submit}>Save</AdminBtn>
+          <AdminBtn onClick={onCancel}>Cancel</AdminBtn>
+        </div>
+      )}
     </div>
   )
 }
