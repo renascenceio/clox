@@ -1,12 +1,14 @@
 /**
  * Shared rail/topstrip wiring for surfaces that don't have their own chat
- * composer (history, gallery, skills, etc.). Returns everything you need to
- * spread onto a `<ChatWorkspace bodySlot=...>` instance — palette state,
- * language state, the avatar-dropdown handlers and the right `nav` array
- * for the active surface.
+ * composer (history, gallery, skills, settings, etc.). Returns everything you
+ * need to spread onto a `<ChatWorkspace bodySlot=...>` instance — palette
+ * state, language state, the avatar-dropdown handlers, the right `nav` array
+ * for the active surface, and the live profile (name + initial + plan).
  *
- * Surfaces with a real composer (text/image/audio/video) wire these by hand
- * because they also own the model + transcript state.
+ * Surfaces with a real composer (text/image/audio/video) wire most of this by
+ * hand because they also own model + transcript state — but they should still
+ * pull `user`, `language`, and the dropdown handlers from this hook so every
+ * surface stays in sync.
  */
 
 'use client'
@@ -23,12 +25,29 @@ import {
 import type { AppLanguage, RailNavItem } from './ChatWorkspace'
 import { createClient } from '@/lib/supabase/client'
 
-export type ActiveRail = 'home' | 'projects' | 'chats' | 'history' | 'gallery'
+export type ActiveRail =
+  | 'projects' | 'chats' | 'history' | 'gallery'
+  // Surfaces opened from the avatar dropdown (no rail-nav highlight).
+  | 'skills' | 'settings' | 'admin'
+
+export interface ChromeUser {
+  initial: string
+  name: string
+  plan: string
+  email?: string
+  avatarSeed?: string
+}
+
+const DEFAULT_USER: ChromeUser = {
+  initial: '·',
+  name: 'Signed out',
+  plan: 'guest',
+}
 
 export function useChatChrome(active: ActiveRail) {
   const router = useRouter()
 
-  // Theme
+  /* ---------- theme ---------- */
   const [theme, setTheme] = useState<PaletteKey>('pearl')
   useEffect(() => {
     const stored = getStoredPalette('pearl')
@@ -40,7 +59,7 @@ export function useChatChrome(active: ActiveRail) {
     setStoredPalette(next)
   }
 
-  // Language
+  /* ---------- language ---------- */
   const [language, setLanguage] = useState<AppLanguage>('en')
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -52,7 +71,71 @@ export function useChatChrome(active: ActiveRail) {
     if (typeof window !== 'undefined') localStorage.setItem('clox.language', next)
   }
 
-  // Sign-out + delete-account
+  /* ---------- profile (rail footer + topstrip identity) ---------- */
+  const [user, setUser] = useState<ChromeUser>(DEFAULT_USER)
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      try {
+        const supabase = createClient()
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (!authUser || cancelled) return
+
+        const [profile, credits] = await Promise.all([
+          supabase
+            .from('profiles')
+            .select('first_name, last_name, plan, avatar_seed')
+            .eq('id', authUser.id)
+            .single(),
+          supabase
+            .from('credits')
+            .select('balance_usd')
+            .eq('user_id', authUser.id)
+            .single(),
+        ])
+
+        if (cancelled) return
+
+        const first = (profile.data?.first_name ?? '').trim()
+        const last  = (profile.data?.last_name  ?? '').trim()
+        const fullName = [first, last].filter(Boolean).join(' ').trim()
+        const fallbackName = authUser.email?.split('@')[0] ?? 'Clox user'
+        const name = fullName || fallbackName
+
+        const initial = (first || fallbackName).slice(0, 1).toLowerCase() || '·'
+
+        // Plan label is intentionally compact (matches "pro · 4 seats" cadence
+        // used in the design reference). Falls back to the credit balance so
+        // even a free account shows something meaningful in the rail footer.
+        const planRaw = (profile.data?.plan as string | null | undefined)?.toLowerCase()
+        let plan: string
+        if (planRaw && planRaw !== 'free') {
+          plan = planRaw
+        } else if (credits.data?.balance_usd != null) {
+          const balance = parseFloat(String(credits.data.balance_usd))
+          plan = `free · $${balance.toFixed(2)}`
+        } else {
+          plan = 'free'
+        }
+
+        setUser({
+          initial,
+          name,
+          plan,
+          email: authUser.email ?? undefined,
+          avatarSeed: profile.data?.avatar_seed ?? authUser.email ?? undefined,
+        })
+      } catch (e) {
+        console.error('[v0] useChatChrome profile load failed', e)
+      }
+    }
+
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  /* ---------- account actions (avatar dropdown) ---------- */
   async function handleSignOut() {
     try {
       const supabase = createClient()
@@ -77,18 +160,19 @@ export function useChatChrome(active: ActiveRail) {
     await handleSignOut()
   }
 
+  /* ---------- rail nav (no Home — chat is the entry point) ---------- */
   const nav: RailNavItem[] = [
-    { id: 'home',     label: 'Home',     icon: I.home,  onClick: () => router.push('/'),        active: active === 'home' },
-    { id: 'projects', label: 'Projects', icon: I.proj,  count: 0,                              active: active === 'projects' },
-    { id: 'chats',    label: 'Chats',    icon: I.chats, onClick: () => router.push('/text'),    active: active === 'chats' },
-    { id: 'history',  label: 'History',  icon: I.hist,  onClick: () => router.push('/history'), active: active === 'history' },
-    { id: 'gallery',  label: 'Gallery',  icon: I.gal,   onClick: () => router.push('/gallery'), active: active === 'gallery' },
+    { id: 'projects', label: 'Projects', icon: I.proj,  onClick: () => router.push('/projects'), active: active === 'projects' },
+    { id: 'chats',    label: 'Chats',    icon: I.chats, onClick: () => router.push('/text'),     active: active === 'chats' },
+    { id: 'history',  label: 'History',  icon: I.hist,  onClick: () => router.push('/history'),  active: active === 'history' },
+    { id: 'gallery',  label: 'Gallery',  icon: I.gal,   onClick: () => router.push('/gallery'),  active: active === 'gallery' },
   ]
 
   return {
     router,
     theme,
     language,
+    user,
     handleThemeChange,
     handleChangeLanguage,
     handleSignOut,

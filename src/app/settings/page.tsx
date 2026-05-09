@@ -1,12 +1,23 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
-import AppLayout from '@/shared/ui/layout/AppLayout'
-import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
+/**
+ * /settings — profile + preferences inside the editorial Clox chrome.
+ *
+ * The page is opened from the avatar dropdown ("Settings"), so it must use the
+ * exact same rail + topstrip + theme as /history, /gallery and /skills. All
+ * Supabase persistence (profile + credits read, profile update, avatar seed
+ * regenerate) is kept verbatim from the previous implementation; only the
+ * shell and form styling were rebuilt.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+
+import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
+import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
+import { PALETTES, type Palette } from '@/shared/ui/chat/palettes'
 import Avatar from '@/shared/ui/components/Avatar'
-import { getChatById, setActiveChatId } from '@/lib/chat-store'
+import { createClient } from '@/lib/supabase/client'
+import { listChats } from '@/lib/chat-store'
 
 const USE_CASES = [
   'Content Creation', 'Software Development', 'Research & Analysis',
@@ -32,8 +43,17 @@ type Profile = {
   avatar_seed: string
 }
 
+const EMPTY_PROFILE: Profile = {
+  first_name: '', last_name: '', phone: '', company: '',
+  job_title: '', country: '', city: '', use_case: '', avatar_seed: '',
+}
+
 export default function SettingsPage() {
-  const router = useRouter()
+  const chrome = useChatChrome('settings')
+  const p = PALETTES[chrome.theme]
+  const mono = `'Geist Mono', ui-monospace, monospace`
+  const serif = `'Newsreader', Georgia, serif`
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -41,70 +61,63 @@ export default function SettingsPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [email, setEmail] = useState('')
   const [balance, setBalance] = useState('0.00')
-
-  const [form, setForm] = useState<Profile>({
-    first_name: '',
-    last_name: '',
-    phone: '',
-    company: '',
-    job_title: '',
-    country: '',
-    city: '',
-    use_case: '',
-    avatar_seed: '',
-  })
-
-  // Preview seed for avatar regeneration (not yet saved)
   const [previewSeed, setPreviewSeed] = useState('')
+  const [form, setForm] = useState<Profile>(EMPTY_PROFILE)
 
+  /* ---------- load profile ---------- */
   const loadProfile = useCallback(async () => {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (!authUser) {
+      chrome.router.push('/login')
+      return
+    }
 
-    setUserId(user.id)
-    setEmail(user.email ?? '')
+    setUserId(authUser.id)
+    setEmail(authUser.email ?? '')
 
     const [profileRes, creditsRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).single(),
-      supabase.from('credits').select('balance_usd').eq('user_id', user.id).single(),
+      supabase.from('profiles').select('*').eq('id', authUser.id).single(),
+      supabase.from('credits').select('balance_usd').eq('user_id', authUser.id).single(),
     ])
 
     if (profileRes.data) {
-      const p = profileRes.data
+      const d = profileRes.data
       setForm({
-        first_name: p.first_name || '',
-        last_name: p.last_name || '',
-        phone: p.phone || '',
-        company: p.company || '',
-        job_title: p.job_title || '',
-        country: p.country || '',
-        city: p.city || '',
-        use_case: p.use_case || '',
-        avatar_seed: p.avatar_seed || user.email || '',
+        first_name: d.first_name || '',
+        last_name:  d.last_name  || '',
+        phone:      d.phone      || '',
+        company:    d.company    || '',
+        job_title:  d.job_title  || '',
+        country:    d.country    || '',
+        city:       d.city       || '',
+        use_case:   d.use_case   || '',
+        avatar_seed: d.avatar_seed || authUser.email || '',
       })
-      setPreviewSeed(p.avatar_seed || user.email || '')
+      setPreviewSeed(d.avatar_seed || authUser.email || '')
     }
 
     if (creditsRes.data?.balance_usd != null) {
-      setBalance(parseFloat(creditsRes.data.balance_usd).toFixed(2))
+      setBalance(parseFloat(String(creditsRes.data.balance_usd)).toFixed(2))
     }
 
     setLoading(false)
-  }, [router])
+  }, [chrome.router])
 
   useEffect(() => { loadProfile() }, [loadProfile])
 
-  const regenerateAvatar = () => {
-    const newSeed = `${email}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    setPreviewSeed(newSeed)
-    setForm(prev => ({ ...prev, avatar_seed: newSeed }))
+  /* ---------- handlers ---------- */
+  function setField<K extends keyof Profile>(key: K, value: Profile[K]) {
+    setForm(prev => ({ ...prev, [key]: value }))
   }
 
-  const set = (field: keyof Profile, value: string) =>
-    setForm(prev => ({ ...prev, [field]: value }))
+  function regenerateAvatar() {
+    const seed = `${email}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    setPreviewSeed(seed)
+    setField('avatar_seed', seed)
+  }
 
-  const handleSave = async (e: React.FormEvent) => {
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!userId) return
     setSaving(true)
@@ -115,13 +128,13 @@ export default function SettingsPage() {
       .from('profiles')
       .update({
         first_name: form.first_name,
-        last_name: form.last_name,
-        phone: form.phone,
-        company: form.company,
-        job_title: form.job_title,
-        country: form.country,
-        city: form.city,
-        use_case: form.use_case,
+        last_name:  form.last_name,
+        phone:      form.phone,
+        company:    form.company,
+        job_title:  form.job_title,
+        country:    form.country,
+        city:       form.city,
+        use_case:   form.use_case,
         avatar_seed: form.avatar_seed,
         updated_at: new Date().toISOString(),
       })
@@ -133,224 +146,405 @@ export default function SettingsPage() {
       setError(updateError.message)
     } else {
       setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      setTimeout(() => setSaved(false), 2400)
     }
   }
 
-  const inputClass =
-    'w-full h-11 px-4 bg-white/70 dark:bg-[#2C2C2E]/70 border border-separator rounded-hig-lg text-sm font-medium text-label-primary placeholder:text-label-tertiary focus:outline-none focus:ring-2 focus:ring-mint/30 dark:focus:ring-teal/30 focus:border-mint dark:focus:border-teal transition-all'
-  const selectClass = inputClass + ' cursor-pointer'
-  const labelClass = 'block text-xs font-bold text-label-tertiary uppercase tracking-wider mb-1.5'
-
-  // Clicking a chat in the sidebar from the settings page should deep-link
-  // back into the originating workspace (text / image / video / audio), with
-  // that chat marked active so its messages or generations load immediately.
-  const handleChatSelectFromSettings = (chatId: string) => {
-    const chat = getChatById(chatId)
-    const modality = chat?.modality ?? 'text'
-    setActiveChatId(modality, chatId)
-    router.push(`/${modality}`)
-  }
-
-  const sidebar = <ChatSidebar onChatSelect={handleChatSelectFromSettings} />
+  /* ---------- recent text chats for the rail ---------- */
+  const recent: RailRecentItem[] = useMemo(() => {
+    return listChats()
+      .filter(c => (c.modality ?? 'text') === 'text')
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 6)
+      .map(c => ({
+        id: c.id,
+        title: c.title,
+        meta: new Date(c.createdAt).toLocaleString([], { month: 'short', day: 'numeric' }) + ' · ' + c.model.toLowerCase(),
+        onClick: () => {
+          if (typeof window !== 'undefined') localStorage.setItem('activeChatId:text', c.id)
+          chrome.router.push('/text')
+        },
+      }))
+  }, [chrome.router])
 
   return (
-    <AppLayout sidebar={sidebar}>
-      <div className="max-w-2xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-black text-label-primary tracking-tight">Profile Settings</h1>
-          <p className="text-sm text-label-tertiary mt-1">Manage your personal information and preferences</p>
-        </div>
+    <div className="fixed inset-0 isolate">
+      <ChatWorkspace
+        theme={chrome.theme}
+        onChangeTheme={chrome.handleThemeChange}
+        brandName="Clox"
+        brandVersion="0.5"
+        user={chrome.user}
+        language={chrome.language}
+        onChangeLanguage={chrome.handleChangeLanguage}
+        onOpenSettings={chrome.onOpenSettings}
+        onOpenSuperAdmin={chrome.onOpenSuperAdmin}
+        onOpenSkills={chrome.onOpenSkills}
+        onSignOut={chrome.handleSignOut}
+        onDeleteAccount={chrome.handleDeleteAccount}
+        nav={chrome.nav}
+        recent={recent}
+        onNewChat={chrome.onNewChat}
+        breadcrumb="account · settings"
+        title="Settings"
+        models={[]}
+        modelId=""
+        onChangeModel={() => undefined}
+        modes={[]}
+        modeId=""
+        onChangeMode={() => undefined}
+        transcript={[]}
+        inputValue=""
+        onInputChange={() => undefined}
+        onSend={() => undefined}
+        bodySlot={
+          <SettingsBody
+            p={p} mono={mono} serif={serif}
+            loading={loading}
+            saving={saving}
+            saved={saved}
+            error={error}
+            email={email}
+            balance={balance}
+            previewSeed={previewSeed}
+            form={form}
+            setField={setField}
+            regenerateAvatar={regenerateAvatar}
+            onSubmit={handleSave}
+          />
+        }
+      />
+    </div>
+  )
+}
 
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 border-2 border-mint/30 border-t-mint rounded-full animate-spin" />
-          </div>
-        ) : (
-          <form onSubmit={handleSave} className="space-y-6">
-            {/* Avatar card */}
-            <div className="bg-white/80 dark:bg-[#1C1C1E]/80 backdrop-blur-xl rounded-hig-2xl border border-separator/50 p-6 shadow-float">
-              <h2 className="text-sm font-bold text-label-secondary uppercase tracking-widest mb-4">Avatar</h2>
-              <div className="flex items-center gap-5">
-                <div className="relative">
-                  <Avatar seed={previewSeed || email} size={80} className="ring-4 ring-mint/20 dark:ring-teal/20 shadow-mint-glow" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-label-primary mb-1">
-                    {form.first_name || email.split('@')[0]}
-                    {form.last_name ? ` ${form.last_name}` : ''}
-                  </p>
-                  <p className="text-xs text-label-tertiary mb-3">{email}</p>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={regenerateAvatar}
-                      className="flex items-center gap-2 px-4 py-2 bg-surface-tertiary dark:bg-surface border border-separator rounded-hig-lg text-sm font-medium text-label-primary hover:border-mint dark:hover:border-teal hover:text-mint dark:hover:text-teal transition-all"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Regenerate
-                    </button>
-                    <span className="text-xs text-label-tertiary">Generates a new avatar style</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs font-bold text-label-tertiary uppercase tracking-widest mb-0.5">Balance</div>
-                  <div className="text-2xl font-black text-teal-600 dark:text-teal-400">${balance}</div>
-                </div>
-              </div>
-            </div>
+/* =====================================================================
+   Body — pearl-themed, hairline-bordered cards. Three sections
+   (Identity → Personal → Professional) plus the sticky save bar.
+   ===================================================================== */
 
-            {/* Personal info */}
-            <div className="bg-white/80 dark:bg-[#1C1C1E]/80 backdrop-blur-xl rounded-hig-2xl border border-separator/50 p-6 shadow-float">
-              <h2 className="text-sm font-bold text-label-secondary uppercase tracking-widest mb-4">Personal Information</h2>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>First Name</label>
-                    <input
-                      type="text"
-                      value={form.first_name}
-                      onChange={e => set('first_name', e.target.value)}
-                      className={inputClass}
-                      placeholder="First name"
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Last Name</label>
-                    <input
-                      type="text"
-                      value={form.last_name}
-                      onChange={e => set('last_name', e.target.value)}
-                      className={inputClass}
-                      placeholder="Last name"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className={labelClass}>Email</label>
-                  <input
-                    type="email"
-                    value={email}
-                    disabled
-                    className={inputClass + ' opacity-50 cursor-not-allowed'}
-                  />
-                </div>
-
-                <div>
-                  <label className={labelClass}>Phone Number</label>
-                  <input
-                    type="tel"
-                    value={form.phone}
-                    onChange={e => set('phone', e.target.value)}
-                    className={inputClass}
-                    placeholder="+971 50 000 0000"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Country</label>
-                    <select
-                      value={form.country}
-                      onChange={e => set('country', e.target.value)}
-                      className={selectClass}
-                    >
-                      <option value="">Select country</option>
-                      {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelClass}>City</label>
-                    <input
-                      type="text"
-                      value={form.city}
-                      onChange={e => set('city', e.target.value)}
-                      className={inputClass}
-                      placeholder="Dubai"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Professional info */}
-            <div className="bg-white/80 dark:bg-[#1C1C1E]/80 backdrop-blur-xl rounded-hig-2xl border border-separator/50 p-6 shadow-float">
-              <h2 className="text-sm font-bold text-label-secondary uppercase tracking-widest mb-4">Professional Information</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className={labelClass}>Company / Organization</label>
-                  <input
-                    type="text"
-                    value={form.company}
-                    onChange={e => set('company', e.target.value)}
-                    className={inputClass}
-                    placeholder="Acme Inc."
-                  />
-                </div>
-
-                <div>
-                  <label className={labelClass}>Job Title</label>
-                  <input
-                    type="text"
-                    value={form.job_title}
-                    onChange={e => set('job_title', e.target.value)}
-                    className={inputClass}
-                    placeholder="CEO, Developer, Designer..."
-                  />
-                </div>
-
-                <div>
-                  <label className={labelClass}>How do you use Clox?</label>
-                  <select
-                    value={form.use_case}
-                    onChange={e => set('use_case', e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">Select primary use case</option>
-                    {USE_CASES.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {error && (
-              <p className="text-sm font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-hig-lg px-4 py-3">
-                {error}
-              </p>
-            )}
-
-            <div className="flex items-center justify-end gap-3 pb-4">
-              {saved && (
-                <span className="text-sm font-medium text-teal-600 dark:text-teal-400 flex items-center gap-1.5">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Saved
-                </span>
-              )}
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-6 h-11 gradient-mint-teal text-white rounded-hig-lg text-sm font-bold shadow-mint-glow hover:shadow-hig-hover hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {saving ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Saving...
-                  </>
-                ) : 'Save Changes'}
-              </button>
-            </div>
-          </form>
-        )}
+function SettingsBody({
+  p, mono, serif,
+  loading, saving, saved, error,
+  email, balance, previewSeed,
+  form, setField, regenerateAvatar, onSubmit,
+}: {
+  p: Palette
+  mono: string
+  serif: string
+  loading: boolean
+  saving: boolean
+  saved: boolean
+  error: string
+  email: string
+  balance: string
+  previewSeed: string
+  form: Profile
+  setField: <K extends keyof Profile>(key: K, value: Profile[K]) => void
+  regenerateAvatar: () => void
+  onSubmit: (e: React.FormEvent) => void
+}) {
+  if (loading) {
+    return (
+      <div style={{ padding: '80px 0', textAlign: 'center', color: p.inkMuted, fontFamily: mono, fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+        loading profile…
       </div>
-    </AppLayout>
+    )
+  }
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      style={{
+        maxWidth: 760, margin: '0 auto',
+        padding: '28px 56px 96px',
+        fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+        color: p.ink,
+      }}
+    >
+      <header style={{ marginBottom: 28, paddingBottom: 18, borderBottom: `1px solid ${p.hairlineSoft}` }}>
+        <div style={{ fontFamily: mono, fontSize: 10.5, letterSpacing: '0.2em', textTransform: 'uppercase', color: p.inkMuted }}>
+          account
+        </div>
+        <h1 style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 34, lineHeight: 1.05, margin: '6px 0 8px', color: p.ink, fontWeight: 400 }}>
+          Profile settings
+        </h1>
+        <p style={{ fontSize: 13.5, color: p.inkSoft, lineHeight: 1.55, maxWidth: 520, margin: 0 }}>
+          Manage your name, contact details, and how Clox is set up for the kind of work you do.
+        </p>
+      </header>
+
+      {/* Identity card */}
+      <Section p={p} mono={mono} serif={serif} eyebrow="01" title="Identity">
+        <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr auto', gap: 24, alignItems: 'center' }}>
+          <Avatar seed={previewSeed || email} size={80} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: serif, fontSize: 18, lineHeight: 1.3, color: p.ink, marginBottom: 2 }}>
+              {form.first_name || email.split('@')[0] || 'Clox user'}
+              {form.last_name ? ` ${form.last_name}` : ''}
+            </div>
+            <div style={{ fontFamily: mono, fontSize: 11, color: p.inkMuted, letterSpacing: '0.06em', marginBottom: 12 }}>
+              {email}
+            </div>
+            <button
+              type="button"
+              onClick={regenerateAvatar}
+              style={{
+                ...ghostBtn(p, mono),
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <RefreshIcon /> Regenerate avatar
+            </button>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted, marginBottom: 4 }}>
+              Balance
+            </div>
+            <div style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 26, color: p.accent, lineHeight: 1 }}>
+              ${balance}
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* Personal info */}
+      <Section p={p} mono={mono} serif={serif} eyebrow="02" title="Personal">
+        <Grid2>
+          <Field p={p} mono={mono} label="First name">
+            <Input p={p} value={form.first_name} onChange={v => setField('first_name', v)} placeholder="First name" />
+          </Field>
+          <Field p={p} mono={mono} label="Last name">
+            <Input p={p} value={form.last_name} onChange={v => setField('last_name', v)} placeholder="Last name" />
+          </Field>
+        </Grid2>
+
+        <Field p={p} mono={mono} label="Email">
+          <Input p={p} value={email} onChange={() => undefined} disabled placeholder="" />
+        </Field>
+
+        <Field p={p} mono={mono} label="Phone">
+          <Input p={p} value={form.phone} onChange={v => setField('phone', v)} placeholder="+971 50 000 0000" />
+        </Field>
+
+        <Grid2>
+          <Field p={p} mono={mono} label="Country">
+            <Select p={p} value={form.country} onChange={v => setField('country', v)} options={['', ...COUNTRIES]} placeholder="Select country" />
+          </Field>
+          <Field p={p} mono={mono} label="City">
+            <Input p={p} value={form.city} onChange={v => setField('city', v)} placeholder="Dubai" />
+          </Field>
+        </Grid2>
+      </Section>
+
+      {/* Professional info */}
+      <Section p={p} mono={mono} serif={serif} eyebrow="03" title="Professional">
+        <Field p={p} mono={mono} label="Company / organisation">
+          <Input p={p} value={form.company} onChange={v => setField('company', v)} placeholder="Acme Inc." />
+        </Field>
+        <Field p={p} mono={mono} label="Job title">
+          <Input p={p} value={form.job_title} onChange={v => setField('job_title', v)} placeholder="CEO, Designer, Researcher…" />
+        </Field>
+        <Field p={p} mono={mono} label="How do you use Clox?">
+          <Select p={p} value={form.use_case} onChange={v => setField('use_case', v)} options={['', ...USE_CASES]} placeholder="Select primary use case" />
+        </Field>
+      </Section>
+
+      {error && (
+        <div style={{
+          marginTop: 18,
+          background: p.surfaceAlt,
+          border: `1px solid ${p.hairline}`,
+          borderLeft: `3px solid ${p.accent}`,
+          borderRadius: 3,
+          padding: '12px 16px',
+          fontFamily: mono, fontSize: 11.5, color: p.ink, letterSpacing: '0.04em',
+        }}>
+          {error}
+        </div>
+      )}
+
+      {/* Save bar */}
+      <div style={{
+        marginTop: 32, paddingTop: 20,
+        borderTop: `1px solid ${p.hairlineSoft}`,
+        display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'flex-end',
+      }}>
+        {saved && (
+          <span style={{ fontFamily: mono, fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: p.accent }}>
+            Saved
+          </span>
+        )}
+        <button type="submit" disabled={saving} style={{
+          fontFamily: mono, fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase',
+          background: p.ink, color: p.bg,
+          border: 'none', borderRadius: 3,
+          padding: '10px 22px', cursor: saving ? 'wait' : 'pointer',
+          opacity: saving ? 0.6 : 1,
+        }}>
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/* =====================================================================
+   Primitives
+   ===================================================================== */
+
+function Section({
+  p, mono, serif, eyebrow, title, children,
+}: {
+  p: Palette
+  mono: string
+  serif: string
+  eyebrow: string
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <section style={{
+      background: p.surface,
+      border: `1px solid ${p.hairline}`,
+      borderRadius: 3,
+      padding: '24px 28px',
+      marginBottom: 22,
+    }}>
+      <header style={{
+        display: 'flex', alignItems: 'baseline', gap: 14,
+        marginBottom: 18, paddingBottom: 12,
+        borderBottom: `1px solid ${p.hairlineSoft}`,
+      }}>
+        <span style={{ fontFamily: mono, fontSize: 10, letterSpacing: '0.22em', textTransform: 'uppercase', color: p.inkMuted }}>
+          {eyebrow}
+        </span>
+        <h2 style={{ fontFamily: serif, fontStyle: 'italic', fontWeight: 400, fontSize: 22, color: p.ink, margin: 0, lineHeight: 1.1 }}>
+          {title}
+        </h2>
+      </header>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {children}
+      </div>
+    </section>
+  )
+}
+
+function Grid2({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      {children}
+    </div>
+  )
+}
+
+function Field({
+  p, mono, label, children,
+}: {
+  p: Palette
+  mono: string
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <label style={{ display: 'block' }}>
+      <div style={{
+        fontFamily: mono, fontSize: 10, letterSpacing: '0.2em',
+        textTransform: 'uppercase', color: p.inkMuted, marginBottom: 6,
+      }}>{label}</div>
+      {children}
+    </label>
+  )
+}
+
+function Input({
+  p, value, onChange, placeholder, disabled,
+}: {
+  p: Palette
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  disabled?: boolean
+}) {
+  return (
+    <input
+      type="text"
+      value={value}
+      placeholder={placeholder}
+      disabled={disabled}
+      onChange={e => onChange(e.target.value)}
+      style={{
+        width: '100%',
+        background: disabled ? p.surfaceAlt : p.bg,
+        border: `1px solid ${p.hairline}`,
+        borderRadius: 3,
+        padding: '10px 12px',
+        fontFamily: 'inherit', fontSize: 14,
+        color: p.ink,
+        outline: 'none',
+        opacity: disabled ? 0.6 : 1,
+      }}
+      onFocus={e => { e.currentTarget.style.borderColor = p.ink }}
+      onBlur={e => { e.currentTarget.style.borderColor = p.hairline }}
+    />
+  )
+}
+
+function Select({
+  p, value, onChange, options, placeholder,
+}: {
+  p: Palette
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  placeholder?: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      style={{
+        width: '100%',
+        background: p.bg,
+        border: `1px solid ${p.hairline}`,
+        borderRadius: 3,
+        padding: '10px 12px',
+        fontFamily: 'inherit', fontSize: 14,
+        color: value ? p.ink : p.inkMuted,
+        outline: 'none',
+        appearance: 'none',
+        cursor: 'pointer',
+      }}
+      onFocus={e => { e.currentTarget.style.borderColor = p.ink }}
+      onBlur={e => { e.currentTarget.style.borderColor = p.hairline }}
+    >
+      {options.map((opt, i) => (
+        <option key={`${opt}-${i}`} value={opt}>
+          {opt === '' ? (placeholder ?? 'Select…') : opt}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function ghostBtn(p: Palette, mono: string): React.CSSProperties {
+  return {
+    fontFamily: mono, fontSize: 10.5, letterSpacing: '0.16em',
+    textTransform: 'uppercase',
+    background: 'transparent',
+    color: p.ink,
+    border: `1px solid ${p.hairline}`,
+    borderRadius: 3,
+    padding: '7px 14px',
+    cursor: 'pointer',
+  }
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+      <path d="M2 2v3h3M10 10V7H7" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 7a4 4 0 0 0 7 1M9 5a4 4 0 0 0-7-1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
   )
 }

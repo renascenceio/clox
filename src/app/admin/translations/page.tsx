@@ -1,8 +1,15 @@
 'use client'
 
-import { motion } from 'framer-motion'
-import { stagger, cardVariant } from '@/shared/ui/layout/AppLayout'
+/**
+ * /admin/translations — re-skinned in AdminShell.
+ *
+ * All persistence still goes through @/lib/translations (localStorage today).
+ * That layer can be swapped for a DB-backed implementation later without
+ * touching this surface.
+ */
+
 import { useState, useEffect, useRef } from 'react'
+import AdminShell, { AdminPanel, AdminBtn } from '@/shared/ui/admin/AdminShell'
 import {
   SUPPORTED_LANGUAGES,
   getLanguageTranslations,
@@ -29,222 +36,176 @@ export default function TranslationsPage() {
   const [showMissingOnly, setShowMissingOnly] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Load translations on mount and when language changes
   useEffect(() => {
-    const langTranslations = getLanguageTranslations(selectedLang)
-    setTranslations(langTranslations)
+    setTranslations(getLanguageTranslations(selectedLang))
   }, [selectedLang])
 
-  const handleSave = (key: string, value: string) => {
+  function flash(msg: string) {
+    setSavedMessage(msg)
+    setTimeout(() => setSavedMessage(null), 2400)
+  }
+
+  function handleSave(key: string, value: string) {
     setTranslation(selectedLang, key, value)
     setEditingKey(null)
     setTranslations(getLanguageTranslations(selectedLang))
-    showSavedMessage('Translation saved!')
+    flash('translation saved')
   }
 
-  const handleDelete = (key: string) => {
-    if (confirm(`Delete translation for "${key}"?`)) {
-      deleteTranslation(selectedLang, key)
-      setTranslations(getLanguageTranslations(selectedLang))
-      showSavedMessage('Translation deleted!')
-    }
+  function handleDelete(key: string) {
+    if (!confirm(`Delete translation for "${key}"?`)) return
+    deleteTranslation(selectedLang, key)
+    setTranslations(getLanguageTranslations(selectedLang))
+    flash('translation deleted')
   }
 
-  const handleAddNew = () => {
+  function handleAddNew() {
     if (!newKey.trim() || !newValue.trim()) return
     setTranslation(selectedLang, newKey.trim(), newValue.trim())
     setNewKey('')
     setNewValue('')
     setShowAddForm(false)
     setTranslations(getLanguageTranslations(selectedLang))
-    showSavedMessage('New translation added!')
+    flash('translation added')
   }
 
-  const handleDownload = () => {
-    const json = exportTranslations(selectedLang)
+  function downloadJson(filename: string, json: string) {
     const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `translations_${selectedLang}.json`
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }
 
-  const handleDownloadAll = () => {
-    const json = exportAllTranslations()
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'translations_all.json'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }
-
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-
     const reader = new FileReader()
-    reader.onload = async (event) => {
+    reader.onload = ev => {
       try {
-        const json = JSON.parse(event.target?.result as string)
-        
-        // Validate the JSON structure
-        if (typeof json !== 'object' || Array.isArray(json)) {
-          throw new Error('Invalid file format')
-        }
-
-        // Check if it's a single language or all languages
+        const json = JSON.parse(ev.target?.result as string)
+        if (typeof json !== 'object' || Array.isArray(json)) throw new Error('invalid')
         const firstKey = Object.keys(json)[0]
         const firstValue = json[firstKey]
-        
         if (typeof firstValue === 'string') {
-          // Single language file
           importTranslations(selectedLang, json)
-          showSavedMessage(`Imported ${Object.keys(json).length} translations for ${selectedLang}!`)
+          flash(`imported ${Object.keys(json).length} keys for ${selectedLang}`)
         } else if (typeof firstValue === 'object') {
-          // Multi-language file
-          Object.entries(json).forEach(([langCode, langTranslations]) => {
-            if (typeof langTranslations === 'object' && !Array.isArray(langTranslations)) {
-              importTranslations(langCode, langTranslations as Record<string, string>)
+          Object.entries(json).forEach(([code, val]) => {
+            if (typeof val === 'object' && !Array.isArray(val)) {
+              importTranslations(code, val as Record<string, string>)
             }
           })
-          showSavedMessage('Imported translations for all languages!')
+          flash('imported all languages')
         }
-        
         setTranslations(getLanguageTranslations(selectedLang))
-      } catch (error) {
-        console.error('Failed to import:', error)
-        alert('Failed to import translations. Please check the file format.')
+      } catch (err) {
+        console.error('[v0] translation import failed', err)
+        alert('Failed to import. Check the JSON shape.')
       }
     }
     reader.readAsText(file)
-    
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-  }
-
-  const showSavedMessage = (message: string) => {
-    setSavedMessage(message)
-    setTimeout(() => setSavedMessage(null), 3000)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const progress = getTranslationProgress(selectedLang)
   const missingKeys = getMissingTranslations(selectedLang)
-
-  // Filter translations based on search and missing filter
   const filteredKeys = (showMissingOnly ? missingKeys : Object.keys(translations))
-    .filter(key => 
-      key.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (translations[key] || '').toLowerCase().includes(searchQuery.toLowerCase())
+    .filter(
+      k =>
+        k.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (translations[k] || '').toLowerCase().includes(searchQuery.toLowerCase()),
     )
     .sort()
 
+  const langMeta = SUPPORTED_LANGUAGES.find(l => l.code === selectedLang)
+
   return (
-    <motion.div
-      initial="hidden"
-      animate="visible"
-      variants={stagger}
-      className="p-8 max-w-6xl mx-auto"
+    <AdminShell
+      crumb={['admin', 'platform']}
+      here="Translations"
+      eyebrow="i18n · localStorage today"
+      heading={<>Every string, in <em className="italic">every language.</em></>}
+      lead="English is the source of truth. Pick a target language, fill in the missing strings, and download the JSON to ship. Persistence still flows through localStorage; swap the lib for a DB-backed implementation when you're ready."
+      syncHint={
+        selectedLang === 'en'
+          ? `${Object.keys(translations).length} keys · english source`
+          : `${progress.translated}/${progress.total} translated · ${progress.percentage}%`
+      }
     >
-      {/* Header */}
-      <motion.div variants={cardVariant} className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-label-primary mb-2">
-          Translation Management
-        </h1>
-        <p className="text-label-secondary">
-          Manage translations for all supported languages. Download, edit, and upload language files.
-        </p>
-      </motion.div>
-
-      {/* Success Message */}
-      {savedMessage && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          className="mb-6 p-4 bg-success/10 border border-success/30 rounded-hig-lg flex items-center gap-3"
-        >
-          <svg className="w-5 h-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          <span className="text-success font-medium">{savedMessage}</span>
-        </motion.div>
-      )}
-
-      {/* Language Selector & Actions */}
-      <motion.div variants={cardVariant} className="bg-surface-secondary dark:bg-surface border border-separator rounded-hig-xl p-6 mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          {/* Language Tabs */}
-          <div className="flex flex-wrap gap-2">
-            {SUPPORTED_LANGUAGES.map(lang => (
+      <AdminPanel
+        title="Languages"
+        meta="english is the source of truth"
+        toolbar={
+          <div className="px-[18px] py-2 border-b border-hairline-soft flex items-center justify-end min-h-[28px]">
+            {savedMessage ? (
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-accent">
+                {savedMessage}
+              </span>
+            ) : (
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">
+                in sync
+              </span>
+            )}
+          </div>
+        }
+      >
+        <div className="px-[18px] py-3 flex flex-wrap gap-1.5">
+          {SUPPORTED_LANGUAGES.map(lang => {
+            const active = selectedLang === lang.code
+            return (
               <button
                 key={lang.code}
                 onClick={() => setSelectedLang(lang.code)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-hig-lg text-sm font-medium transition-all ${
-                  selectedLang === lang.code
-                    ? 'bg-mint dark:bg-teal text-white shadow-mint-glow dark:shadow-teal-glow'
-                    : 'bg-surface-tertiary hover:bg-fill text-label-primary'
+                className={`px-2.5 h-7 rounded-sharp border font-mono text-[11px] tracking-[0.04em] transition-colors ${
+                  active
+                    ? 'bg-ink text-bg border-ink'
+                    : 'bg-transparent text-ink border-hairline hover:border-ink'
                 }`}
               >
-                <span>{lang.flag}</span>
-                <span>{lang.code.toUpperCase()}</span>
+                {lang.code.toUpperCase()} · {lang.label}
               </button>
-            ))}
-          </div>
-
-          {/* Progress */}
-          {selectedLang !== 'en' && (
-            <div className="flex items-center gap-3">
-              <div className="text-sm text-label-secondary">
-                {progress.translated}/{progress.total} translated
-              </div>
-              <div className="w-24 h-2 bg-surface-tertiary rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-mint to-teal transition-all"
-                  style={{ width: `${progress.percentage}%` }}
-                />
-              </div>
-              <span className="text-sm font-bold text-label-primary">{progress.percentage}%</span>
-            </div>
-          )}
+            )
+          })}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-separator">
-          <button
-            onClick={handleDownload}
-            className="flex items-center gap-2 px-4 py-2 bg-surface-tertiary hover:bg-fill text-label-primary rounded-hig-lg text-sm font-medium transition-all"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Download {SUPPORTED_LANGUAGES.find(l => l.code === selectedLang)?.label}
-          </button>
-          
-          <button
-            onClick={handleDownloadAll}
-            className="flex items-center gap-2 px-4 py-2 bg-surface-tertiary hover:bg-fill text-label-primary rounded-hig-lg text-sm font-medium transition-all"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export All Languages
-          </button>
+        {selectedLang !== 'en' && (
+          <div className="px-[18px] py-3 border-t border-hairline-soft flex items-center gap-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-muted">
+              progress
+            </span>
+            <div className="flex-1 h-1 bg-surface-alt relative overflow-hidden">
+              <div
+                className="absolute inset-y-0 left-0 bg-ink"
+                style={{ width: `${progress.percentage}%` }}
+              />
+            </div>
+            <span className="font-mono text-[11px] text-ink tabular-nums">
+              {progress.translated}/{progress.total} · {progress.percentage}%
+            </span>
+          </div>
+        )}
 
-          <label className="flex items-center gap-2 px-4 py-2 bg-mint/10 dark:bg-teal/10 hover:bg-mint/20 dark:hover:bg-teal/20 text-mint dark:text-teal rounded-hig-lg text-sm font-medium transition-all cursor-pointer">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-            </svg>
-            Upload Language File
+        <div className="px-[18px] py-3 border-t border-hairline-soft flex flex-wrap gap-2">
+          <AdminBtn
+            onClick={() =>
+              downloadJson(
+                `translations_${selectedLang}.json`,
+                exportTranslations(selectedLang),
+              )
+            }
+          >
+            Download {langMeta?.label ?? selectedLang}
+          </AdminBtn>
+          <AdminBtn onClick={() => downloadJson('translations_all.json', exportAllTranslations())}>
+            Export all
+          </AdminBtn>
+          <label className="inline-flex items-center gap-2 px-3 h-[30px] font-mono text-[10.5px] tracking-[0.08em] uppercase border border-hairline bg-transparent rounded-sharp transition-colors hover:border-ink cursor-pointer">
+            Upload JSON
             <input
               ref={fileInputRef}
               type="file"
@@ -253,201 +214,167 @@ export default function TranslationsPage() {
               className="hidden"
             />
           </label>
-
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-2 px-4 py-2 gradient-mint-teal text-white rounded-hig-lg text-sm font-bold transition-all hover:shadow-mint-glow"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Add Translation
-          </button>
+          <AdminBtn onClick={() => setShowAddForm(s => !s)}>
+            {showAddForm ? 'Cancel' : 'Add translation'}
+          </AdminBtn>
         </div>
-      </motion.div>
 
-      {/* Add New Translation Form */}
-      {showAddForm && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
-          exit={{ opacity: 0, height: 0 }}
-          className="bg-mint/5 dark:bg-teal/5 border border-mint/20 dark:border-teal/20 rounded-hig-xl p-6 mb-6"
-        >
-          <h3 className="font-bold text-label-primary mb-4">Add New Translation</h3>
-          <div className="flex gap-4">
+        {showAddForm && (
+          <div className="px-[18px] py-3 border-t border-hairline-soft flex flex-wrap gap-2 items-center">
             <input
               type="text"
               value={newKey}
-              onChange={(e) => setNewKey(e.target.value)}
-              placeholder="Translation key (e.g., common.hello)"
-              className="flex-1 px-4 py-2 bg-surface-secondary border border-separator rounded-hig-lg text-sm outline-none focus:border-mint dark:focus:border-teal"
+              onChange={e => setNewKey(e.target.value)}
+              placeholder="key (e.g. common.hello)"
+              className="h-8 px-2 bg-bg border border-hairline rounded-sharp font-mono text-[11.5px] text-ink outline-none focus:border-ink min-w-[240px]"
             />
             <input
               type="text"
               value={newValue}
-              onChange={(e) => setNewValue(e.target.value)}
-              placeholder="Translation value"
-              className="flex-1 px-4 py-2 bg-surface-secondary border border-separator rounded-hig-lg text-sm outline-none focus:border-mint dark:focus:border-teal"
+              onChange={e => setNewValue(e.target.value)}
+              placeholder="value"
+              className="h-8 px-2 bg-bg border border-hairline rounded-sharp font-mono text-[11.5px] text-ink outline-none focus:border-ink flex-1 min-w-[200px]"
             />
-            <button
-              onClick={handleAddNew}
-              disabled={!newKey.trim() || !newValue.trim()}
-              className="px-6 py-2 gradient-mint-teal text-white rounded-hig-lg text-sm font-bold disabled:opacity-50"
-            >
-              Add
-            </button>
-            <button
-              onClick={() => setShowAddForm(false)}
-              className="px-4 py-2 bg-surface-tertiary text-label-secondary rounded-hig-lg text-sm font-medium hover:bg-fill"
-            >
-              Cancel
-            </button>
+            <AdminBtn primary onClick={handleAddNew}>
+              Save
+            </AdminBtn>
           </div>
-        </motion.div>
-      )}
-
-      {/* Search & Filters */}
-      <motion.div variants={cardVariant} className="flex gap-4 mb-6">
-        <div className="relative flex-1">
-          <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-label-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search translations..."
-            className="w-full pl-11 pr-4 py-3 bg-surface-secondary border border-separator rounded-hig-lg text-sm outline-none focus:border-mint dark:focus:border-teal"
-          />
-        </div>
-        
-        {selectedLang !== 'en' && missingKeys.length > 0 && (
-          <button
-            onClick={() => setShowMissingOnly(!showMissingOnly)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-hig-lg text-sm font-medium transition-all ${
-              showMissingOnly
-                ? 'bg-warning/20 text-warning border border-warning/30'
-                : 'bg-surface-tertiary text-label-primary hover:bg-fill'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            {missingKeys.length} Missing
-          </button>
         )}
-      </motion.div>
+      </AdminPanel>
 
-      {/* Translations Table */}
-      <motion.div variants={cardVariant} className="bg-surface-secondary dark:bg-surface border border-separator rounded-hig-xl overflow-hidden">
-        <div className="grid grid-cols-[300px_1fr_100px] gap-4 px-6 py-3 bg-surface-tertiary/50 border-b border-separator text-xs font-bold text-label-tertiary uppercase tracking-widest">
-          <div>Key</div>
-          <div>Translation ({SUPPORTED_LANGUAGES.find(l => l.code === selectedLang)?.label})</div>
-          <div className="text-right">Actions</div>
-        </div>
-
-        <div className="divide-y divide-separator max-h-[600px] overflow-y-auto custom-scrollbar">
-          {filteredKeys.length === 0 ? (
-            <div className="px-6 py-12 text-center text-label-tertiary">
-              {searchQuery ? 'No translations found matching your search.' : 'No translations available.'}
+      <AdminPanel
+        title="Strings"
+        meta={
+          showMissingOnly && selectedLang !== 'en'
+            ? `${missingKeys.length} missing in ${langMeta?.label ?? selectedLang}`
+            : `${filteredKeys.length} keys`
+        }
+        toolbar={
+          <div className="px-[18px] py-2 border-b border-hairline-soft flex items-center gap-2 justify-end">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="search keys + values"
+              className="h-7 px-2 bg-bg border border-hairline rounded-sharp font-mono text-[11px] text-ink outline-none focus:border-ink w-56"
+            />
+            {selectedLang !== 'en' && missingKeys.length > 0 && (
+              <button
+                onClick={() => setShowMissingOnly(s => !s)}
+                className={`h-7 px-2 border rounded-sharp font-mono text-[11px] tracking-[0.04em] transition-colors ${
+                  showMissingOnly
+                    ? 'bg-accent text-bg border-accent'
+                    : 'bg-transparent text-ink border-hairline hover:border-ink'
+                }`}
+              >
+                {missingKeys.length} missing
+              </button>
+            )}
+          </div>
+        }
+      >
+        {filteredKeys.length === 0 ? (
+          <div className="px-[18px] py-10 font-mono text-[11.5px] text-ink-muted text-center">
+            {searchQuery ? 'no matches.' : 'no translations.'}
+          </div>
+        ) : (
+          <div className="divide-y divide-hairline-soft max-h-[640px] overflow-y-auto">
+            <div className="px-[18px] py-2 grid grid-cols-[280px_1fr_auto] gap-3 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-muted sticky top-0 bg-surface border-b border-hairline-soft">
+              <div>Key</div>
+              <div>Value · {langMeta?.label ?? selectedLang}</div>
+              <div className="text-right pr-2">Actions</div>
             </div>
-          ) : (
-            filteredKeys.map(key => {
+            {filteredKeys.map(key => {
               const value = translations[key] || ''
               const englishValue = DEFAULT_TRANSLATIONS['en'][key] || ''
               const isMissing = selectedLang !== 'en' && !value && englishValue
+              const isEditing = editingKey === key
 
               return (
                 <div
                   key={key}
-                  className={`grid grid-cols-[300px_1fr_100px] gap-4 px-6 py-4 items-center hover:bg-surface-tertiary/30 ${
-                    isMissing ? 'bg-warning/5' : ''
+                  className={`px-[18px] py-2.5 grid grid-cols-[280px_1fr_auto] gap-3 items-start ${
+                    isMissing ? 'bg-surface-alt/40' : ''
                   }`}
                 >
-                  <div>
-                    <code className="text-sm font-mono text-label-primary break-all">{key}</code>
+                  <div className="min-w-0">
+                    <code className="font-mono text-[11.5px] text-ink break-all">{key}</code>
                     {selectedLang !== 'en' && englishValue && (
-                      <div className="text-xs text-label-tertiary mt-1 truncate" title={englishValue}>
-                        EN: {englishValue}
+                      <div
+                        className="font-mono text-[10.5px] text-ink-muted mt-1 truncate"
+                        title={englishValue}
+                      >
+                        en: {englishValue}
                       </div>
                     )}
                   </div>
-                  
-                  <div>
-                    {editingKey === key ? (
-                      <div className="flex gap-2">
+                  <div className="min-w-0">
+                    {isEditing ? (
+                      <div className="flex gap-2 items-start">
                         <input
                           type="text"
                           value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onKeyDown={(e) => {
+                          onChange={e => setEditValue(e.target.value)}
+                          onKeyDown={e => {
                             if (e.key === 'Enter') handleSave(key, editValue)
                             if (e.key === 'Escape') setEditingKey(null)
                           }}
-                          className="flex-1 px-3 py-1.5 bg-surface border border-mint dark:border-teal rounded-hig-lg text-sm outline-none"
                           autoFocus
+                          className="flex-1 min-w-0 h-8 px-2 bg-bg border border-ink rounded-sharp font-mono text-[11.5px] text-ink outline-none"
                         />
-                        <button
-                          onClick={() => handleSave(key, editValue)}
-                          className="px-3 py-1.5 bg-success/20 text-success rounded-hig-lg text-sm font-medium"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setEditingKey(null)}
-                          className="px-3 py-1.5 bg-surface-tertiary text-label-secondary rounded-hig-lg text-sm font-medium"
-                        >
-                          Cancel
-                        </button>
+                        <AdminBtn primary onClick={() => handleSave(key, editValue)}>
+                          save
+                        </AdminBtn>
+                        <AdminBtn onClick={() => setEditingKey(null)}>cancel</AdminBtn>
                       </div>
                     ) : (
-                      <span className={`text-sm ${value ? 'text-label-primary' : 'text-label-tertiary italic'}`}>
-                        {value || (isMissing ? 'Not translated' : '—')}
+                      <span
+                        className={`font-mono text-[11.5px] ${
+                          value ? 'text-ink' : 'text-ink-muted italic'
+                        }`}
+                      >
+                        {value || (isMissing ? 'not translated' : '—')}
                       </span>
                     )}
                   </div>
-                  
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={() => {
-                        setEditingKey(key)
-                        setEditValue(value || englishValue)
-                      }}
-                      className="w-8 h-8 flex items-center justify-center rounded-hig-lg hover:bg-surface-tertiary text-label-secondary hover:text-mint dark:hover:text-teal transition-all"
-                      title="Edit"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(key)}
-                      className="w-8 h-8 flex items-center justify-center rounded-hig-lg hover:bg-error/10 text-label-secondary hover:text-error transition-all"
-                      title="Delete"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                  <div className="flex justify-end gap-1.5 pr-2">
+                    {!isEditing && (
+                      <>
+                        <AdminBtn
+                          onClick={() => {
+                            setEditingKey(key)
+                            setEditValue(value || englishValue)
+                          }}
+                        >
+                          edit
+                        </AdminBtn>
+                        <AdminBtn danger onClick={() => handleDelete(key)}>
+                          delete
+                        </AdminBtn>
+                      </>
+                    )}
                   </div>
                 </div>
               )
-            })
-          )}
-        </div>
-      </motion.div>
+            })}
+          </div>
+        )}
+      </AdminPanel>
 
-      {/* Help Text */}
-      <motion.div variants={cardVariant} className="mt-6 p-4 bg-surface-tertiary/50 rounded-hig-lg">
-        <h4 className="text-sm font-bold text-label-primary mb-2">Tips</h4>
-        <ul className="text-sm text-label-secondary space-y-1">
-          <li>• Use dot notation for keys (e.g., <code className="bg-surface-tertiary px-1 rounded">common.save</code>, <code className="bg-surface-tertiary px-1 rounded">nav.home</code>)</li>
-          <li>• Use curly braces for variables (e.g., <code className="bg-surface-tertiary px-1 rounded">Hello, {'{name}'}!</code>)</li>
-          <li>• Download the English file as a template for new languages</li>
-          <li>• Upload a JSON file to bulk import translations</li>
-        </ul>
-      </motion.div>
-    </motion.div>
+      <AdminPanel title="Conventions" meta="how to keep translations consistent">
+        <div className="px-[18px] py-4 font-mono text-[11.5px] text-ink-muted leading-[1.6] space-y-1.5">
+          <div>
+            · Dot-notation keys: <code className="text-ink">common.save</code>,{' '}
+            <code className="text-ink">nav.home</code>
+          </div>
+          <div>
+            · Variables in curly braces:{' '}
+            <code className="text-ink">{'Hello, {name}!'}</code>
+          </div>
+          <div>· Download English as the canonical template for new languages</div>
+          <div>· Upload a JSON to bulk import; multi-language files are also supported</div>
+        </div>
+      </AdminPanel>
+    </AdminShell>
   )
 }

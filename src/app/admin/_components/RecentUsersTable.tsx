@@ -1,77 +1,69 @@
 'use client'
 
 /**
- * RecentUsersTable — paneled table with toolbar (filters + search) and
- * editorial-styled rows (avatar blob, plan chip, mono numerals, status dot).
+ * RecentUsersTable — paneled table fed by /api/admin/users?limit=12.
  *
- * Currently uses a static demo set; swapping in a real Supabase query is a
- * one-line change in `useEffect` once an admin API for user listing exists.
+ * Toolbar keeps the same filter chips + search input (now applied to the
+ * fetched rows client-side so refresh is instant). Avatar is a solid ink
+ * blob with the user's first-letter; rows show role + spend + balance.
+ *
+ * A "view all users" link in the empty footer routes to /admin/users.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { AdminFilter } from '@/shared/ui/admin/AdminShell'
 
-type Plan = 'studio' | 'pro' | 'free'
-type Status = 'green' | 'amber' | 'red'
-type User = {
-  n: string
-  e: string
-  plan: Plan
-  ws: string
-  tk: string
-  sp: string
-  s: Status
-  /** Avatar background tone: b1=ink, b2=accent, b3=green, b4=blue, b5=ochre */
-  a: 'b1' | 'b2' | 'b3' | 'b4' | 'b5'
-  i: string
+interface User {
+  id: string
+  email: string
+  name: string
+  role: string | null
+  company: string | null
+  created_at: string
+  balance_usd: number
+  usage_30d: { spend: number; tokens: number; calls: number }
 }
 
-const USERS: User[] = [
-  { n: 'Elena Marchetti', e: 'elena@aperture.press', plan: 'studio', ws: 'aperture-press', tk: '18.2M', sp: '$1,840', s: 'green', a: 'b1', i: 'e' },
-  { n: 'Cassian Vellum', e: 'cv@marginalia.co', plan: 'studio', ws: 'marginalia-co', tk: '14.1M', sp: '$1,220', s: 'green', a: 'b2', i: 'c' },
-  { n: 'Ines Goyal', e: 'ines@northbound.dev', plan: 'pro', ws: 'northbound', tk: '5.4M', sp: '$ 412', s: 'green', a: 'b3', i: 'i' },
-  { n: 'Petra Lindh', e: 'petra@faraday.press', plan: 'pro', ws: 'faraday-press', tk: '3.1M', sp: '$ 248', s: 'amber', a: 'b4', i: 'p' },
-  { n: 'Wren Okafor', e: 'wren@stoa.studio', plan: 'studio', ws: 'stoa-studio', tk: '9.8M', sp: '$ 904', s: 'green', a: 'b5', i: 'w' },
-  { n: 'Tomás Beneš', e: 'tomas@quartermaster.io', plan: 'pro', ws: 'quartermaster', tk: '2.6M', sp: '$ 198', s: 'green', a: 'b1', i: 't' },
-  { n: 'Hadiya Reyes', e: 'hadiya@aperture.press', plan: 'studio', ws: 'aperture-press', tk: '7.4M', sp: '$ 712', s: 'red', a: 'b2', i: 'h' },
-  { n: 'Soren Mistry', e: 'soren@marginalia.co', plan: 'pro', ws: 'marginalia-co', tk: '1.2M', sp: '$  92', s: 'green', a: 'b3', i: 's' },
-  { n: 'Marlowe Sato', e: 'marlowe@aperture.press', plan: 'pro', ws: 'aperture-press', tk: '8.0M', sp: '$ 624', s: 'green', a: 'b4', i: 'm' },
-]
-
-const AV_BG: Record<User['a'], string> = {
-  b1: '#2C2A24',
-  b2: '#A8472A',
-  b3: '#2F8F5F',
-  b4: '#1F4663',
-  b5: '#6B5B2F',
-}
-
-const STATUS_LABEL: Record<Status, string> = {
-  green: 'active',
-  amber: 'flagged',
-  red: 'over quota',
-}
-
-const FILTERS = ['all', 'studio', 'pro', 'free', 'flagged'] as const
+const FILTERS = ['all', 'super_admin', 'member', 'flagged'] as const
 type Filter = (typeof FILTERS)[number]
 
+const AV_BG = ['#2C2A24', '#A8472A', '#2F8F5F', '#1F4663', '#6B5B2F']
+
 export default function RecentUsersTable() {
+  const router = useRouter()
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetch('/api/admin/users?limit=12', { cache: 'no-store' })
+      .then(r => r.json())
+      .then((j: { users?: User[] }) => { if (!cancelled) setUsers(j.users ?? []) })
+      .catch(e => console.error('[v0] /admin/users fetch failed', e))
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
 
   const filtered = useMemo(() => {
-    return USERS.filter(u => {
-      if (filter === 'flagged' && u.s === 'green') return false
-      if (filter !== 'all' && filter !== 'flagged' && u.plan !== filter) return false
+    return users.filter(u => {
+      if (filter === 'flagged') {
+        // No formal flag system yet — surrogate: anyone over 50% of seed credit
+        // (i.e. real spenders) so the chip has some signal beyond aesthetics.
+        if (u.usage_30d.spend < 5) return false
+      } else if (filter !== 'all' && (u.role ?? 'member') !== filter) return false
       if (!query) return true
       const q = query.toLowerCase()
       return (
-        u.n.toLowerCase().includes(q) ||
-        u.e.toLowerCase().includes(q) ||
-        u.ws.toLowerCase().includes(q)
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        (u.company ?? '').toLowerCase().includes(q)
       )
     })
-  }, [filter, query])
+  }, [users, filter, query])
 
   return (
     <div className="flex flex-col">
@@ -80,7 +72,7 @@ export default function RecentUsersTable() {
         <div className="flex items-center gap-2 flex-wrap">
           {FILTERS.map(f => (
             <AdminFilter key={f} active={filter === f} onClick={() => setFilter(f)}>
-              {f}
+              {f.replace('_', ' ')}
             </AdminFilter>
           ))}
         </div>
@@ -92,7 +84,7 @@ export default function RecentUsersTable() {
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="search by email, workspace, id…"
+            placeholder="search by email, name, company…"
             className="flex-1 bg-transparent outline-none border-0 font-mono text-[11px] text-ink placeholder:text-ink-muted"
           />
         </div>
@@ -103,11 +95,11 @@ export default function RecentUsersTable() {
         <table className="w-full text-[13px] border-collapse">
           <thead>
             <tr>
-              {['User', 'Plan', 'Workspace', 'Tokens (30d)', '$ spent', 'Status', ''].map((h, i) => (
+              {['User', 'Role', 'Joined', 'Tokens (30d)', '$ spent', 'Balance', ''].map((h, i) => (
                 <th
                   key={i}
                   className={`text-left font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted font-normal px-4 py-3 border-b border-hairline bg-rail-soft ${
-                    h === 'Tokens (30d)' || h === '$ spent' ? 'text-right' : ''
+                    h === 'Tokens (30d)' || h === '$ spent' || h === 'Balance' ? 'text-right' : ''
                   } ${i === 0 ? 'w-[28%]' : ''}`}
                 >
                   {h}
@@ -116,100 +108,122 @@ export default function RecentUsersTable() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((u, idx) => (
-              <tr
-                key={u.e}
-                className={`hover:bg-rail-soft transition-colors ${
-                  idx === filtered.length - 1 ? '' : ''
-                }`}
-              >
-                <td className="px-4 py-2.5 border-b border-hairline-soft align-middle">
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className="w-[26px] h-[26px] rounded-full flex items-center justify-center font-serif italic text-[13px] text-bg flex-shrink-0"
-                      style={{ background: AV_BG[u.a] }}
-                      aria-hidden
-                    >
-                      {u.i}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">{u.n}</div>
-                      <div className="font-mono text-[11px] text-ink-muted truncate">{u.e}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-2.5 border-b border-hairline-soft align-middle">
-                  <PlanChip plan={u.plan} />
-                </td>
-                <td className="px-4 py-2.5 border-b border-hairline-soft align-middle">
-                  <span className="font-mono text-[11px]">{u.ws}</span>
-                </td>
-                <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right font-mono text-[12px]">
-                  {u.tk}
-                </td>
-                <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right font-mono text-[12px]">
-                  {u.sp}
-                </td>
-                <td className="px-4 py-2.5 border-b border-hairline-soft align-middle">
-                  <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] text-ink-soft">
-                    <StatusDot tone={u.s} />
-                    {STATUS_LABEL[u.s]}
-                  </span>
-                </td>
-                <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right">
-                  <button
-                    type="button"
-                    title="Open"
-                    className="w-[26px] h-[26px] inline-flex items-center justify-center border border-hairline-soft rounded-sharp text-ink-soft hover:border-ink hover:text-ink transition-colors"
-                  >
-                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                      <path
-                        d="M3 1.5h6.5V8M9.5 1.5 1.5 9.5"
-                        stroke="currentColor"
-                        strokeWidth="1.1"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
+            {loading ? (
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center font-mono text-[11px] text-ink-muted">
-                  no users match
+                  loading users…
                 </td>
               </tr>
-            )}
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center font-mono text-[11px] text-ink-muted">
+                  {users.length === 0 ? 'no users yet — once people sign up they show here' : 'no users match'}
+                </td>
+              </tr>
+            ) : filtered.map(u => {
+              const initial = (u.name || u.email || '·').charAt(0).toLowerCase()
+              const tone = AV_BG[hashIndex(u.id, AV_BG.length)]
+              return (
+                <tr key={u.id} className="hover:bg-rail-soft transition-colors">
+                  <td className="px-4 py-2.5 border-b border-hairline-soft align-middle">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className="w-[26px] h-[26px] rounded-full flex items-center justify-center font-serif italic text-[13px] text-bg flex-shrink-0"
+                        style={{ background: tone }}
+                        aria-hidden
+                      >
+                        {initial}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{u.name}</div>
+                        <div className="font-mono text-[11px] text-ink-muted truncate">{u.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 border-b border-hairline-soft align-middle">
+                    <RoleChip role={u.role ?? 'member'} />
+                  </td>
+                  <td className="px-4 py-2.5 border-b border-hairline-soft align-middle">
+                    <span className="font-mono text-[11px] text-ink-muted">{daysAgo(u.created_at)}</span>
+                  </td>
+                  <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right font-mono text-[12px]">
+                    {formatCount(u.usage_30d.tokens)}
+                  </td>
+                  <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right font-mono text-[12px]">
+                    ${u.usage_30d.spend.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right font-mono text-[12px]">
+                    ${u.balance_usd.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right">
+                    <button
+                      type="button"
+                      title="Open"
+                      onClick={() => router.push(`/admin/users?id=${u.id}`)}
+                      className="w-[26px] h-[26px] inline-flex items-center justify-center border border-hairline-soft rounded-sharp text-ink-soft hover:border-ink hover:text-ink transition-colors"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                        <path d="M3 1.5h6.5V8M9.5 1.5 1.5 9.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
+
+      {/* footer link */}
+      {users.length > 0 && (
+        <div className="px-[18px] py-3 border-t border-hairline-soft text-right">
+          <button
+            onClick={() => router.push('/admin/users')}
+            className="font-mono text-[10.5px] tracking-[0.06em] text-ink-soft hover:text-ink transition-colors uppercase"
+          >
+            view all users →
+          </button>
+        </div>
+      )}
     </div>
   )
 }
 
-function PlanChip({ plan }: { plan: Plan }) {
-  const cls =
-    plan === 'studio'
-      ? 'text-bg bg-ink border-ink'
-      : plan === 'pro'
-        ? 'text-ink border-ink'
-        : 'text-ink-soft border-hairline'
+function RoleChip({ role }: { role: string }) {
+  const cls = role === 'super_admin'
+    ? 'text-bg bg-ink border-ink'
+    : role === 'admin'
+      ? 'text-ink border-ink'
+      : 'text-ink-soft border-hairline'
   return (
-    <span
-      className={`inline-flex items-center font-mono text-[10.5px] tracking-[0.06em] px-2 py-0.5 border rounded-sharp ${cls}`}
-    >
-      {plan}
+    <span className={`inline-flex items-center font-mono text-[10.5px] tracking-[0.06em] px-2 py-0.5 border rounded-sharp ${cls}`}>
+      {role.replace('_', ' ')}
     </span>
   )
 }
 
-function StatusDot({ tone }: { tone: Status }) {
-  const bg =
-    tone === 'green'
-      ? 'rgb(47 143 95)'
-      : tone === 'amber'
-        ? 'rgb(185 138 43)'
-        : 'rgb(181 58 40)'
-  return <span className="w-1.5 h-1.5 rounded-full" style={{ background: bg }} aria-hidden />
+function daysAgo(iso: string): string {
+  try {
+    const d = new Date(iso).getTime()
+    const days = Math.floor((Date.now() - d) / (1000 * 60 * 60 * 24))
+    if (days < 1) return 'today'
+    if (days === 1) return '1 day ago'
+    if (days < 30) return `${days} days ago`
+    if (days < 60) return '1 mo ago'
+    return `${Math.floor(days / 30)} mo ago`
+  } catch {
+    return '—'
+  }
+}
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
+}
+
+function hashIndex(s: string, mod: number): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return h % mod
 }

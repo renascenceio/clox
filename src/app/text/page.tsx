@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 
 import ChatWorkspace, {
+  type Attachment,
   type ModeOption,
   type ModelOption,
   type RailNavItem,
@@ -193,18 +194,66 @@ export default function TextPage() {
     }
   }, [activeChatId, setMessages])
 
+  /* ----- attachments ------------------------------------------------- */
+  // The page owns the attachment list; ChatWorkspace just renders it. We
+  // serialise files to data URLs so they survive re-renders cleanly and can
+  // be passed straight to useChat's `experimental_attachments`.
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+
+  // Hard cap so a stray drag of a 50 MB PSD doesn't kill the request body.
+  const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024 // 8 MB per file
+
+  async function handleAttach(files: FileList) {
+    const next: Attachment[] = []
+    for (const file of Array.from(files)) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        console.warn('[v0] attachment too large, skipping:', file.name, file.size)
+        window.alert(`"${file.name}" is too large (max 8 MB).`)
+        continue
+      }
+      try {
+        const dataUrl = await fileToDataUrl(file)
+        next.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: file.name,
+          contentType: file.type || 'application/octet-stream',
+          size: file.size,
+          dataUrl,
+        })
+      } catch (err) {
+        console.error('[v0] failed to read attachment:', file.name, err)
+      }
+    }
+    if (next.length > 0) setAttachments(curr => [...curr, ...next])
+  }
+
+  function handleRemoveAttachment(id: string) {
+    setAttachments(curr => curr.filter(a => a.id !== id))
+  }
+
   /* ----- send ------------------------------------------------------- */
   function handleSend() {
     const promptText = (input || '').trim()
-    if (!promptText) return
-    const c = ensureActiveChat('text', promptText, selectedModel.name)
+    if (!promptText && attachments.length === 0) return
+    const c = ensureActiveChat('text', promptText || '(attachment)', selectedModel.name)
     if (c.id !== activeChatId) {
       setActiveChatIdState(c.id)
       persistActiveChatId('text', c.id)
     } else {
       touchChat(c.id, { model: selectedModel.name })
     }
-    handleSubmit?.(new Event('submit') as unknown as React.FormEvent<HTMLFormElement>)
+    // useChat's `experimental_attachments` accepts an array of
+    // `{ name, contentType, url }` where url is a data URL. The server
+    // route inflates these into multimodal message parts before streaming.
+    const expAttachments = attachments.length > 0
+      ? attachments.map(a => ({ name: a.name, contentType: a.contentType, url: a.dataUrl }))
+      : undefined
+    handleSubmit?.(
+      new Event('submit') as unknown as React.FormEvent<HTMLFormElement>,
+      expAttachments ? { experimental_attachments: expAttachments } : undefined,
+    )
+    // Clear after handing off; the user-message bubble will keep its own copy.
+    setAttachments([])
   }
 
   /* ----- compose props for ChatWorkspace ---------------------------- */
@@ -225,11 +274,55 @@ export default function TextPage() {
       const created: number = m.createdAt ? new Date(m.createdAt).getTime() : Date.now()
       const time = timestamp(created)
       if (m.role === 'user') {
+        // useChat stores attachments on the message under `experimental_attachments`.
+        // Render any image attachments inline above the text so the user can
+        // see what they sent.
+        const msgAttachments: Array<{ name?: string; contentType?: string; url?: string }> =
+          Array.isArray(m.experimental_attachments) ? m.experimental_attachments : []
+        const text = String(m.content ?? '')
         return {
           id: m.id ?? `u-${i}`,
           who: 'you' as const,
           time,
-          body: <span style={{ whiteSpace: 'pre-wrap' }}>{String(m.content ?? '')}</span>,
+          body: (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {msgAttachments.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {msgAttachments.map((a, ai) => {
+                    const isImg = (a.contentType ?? '').startsWith('image/')
+                    if (isImg && a.url) {
+                      // eslint-disable-next-line @next/next/no-img-element
+                      return (
+                        <img
+                          key={`${m.id ?? i}-att-${ai}`}
+                          src={a.url}
+                          alt={a.name ?? 'attachment'}
+                          style={{
+                            maxWidth: 220, maxHeight: 220, borderRadius: 2,
+                            display: 'block', objectFit: 'cover',
+                          }}
+                        />
+                      )
+                    }
+                    return (
+                      <span
+                        key={`${m.id ?? i}-att-${ai}`}
+                        style={{
+                          padding: '4px 8px',
+                          background: 'rgba(255,255,255,0.12)',
+                          borderRadius: 2,
+                          fontSize: 11,
+                        }}
+                      >
+                        {a.name ?? 'attachment'}
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+              {text && <span style={{ whiteSpace: 'pre-wrap' }}>{text}</span>}
+            </div>
+          ),
         }
       }
       return {
@@ -247,8 +340,7 @@ export default function TextPage() {
   }, [messages, selectedModel.version, selectedModel.name])
 
   const nav: RailNavItem[] = [
-    { id: 'home', label: 'Home', icon: I.home, onClick: () => router.push('/') },
-    { id: 'projects', label: 'Projects', icon: I.proj, count: 0 },
+    { id: 'projects', label: 'Projects', icon: I.proj, onClick: () => router.push('/projects') },
     { id: 'chats', label: 'Chats', icon: I.chats, count: recentChats.length, active: true },
     { id: 'history', label: 'History', icon: I.hist, onClick: () => router.push('/history') },
     { id: 'gallery', label: 'Gallery', icon: I.gal, onClick: () => router.push('/gallery') },
@@ -269,7 +361,6 @@ export default function TextPage() {
     {
       label: 'jump to',
       items: [
-        { icon: I.home, label: 'Home', hint: 'g h', onSelect: () => router.push('/') },
         { icon: I.proj, label: 'Projects', hint: 'g p', onSelect: () => router.push('/projects') },
         { icon: I.chats, label: 'Chats', hint: 'g c', onSelect: () => router.push('/text') },
         { icon: I.hist, label: 'History', hint: 'g y', onSelect: () => router.push('/history') },
@@ -390,8 +481,44 @@ export default function TextPage() {
 
   const breadcrumb = `chats · ${selectedModel.brandName?.toLowerCase() ?? selectedModel.provider}`
 
-  /* ----- user identity --------------------------------------------- */
-  const user = { initial: 'e', name: 'Elena Marchetti', plan: 'pro · 4 seats' }
+  /* ----- user identity (live profile from Supabase) ----------------- */
+  const [user, setUser] = useState<{ initial: string; name: string; plan: string; email?: string }>(
+    { initial: '·', name: 'Signed out', plan: 'guest' },
+  )
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const supabase = createClient()
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (!authUser || cancelled) return
+
+        const [profile, credits] = await Promise.all([
+          supabase.from('profiles').select('first_name, last_name, plan').eq('id', authUser.id).single(),
+          supabase.from('credits').select('balance_usd').eq('user_id', authUser.id).single(),
+        ])
+        if (cancelled) return
+
+        const first = (profile.data?.first_name ?? '').trim()
+        const last  = (profile.data?.last_name  ?? '').trim()
+        const fallback = authUser.email?.split('@')[0] ?? 'Clox user'
+        const fullName = [first, last].filter(Boolean).join(' ').trim() || fallback
+        const initial = (first || fallback).slice(0, 1).toLowerCase() || '·'
+
+        const planRaw = (profile.data?.plan as string | null | undefined)?.toLowerCase()
+        let plan: string
+        if (planRaw && planRaw !== 'free') plan = planRaw
+        else if (credits.data?.balance_usd != null) {
+          plan = `free · $${parseFloat(String(credits.data.balance_usd)).toFixed(2)}`
+        } else plan = 'free'
+
+        setUser({ initial, name: fullName, plan, email: authUser.email ?? undefined })
+      } catch (e) {
+        console.error('[v0] /text profile load failed', e)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   return (
     <div className="fixed inset-0 isolate">
@@ -432,6 +559,9 @@ export default function TextPage() {
         inputValue={input}
         onInputChange={setInput}
         onSend={handleSend}
+        attachments={attachments}
+        onAttach={handleAttach}
+        onRemoveAttachment={handleRemoveAttachment}
         toolsCount={0}
         cmdkGroups={cmdkGroups}
         systemPrompt={systemPrompt}
@@ -444,4 +574,17 @@ export default function TextPage() {
       />
     </div>
   )
+}
+
+/* =====================================================================
+   Helpers
+   ===================================================================== */
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error ?? new Error('FileReader error'))
+    reader.readAsDataURL(file)
+  })
 }

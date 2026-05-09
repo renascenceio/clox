@@ -8,7 +8,7 @@
  *
  * Sections, top-down:
  *   i.   Hero with a live typewriter composer that cycles through real prompts
- *  ii.   Five-mode showcase — pick chat / research / image / code / voice and
+ *  ii.   Six-mode showcase — pick chat / research / image / code / voice / video and
  *        the stage panel re-renders
  * iii.   Trio of value props (Authored / Calm / Yours)
  *  iv.   Three command surfaces (`/`, `⌘K`, `⌘.`) with mock palette previews
@@ -67,6 +67,13 @@ const HERO_FRAMES: HeroFrame[] = [
     prompt: 'Read me the first three paragraphs of the postmortem at a calm pace.',
     response:
       'Reading. (♪ a soft inflection, slowing on the apology, the credit figure spoken in full words rather than digits…)',
+  },
+  {
+    mode: 'video',
+    model: 'sora · 1080p',
+    prompt: 'Storyboard a 30-second cold open: courier walks up to the porch, hand-off, cut to second-floor window.',
+    response:
+      'Sketching six shots — wide ext., medium int., cu on hands, tracking pan, cu on face, wide at sunset. Holding the pan on the upstairs window before the cut…',
   },
 ]
 
@@ -219,13 +226,14 @@ function IconBtn({ children, label }: { children: React.ReactNode; label: string
 // Modes section — interactive stage
 // ---------------------------------------------------------------------------
 
-type ModeKey = 'chat' | 'research' | 'image' | 'code' | 'voice'
+type ModeKey = 'chat' | 'research' | 'image' | 'code' | 'voice' | 'video'
 const MODES: { key: ModeKey; idx: string; name: string }[] = [
   { key: 'chat', idx: '01', name: 'Chat' },
   { key: 'research', idx: '02', name: 'Research' },
   { key: 'image', idx: '03', name: 'Image' },
   { key: 'code', idx: '04', name: 'Code' },
   { key: 'voice', idx: '05', name: 'Voice' },
+  { key: 'video', idx: '06', name: 'Video' },
 ]
 
 function ModesShowcase() {
@@ -271,6 +279,7 @@ function ModesShowcase() {
         {active === 'image' && <ImageStage />}
         {active === 'code' && <CodeStage />}
         {active === 'voice' && <VoiceStage />}
+        {active === 'video' && <VideoStage />}
       </div>
     </div>
   )
@@ -503,6 +512,74 @@ function VoiceStage() {
   )
 }
 
+function VideoStage() {
+  // Filmstrip: six 16:9 cells. The 4th is "rendering" — accent stroke
+  // around it and a thin scrubbing line beneath. The aesthetic intentionally
+  // mirrors a contact sheet, not a video player UI.
+  const shots = [
+    { num: '01', label: 'wide · ext.', dur: '0:00–0:04', state: 'done' as const },
+    { num: '02', label: 'medium · int.', dur: '0:04–0:09', state: 'done' as const },
+    { num: '03', label: 'cu · hands', dur: '0:09–0:12', state: 'done' as const },
+    { num: '04', label: 'tracking · pan', dur: '0:12–0:18', state: 'live' as const },
+    { num: '05', label: 'cu · face', dur: '0:18–0:22', state: 'queued' as const },
+    { num: '06', label: 'wide · sunset', dur: '0:22–0:30', state: 'queued' as const },
+  ]
+
+  return (
+    <div>
+      <StageHead
+        title="Video — sequence first, frames after."
+        pill={<><span className="text-ink-muted">model</span> sora · 30 sec · 1080p</>}
+      />
+      <div className="mb-6 grid grid-cols-3 gap-3 md:grid-cols-6">
+        {shots.map((s) => {
+          const live = s.state === 'live'
+          const done = s.state === 'done'
+          return (
+            <div
+              key={s.num}
+              className={`relative flex aspect-[16/9] flex-col justify-end overflow-hidden border ${
+                live ? 'border-accent' : 'border-hairline'
+              } ${done ? 'bg-rail-soft' : 'bg-bg'}`}
+            >
+              <span
+                aria-hidden
+                className={`absolute left-1.5 top-1.5 font-mono text-[9px] tracking-[0.1em] ${
+                  live ? 'text-accent' : 'text-ink-muted'
+                }`}
+              >
+                {s.num}
+              </span>
+              {live && (
+                <span
+                  aria-hidden
+                  className="absolute bottom-0 left-0 h-[2px] bg-accent"
+                  style={{ animation: 'landingScrub 2.4s ease-in-out infinite', width: '40%' }}
+                />
+              )}
+              <div className="flex flex-col gap-0.5 p-1.5 pr-2">
+                <span className="font-serif text-[11.5px] italic leading-tight text-ink">{s.label}</span>
+                <span className="font-mono text-[8.5px] tracking-[0.06em] text-ink-muted">{s.dur}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="border-l-2 border-ink pl-4 font-serif text-[18px] italic leading-[1.5]">
+        <div className="mb-2 font-mono text-[9.5px] uppercase tracking-[0.16em] not-italic text-ink-muted">
+          <span className="text-accent">rendering</span> · shot 04 of 06 · tracking pan
+        </div>
+        Camera follows the courier from the iron gate to the porch. Late afternoon light, long shadows along the
+        gravel. Hold on the second-floor window before the cut to the close-up&hellip;
+      </div>
+      <div className="mt-5 flex items-center justify-between border-t border-hairline-soft pt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted">
+        <span>storyboard · 6 shots · 30s total</span>
+        <span><span className="text-accent">●</span> 04 rendering · 16% complete</span>
+      </div>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -622,7 +699,7 @@ export default function LandingPage() {
             before you ask the question.
           </h2>
           <p className="mt-3 max-w-[540px] text-[16px] text-ink-soft">
-            Mode comes first in Clox — chat, research, image, code, voice — because it changes what &lsquo;good&rsquo; looks like more than the model does. Click through to watch the workspace re-orient itself.
+              Mode comes first in Clox — chat, research, image, code, voice, video — because it changes what &lsquo;good&rsquo; looks like more than the model does. Click through to watch the workspace re-orient itself.
           </p>
         </SectionHead>
         <ModesShowcase />
@@ -728,7 +805,7 @@ export default function LandingPage() {
             unit="/ mo · billed annually"
             blurb="For writers, researchers, and people who actually finish things."
             features={[
-              'All five modes · all current models',
+              'All six modes · all current models',
               'Unlimited chats & private projects',
               'Voice in & out',
               'Knowledge — 50 docs',

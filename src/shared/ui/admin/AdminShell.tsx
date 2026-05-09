@@ -60,8 +60,6 @@ const SECTIONS: RailSection[] = [
       {
         label: 'Usage & cost',
         href: '/admin/usage',
-        count: '$8.4k',
-        disabled: true,
         icon: (
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M2 11h9M3 9V5M5 9V3M7 9V6M9 9V4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
@@ -72,7 +70,6 @@ const SECTIONS: RailSection[] = [
         label: 'System status',
         href: '/admin/status',
         dot: 'green',
-        disabled: true,
         icon: (
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.1" />
@@ -88,7 +85,6 @@ const SECTIONS: RailSection[] = [
       {
         label: 'Users',
         href: '/admin/users',
-        disabled: true,
         icon: (
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <circle cx="4.5" cy="4.5" r="2" stroke="currentColor" strokeWidth="1.1" />
@@ -97,19 +93,8 @@ const SECTIONS: RailSection[] = [
         ),
       },
       {
-        label: 'Workspaces',
-        href: '/admin/workspaces',
-        disabled: true,
-        icon: (
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-            <path d="M2 3h9v8H2zM2 6h9" stroke="currentColor" strokeWidth="1.1" />
-          </svg>
-        ),
-      },
-      {
         label: 'Billing',
         href: '/admin/billing',
-        disabled: true,
         icon: (
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M3 4h7M3 7h7M3 10h4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
@@ -143,7 +128,6 @@ const SECTIONS: RailSection[] = [
       {
         label: 'Feature flags',
         href: '/admin/flags',
-        disabled: true,
         icon: (
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M3 6h7M3 4h7M3 8h4" stroke="currentColor" strokeWidth="1.1" />
@@ -153,10 +137,19 @@ const SECTIONS: RailSection[] = [
       {
         label: 'Audit log',
         href: '/admin/audit',
-        disabled: true,
         icon: (
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M2 3h9v6H6L3 11.5V9H2z" stroke="currentColor" strokeWidth="1.1" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Content moderation',
+        href: '/admin/content-moderation',
+        icon: (
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M6.5 1.5 11 4v3.5c0 2.5-2 4.3-4.5 4.5C4 11.8 2 10 2 7.5V4z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+            <path d="M5 6.5 6 7.5 8.5 5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         ),
       },
@@ -227,18 +220,18 @@ export default function AdminShell({
 }: AdminShellProps) {
   const router = useRouter()
   const pathname = usePathname()
+  // Email shown in the rail footer; gated server-side by AdminLayout so
+  // we don't worry about the unauthenticated case here.
   const [adminEmail, setAdminEmail] = useState<string>('')
 
+  // Server-side `requireSuperAdmin` already gates this surface, so the only
+  // job here is to read the email for the rail footer.
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        router.push('/auth/login')
-        return
-      }
-      setAdminEmail(session.user.email ?? '')
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) setAdminEmail(user.email)
     })
-  }, [router])
+  }, [])
 
   const initial = adminEmail.charAt(0).toUpperCase() || 'a'
 

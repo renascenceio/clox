@@ -90,6 +90,20 @@ export interface TranscriptMessage {
 
 export type AppLanguage = 'en' | 'ru'
 
+/** A file attached to the next outgoing chat message. The page owns this list
+ *  and decides how to ship it (e.g. via useChat's `experimental_attachments`).
+ *  `dataUrl` is the canonical representation: it round-trips cleanly through
+ *  the AI SDK and avoids holding a File reference across re-renders. */
+export interface Attachment {
+  id: string
+  name: string
+  /** MIME type, e.g. `image/png`. Used to pick an icon and to decide whether
+   *  vision-capable models should see this as an image part. */
+  contentType: string
+  size: number
+  dataUrl: string
+}
+
 export interface ChatWorkspaceProps {
   // theming
   theme: PaletteKey
@@ -149,6 +163,14 @@ export interface ChatWorkspaceProps {
   onSend: () => void
   toolsCount?: number
   tokenEstimate?: { tokens: number; cost: string } | null
+
+  // Attachments — when wired, the attach button opens a file picker and the
+  // attached items render as inline chips above the composer. The page is
+  // responsible for shuttling them with the request (e.g. via useChat's
+  // `experimental_attachments`) and clearing the list on send.
+  attachments?: Attachment[]
+  onAttach?: (files: FileList) => void
+  onRemoveAttachment?: (id: string) => void
 
   // ⌘K palette
   cmdkGroups?: CommandPaletteGroup[]
@@ -212,6 +234,9 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     onSend,
     toolsCount = 0,
     tokenEstimate,
+    attachments,
+    onAttach,
+    onRemoveAttachment,
     cmdkGroups,
     systemPrompt,
     onChangeSystemPrompt,
@@ -353,6 +378,9 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
             onSend={onSend}
             toolsCount={toolsCount}
             tokenEstimate={tokenEstimate}
+            attachments={attachments}
+            onAttach={onAttach}
+            onRemoveAttachment={onRemoveAttachment}
           />
         ) : (
           <ComposerSlash
@@ -370,6 +398,9 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
             onSend={onSend}
             tokenEstimate={tokenEstimate}
             initialPaletteOpen={initialPaletteOpen}
+            attachments={attachments}
+            onAttach={onAttach}
+            onRemoveAttachment={onRemoveAttachment}
           />
         )}
         </>
@@ -1038,6 +1069,7 @@ function AiMsg({
 function ComposerChip({
   p, mono, serif, models, modes, model, setModel, mode, setMode, openMenu, setOpenMenu,
   inputValue, onInputChange, onSend, toolsCount, tokenEstimate,
+  attachments, onAttach, onRemoveAttachment,
 }: {
   p: Palette
   mono: string
@@ -1055,8 +1087,12 @@ function ComposerChip({
   onSend: () => void
   toolsCount: number
   tokenEstimate?: { tokens: number; cost: string } | null
+  attachments?: Attachment[]
+  onAttach?: (files: FileList) => void
+  onRemoveAttachment?: (id: string) => void
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [showSlash, setShowSlash] = useState(false)
 
   // auto-grow
@@ -1111,13 +1147,45 @@ function ComposerChip({
               <span style={{ color: p.inkMuted, marginRight: 6 }}>tools</span>
               <span style={{ color: p.ink }}>{toolsCount}</span>
             </Chip>
-            <Chip p={p} mono={mono}>
+            <Chip
+              p={p}
+              mono={mono}
+              active={Boolean(attachments && attachments.length > 0)}
+              onClick={onAttach ? () => fileInputRef.current?.click() : undefined}
+            >
               <span style={{ display: 'inline-flex', marginRight: 5 }}>{I.attach}</span>
-              <span style={{ color: p.ink }}>attach</span>
+              <span style={{ color: p.ink }}>
+                attach{attachments && attachments.length > 0 ? ` · ${attachments.length}` : ''}
+              </span>
             </Chip>
+            {/* Hidden file input the chip + slash buttons both proxy to. */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,application/pdf,text/*,.md,.csv,.json"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const files = e.target.files
+                if (files && files.length > 0) onAttach?.(files)
+                // Reset so re-selecting the same file fires onChange.
+                e.target.value = ''
+              }}
+            />
             <div style={{ flex: 1 }} />
             <span style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>⌘.&nbsp;config</span>
           </div>
+
+          {/* Attachment chips — render between the chip row and textarea so
+              the user can remove items before sending. */}
+          {attachments && attachments.length > 0 && (
+            <AttachmentStrip
+              p={p}
+              mono={mono}
+              attachments={attachments}
+              onRemove={onRemoveAttachment}
+            />
+          )}
 
           {/* textarea + voice + send */}
           <div style={{ display: 'flex', alignItems: 'flex-end', padding: '10px 14px 12px', gap: 8 }}>
@@ -1190,6 +1258,81 @@ function ComposerChip({
       </div>
     </div>
   )
+}
+
+/* =====================================================================
+   Attachment strip — renders the queued files as small chips above the
+   textarea. Image attachments show a thumbnail preview; everything else
+   shows a doc icon + filename. Each chip has a remove (×) affordance.
+   ===================================================================== */
+
+function AttachmentStrip({
+  p, mono, attachments, onRemove,
+}: {
+  p: Palette
+  mono: string
+  attachments: Attachment[]
+  onRemove?: (id: string) => void
+}) {
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', gap: 6,
+      padding: '10px 12px 0',
+    }}>
+      {attachments.map(a => {
+        const isImage = a.contentType.startsWith('image/')
+        return (
+          <div
+            key={a.id}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: isImage ? '3px 8px 3px 3px' : '4px 8px',
+              background: p.surfaceAlt,
+              border: `1px solid ${p.hairline}`,
+              borderRadius: 2,
+              fontFamily: mono, fontSize: 11,
+              maxWidth: 220,
+            }}
+            title={`${a.name} · ${formatBytes(a.size)}`}
+          >
+            {isImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={a.dataUrl}
+                alt={a.name}
+                style={{ width: 22, height: 22, objectFit: 'cover', borderRadius: 1, display: 'block' }}
+              />
+            ) : (
+              <span style={{ display: 'inline-flex', color: p.inkSoft }}>{I.doc}</span>
+            )}
+            <span style={{
+              color: p.ink, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+            }}>{a.name}</span>
+            {onRemove && (
+              <button
+                type="button"
+                aria-label={`Remove ${a.name}`}
+                onClick={() => onRemove(a.id)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 16, height: 16, borderRadius: 999,
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: p.inkMuted, padding: 0,
+                  fontSize: 14, lineHeight: 1,
+                }}
+              >×</button>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function Chip({ p, mono, children, active, onClick }: {
@@ -1288,6 +1431,7 @@ function ModeMenu({ p, mono, modes, mode, setMode, left = 12 }: {
 function ComposerSlash({
   p, mono, serif, models, modes, model, setModel, mode, setMode,
   inputValue, onInputChange, onSend, tokenEstimate, initialPaletteOpen,
+  attachments, onAttach, onRemoveAttachment,
 }: {
   p: Palette; mono: string; serif: string
   models: ModelOption[]; modes: ModeOption[]
@@ -1296,9 +1440,13 @@ function ComposerSlash({
   inputValue: string; onInputChange: (v: string) => void; onSend: () => void
   tokenEstimate?: { tokens: number; cost: string } | null
   initialPaletteOpen?: boolean
+  attachments?: Attachment[]
+  onAttach?: (files: FileList) => void
+  onRemoveAttachment?: (id: string) => void
 }) {
   const [showPalette, setShowPalette] = useState(initialPaletteOpen ?? false)
   const taRef = useRef<HTMLTextAreaElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => {
     const ta = taRef.current
     if (!ta) return
@@ -1341,6 +1489,14 @@ function ComposerSlash({
           transition: 'border-color .15s',
           position: 'relative',
         }}>
+          {attachments && attachments.length > 0 && (
+            <AttachmentStrip
+              p={p}
+              mono={mono}
+              attachments={attachments}
+              onRemove={onRemoveAttachment}
+            />
+          )}
           <textarea
             ref={taRef}
             value={inputValue}
@@ -1374,7 +1530,34 @@ function ComposerSlash({
             }} title="Command palette (/)">
               <span style={{ fontFamily: mono, fontSize: 12 }}>/</span>
             </button>
-            <button title="Attach" style={iconBtn(p, 28)}>{I.attach}</button>
+            <button
+              title="Attach files"
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                ...iconBtn(p, 28),
+                color: attachments && attachments.length > 0 ? p.ink : p.inkSoft,
+                borderColor: attachments && attachments.length > 0 ? p.ink : 'transparent',
+              }}
+            >
+              {I.attach}
+              {attachments && attachments.length > 0 && (
+                <span style={{ fontFamily: mono, fontSize: 10, marginLeft: 4 }}>
+                  {attachments.length}
+                </span>
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,application/pdf,text/*,.md,.csv,.json"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const files = e.target.files
+                if (files && files.length > 0) onAttach?.(files)
+                e.target.value = ''
+              }}
+            />
             <div style={{ flex: 1 }} />
             <button title="Voice input" style={iconBtn(p, 28)}>{I.mic}</button>
             <button onClick={onSend} disabled={!inputValue.trim()} style={{

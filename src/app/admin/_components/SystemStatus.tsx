@@ -1,112 +1,110 @@
 'use client'
 
 /**
- * SystemStatus — uptime panel.
+ * SystemStatus — provider/usage signals computed from /api/admin/dashboard.
  *
- * Each system is a row: name (with status dot) + a last-32-bars uptime
- * histogram + the 30-day uptime percentage. Bar tones encode incidents
- * (green / amber / red) so glanceable by color.
+ * We don't store latency or per-call errors yet. The honest signals we *do*
+ * have are 30d call counts + active users + per-provider 24h rollups, all
+ * fetched once by the parent dashboard and piped down. Every row is a calm
+ * "ok" / "idle" with no fake red bars.
  */
 
-type Tone = 'green' | 'amber' | 'red'
-type SysRow = {
-  name: string
-  up: number
-  tone: Tone
-  bars: Tone[] // length 32 (last 32 buckets)
+interface ProviderRow {
+  provider: string
+  calls_24h: number
+  cost_24h: number
 }
 
-// Helpers for compact bar definitions.
-const G = (n: number): Tone[] => Array(n).fill('green' as const)
-const A = (n: number): Tone[] => Array(n).fill('amber' as const)
+export default function SystemStatus({
+  calls30d,
+  activeUsers30d,
+  providers,
+}: {
+  calls30d: number
+  activeUsers30d: number
+  providers: ProviderRow[]
+}) {
+  type Tone = 'green' | 'amber' | 'red' | 'idle'
+  const aggregates: Array<{ name: string; meta: string; tone: Tone }> = [
+    {
+      name: 'Inference traffic — 30d',
+      meta: `${formatCount(calls30d)} calls · ${activeUsers30d} active users`,
+      tone: calls30d > 0 ? 'green' : 'idle',
+    },
+    {
+      name: 'Auth · sessions',
+      meta: 'served by Supabase',
+      tone: 'green',
+    },
+    {
+      name: 'Vector store',
+      meta: 'no embeddings indexed yet',
+      tone: 'idle',
+    },
+  ]
 
-const SYSTEMS: SysRow[] = [
-  { name: 'Inference — Sonnet 4.5', up: 99.98, tone: 'green', bars: G(32) },
-  {
-    name: 'Inference — Opus 4',
-    up: 99.94,
-    tone: 'green',
-    bars: [...G(26), 'amber', 'amber', ...G(4)] as Tone[],
-  },
-  { name: 'Inference — Haiku 4.5', up: 99.99, tone: 'green', bars: G(32) },
-  {
-    name: 'Vector store',
-    up: 99.91,
-    tone: 'green',
-    bars: [...G(22), 'amber', ...G(9)] as Tone[],
-  },
-  {
-    name: 'Web search tool',
-    up: 97.42,
-    tone: 'amber',
-    bars: [...G(20), ...A(2), 'red', ...A(2), ...G(7)] as Tone[],
-  },
-  {
-    name: 'Voice — synth',
-    up: 99.74,
-    tone: 'green',
-    bars: [...G(20), 'amber', 'amber', ...G(10)] as Tone[],
-  },
-  { name: 'Auth · SSO', up: 100.0, tone: 'green', bars: G(32) },
-]
+  return (
+    <div>
+      {aggregates.map(s => (
+        <div key={s.name} className="grid grid-cols-[1fr_auto] gap-3 items-center px-[18px] py-3 border-b border-hairline-soft">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <StatusDot tone={s.tone} />
+            <div className="min-w-0">
+              <div className="font-serif italic text-[15px] truncate">{s.name}</div>
+              <div className="font-mono text-[10px] text-ink-muted tracking-[0.04em] truncate">{s.meta}</div>
+            </div>
+          </div>
+          <span className="font-mono text-[10.5px] text-ink-muted tracking-[0.06em] uppercase">
+            {s.tone === 'green' ? 'ok' : s.tone === 'amber' ? 'degraded' : 'idle'}
+          </span>
+        </div>
+      ))}
 
-function StatusDot({ tone }: { tone: Tone }) {
-  const styles: Record<Tone, { bg: string; ring: string }> = {
-    green: { bg: 'rgb(47 143 95)', ring: 'rgba(47,143,95,0.12)' },
+      <div className="px-[18px] pt-3 pb-1.5 font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted">
+        providers · 24h
+      </div>
+      {providers.length === 0 ? (
+        <div className="px-[18px] py-3 font-mono text-[11px] text-ink-muted">no provider activity in 24h</div>
+      ) : (
+        providers.map((p, idx) => (
+          <div
+            key={p.provider}
+            className={`grid grid-cols-[1fr_auto_auto] gap-3 items-center px-[18px] py-2.5 ${
+              idx === providers.length - 1 ? '' : 'border-b border-hairline-soft'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <StatusDot tone={p.calls_24h > 0 ? 'green' : 'idle'} />
+              <span className="font-mono text-[12px]">{p.provider || '—'}</span>
+            </div>
+            <span className="font-mono text-[10.5px] text-ink-muted">{p.calls_24h} calls</span>
+            <span className="font-mono text-[10.5px] text-ink">${p.cost_24h.toFixed(2)}</span>
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
+
+function StatusDot({ tone }: { tone: 'green' | 'amber' | 'red' | 'idle' }) {
+  const map = {
+    green: { bg: 'rgb(47 143 95)',  ring: 'rgba(47,143,95,0.12)' },
     amber: { bg: 'rgb(185 138 43)', ring: 'rgba(185,138,43,0.12)' },
-    red: { bg: 'rgb(181 58 40)', ring: 'rgba(181,58,40,0.12)' },
-  }
-  const { bg, ring } = styles[tone]
+    red:   { bg: 'rgb(181 58 40)',  ring: 'rgba(181,58,40,0.12)' },
+    idle:  { bg: 'rgb(142 140 134)', ring: 'rgba(142,140,134,0.12)' },
+  } as const
+  const { bg, ring } = map[tone]
   return (
     <span
-      className="inline-block w-[7px] h-[7px] rounded-full"
+      className="inline-block w-[7px] h-[7px] rounded-full flex-shrink-0"
       style={{ background: bg, boxShadow: `0 0 0 4px ${ring}` }}
       aria-hidden
     />
   )
 }
 
-function Bars({ bars }: { bars: Tone[] }) {
-  return (
-    <div className="flex gap-0.5" aria-hidden>
-      {bars.map((b, i) => (
-        <span
-          key={i}
-          className="w-1 h-[18px] rounded-[1px]"
-          style={{
-            background:
-              b === 'green'
-                ? 'rgb(47 143 95)'
-                : b === 'amber'
-                  ? 'rgb(185 138 43)'
-                  : 'rgb(181 58 40)',
-          }}
-        />
-      ))}
-    </div>
-  )
-}
-
-export default function SystemStatus() {
-  return (
-    <div>
-      {SYSTEMS.map((s, idx) => (
-        <div
-          key={s.name}
-          className={`grid grid-cols-[1fr_auto_auto] gap-3 items-center px-[18px] py-3 ${
-            idx === SYSTEMS.length - 1 ? '' : 'border-b border-hairline-soft'
-          }`}
-        >
-          <div className="flex items-center gap-2.5 font-serif italic text-base">
-            <StatusDot tone={s.tone} />
-            <span>{s.name}</span>
-          </div>
-          <Bars bars={s.bars} />
-          <div className="font-mono text-[10.5px] text-ink-muted tracking-[0.04em]">
-            <b className="text-ink font-medium">{s.up.toFixed(2)}%</b> · 30d
-          </div>
-        </div>
-      ))}
-    </div>
-  )
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
 }
