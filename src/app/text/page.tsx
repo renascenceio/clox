@@ -38,6 +38,7 @@ import { useAvailableModels } from '@/lib/use-available-models'
 import { getAdminSettings, getProviderApiKey } from '@/lib/admin-settings'
 import { createClient } from '@/lib/supabase/client'
 import {
+  createChat,
   ensureActiveChat,
   getActiveChatId,
   listChats,
@@ -154,19 +155,31 @@ export default function TextPage() {
 
   // Recent chats — refreshed when the chat store mutates. Scoped to the
   // active modality so flipping into "image" surfaces image threads, etc.
+  //
+  // Two events keep this in sync:
+  //   • `storage`            — mutations from OTHER tabs (cross-tab sync)
+  //   • `clox-chats-changed` — mutations from THIS tab (the chat-store
+  //     dispatches this custom event after every saveChats() call).
+  // Listening to only `storage` was the bug — it never fires in the same
+  // tab that wrote the value, so creating a new chat would persist but
+  // the sidebar wouldn't show it until a full reload.
   const [recentChats, setRecentChats] = useState<Chat[]>([])
   useEffect(() => {
     function refresh() {
       setRecentChats(
         listChats()
-          .filter(c => (c.modality ?? 'text') === modality)
+          .filter(c => (c.modality ?? 'text') === modality && !c.archived)
           .sort((a, b) => b.createdAt - a.createdAt)
           .slice(0, 8)
       )
     }
     refresh()
     window.addEventListener('storage', refresh)
-    return () => window.removeEventListener('storage', refresh)
+    window.addEventListener('clox-chats-changed', refresh as EventListener)
+    return () => {
+      window.removeEventListener('storage', refresh)
+      window.removeEventListener('clox-chats-changed', refresh as EventListener)
+    }
   }, [activeChatId, modality])
 
   /* ----- per-chat config (system prompt, params) -------------------- */
@@ -868,9 +881,20 @@ export default function TextPage() {
   ]), [recentChats, router])
 
   function handleNewChat() {
-    const c = ensureActiveChat(modality, 'New thread', selectedModel.name)
-    setActiveChatIdState(c.id)
-    persistActiveChatId(modality, c.id)
+    // Always create a fresh thread — `ensureActiveChat` would silently
+    // return the *current* chat if it matches the modality, which is
+    // why the "New chat" button was a no-op (the existing thread was
+    // reused, no new row appeared in the sidebar). Going through
+    // `createChat` directly fires `clox-chats-changed`, which the
+    // recent-list effect now listens for, so the new thread shows up
+    // immediately without a reload.
+    const fresh = createChat({
+      modality,
+      title: 'New Chat',
+      model: selectedModel.name,
+    })
+    setActiveChatIdState(fresh.id)
+    persistActiveChatId(modality, fresh.id)
     setMessages?.([])
   }
 
@@ -1015,6 +1039,11 @@ export default function TextPage() {
         nav={nav}
         recent={recent}
         onNewChat={handleNewChat}
+        // "See all →" in the sidebar header. Without this prop the
+        // button rendered but did nothing on click, which felt broken.
+        // We send users to the dedicated history page where they can
+        // search / filter / archive across every modality.
+        onSeeAllRecent={() => router.push('/history')}
         breadcrumb={breadcrumb}
         title={topTitle}
         onShare={handleShare}
