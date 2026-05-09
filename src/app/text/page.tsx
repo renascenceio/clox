@@ -1,7 +1,7 @@
 'use client'
 
 import { useChat } from '@ai-sdk/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 
@@ -303,6 +303,17 @@ export default function TextPage() {
       : skillsBlock
   }, [systemPrompt, dbSkills.skills, dbSkills.activeIds])
 
+  /* ----- per-message model byline ------------------------------------
+     Each assistant message must show the model that *actually* produced
+     it, not whatever is currently selected in the picker. We capture the
+     active model label at submit-time into a FIFO ref, then pop it off
+     when the matching `onFinish` fires and stamp it onto the message
+     under a `clox_model` field. The custom field rides through the
+     existing localStorage round-trip (we already serialise the whole
+     message) so historic transcripts keep their correct byline across
+     reloads. */
+  const pendingModelRef = useRef<string[]>([])
+
   const chat = useChat({
     id: activeChatId,
     api: '/api/chat',
@@ -315,6 +326,17 @@ export default function TextPage() {
       apiKey: currentApiKey,
     },
     onError: error => console.error('[v0] chat api error:', error),
+    onFinish: (message: { id?: string }) => {
+      // The label was pushed in handleSend right before handleSubmit, so
+      // the head of the queue corresponds to this finishing message even
+      // if the user has since changed model in the picker.
+      const label = pendingModelRef.current.shift()
+      if (!label || !message?.id) return
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(chat as any).setMessages?.((prev: Array<Record<string, unknown>>) =>
+        prev.map(m => (m.id === message.id ? { ...m, clox_model: label } : m)),
+      )
+    },
   })
 
   // Cast through `any` because @ai-sdk/react types differ across versions.
@@ -424,6 +446,11 @@ export default function TextPage() {
     }
 
     if (modality === 'text') {
+      // Snapshot the model the user is sending with so the message byline
+      // sticks even if they change the picker before the response finishes.
+      pendingModelRef.current.push(
+        shortName(selectedTextModel.version, selectedTextModel.name),
+      )
       const expAttachments = attachments.length > 0
         ? attachments.map(a => ({ name: a.name, contentType: a.contentType, url: a.dataUrl }))
         : undefined
@@ -437,15 +464,18 @@ export default function TextPage() {
 
     // ---- media path -----------------------------------------------
     // Append a user message and a placeholder assistant message; we'll
-    // patch the assistant placeholder when the result arrives.
+    // patch the assistant placeholder when the result arrives. We stamp
+    // the model label on the placeholder up front because the media
+    // pipeline doesn't go through useChat / onFinish.
     const userId = `u-${Date.now()}`
     const aiId   = `a-${Date.now()}`
+    const mediaModelLabel = shortName(selectedModel.version, selectedModel.name)
     setMessages?.((prev: unknown[]) => [
       ...(prev as unknown[]),
       { id: userId, role: 'user',      content: promptText, createdAt: new Date() },
       { id: aiId,   role: 'assistant', content: '', createdAt: new Date(),
         // Custom slot the transcript renderer below recognises.
-        clox_pending: true, clox_modality: modality },
+        clox_pending: true, clox_modality: modality, clox_model: mediaModelLabel },
     ])
     setInput('')
 
@@ -634,11 +664,17 @@ export default function TextPage() {
         )
       }
 
+      // Prefer the model label that was captured at the time this
+      // message was generated. We only fall back to the live picker
+      // for an in-flight assistant response that hasn't reached
+      // `onFinish` yet (i.e. it never got `clox_model` stamped).
+      const stampedModel = typeof m.clox_model === 'string' ? m.clox_model : undefined
+
       return {
         id: m.id ?? `a-${i}`,
         who: 'ai' as const,
         time,
-        model: shortName(selectedModel.version, selectedModel.name),
+        model: stampedModel ?? shortName(selectedModel.version, selectedModel.name),
         body,
       }
     })
