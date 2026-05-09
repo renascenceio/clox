@@ -1479,7 +1479,14 @@ function ModelMenu({ p, mono, serif, models, model, setModel, left = 12 }: {
       width: 280, background: p.surface,
       border: `1px solid ${p.hairline}`, borderRadius: 3,
       boxShadow: `0 12px 40px ${p.bg === '#14130E' ? 'rgba(0,0,0,.45)' : 'rgba(22,20,16,.10)'}`,
-      padding: '6px 0', zIndex: 10, maxHeight: 320, overflow: 'auto',
+      padding: '6px 0', zIndex: 10,
+      // The video registry has 14+ models (Sora, Luma, Runway, Pika,
+      // Haiper, Kling, HeyGen, Synthesia, D-ID, etc.) — capping at the
+      // old 320px hid roughly half the list below an unobvious scroll
+      // boundary. Switching to a vh-based ceiling lets every connected
+      // *and* disconnected model fit in view on a normal-height screen,
+      // while still leaving headroom on small viewports.
+      maxHeight: 'min(70vh, 640px)', overflow: 'auto',
     }}>
       <div style={{ padding: '8px 14px 4px', fontFamily: mono, fontSize: 9.5, letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted }}>select model</div>
       {models.map(m => {
