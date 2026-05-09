@@ -3,11 +3,11 @@
 import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
 import UnifiedControlsPanel from '@/shared/ui/layout/UnifiedControlsPanel'
+import MediaComposer from '@/shared/ui/layout/MediaComposer'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { cardVariant, stagger } from '@/shared/ui/layout/AppLayout'
 import { AUDIO_MODELS, AUDIO_DURATIONS, AUDIO_QUALITY } from '@/domains/audio-generation/services/audio-models'
-import { useRouter } from 'next/navigation'
 import { useAvailableModels } from '@/lib/use-available-models'
 import { getProviderApiKey } from '@/lib/admin-settings'
 import {
@@ -18,8 +18,6 @@ import {
   loadHistory,
   saveHistory,
 } from '@/lib/chat-store'
-
-type AIType = 'text' | 'image' | 'video' | 'audio'
 
 interface AudioClip {
   id: string
@@ -34,7 +32,6 @@ interface AudioClip {
 const GALLERY_KEY = 'clox_audio_gallery'
 
 export default function AudioPage() {
-  const router = useRouter()
   const availableModels = useAvailableModels(AUDIO_MODELS)
   const [selectedModel, setSelectedModel] = useState<typeof AUDIO_MODELS[number]>(availableModels[0] ?? AUDIO_MODELS[0])
   const [selectedDuration, setSelectedDuration] = useState(30)
@@ -44,21 +41,14 @@ export default function AudioPage() {
   const [statusText, setStatusText] = useState('')
   const [audios, setAudios] = useState<AudioClip[]>([])
   const [errorMessage, setErrorMessage] = useState('')
-  const [activeAIType, setActiveAIType] = useState<AIType>('audio')
   const [activeChatId, setActiveChatIdState] = useState<string | null>(null)
 
-  // Keep selection in sync with available models. When the current selection
-  // disappears from the connected list (e.g. provider status finishes loading
-  // and the default ElevenLabs model drops out because no key is set), jump
-  // to the first actually-available model so the next generation uses a live
-  // backend instead of erroring out.
   useEffect(() => {
     if (!availableModels.find(m => m.id === selectedModel.id) && availableModels[0]) {
       setSelectedModel(availableModels[0])
     }
   }, [availableModels, selectedModel.id])
 
-  // Hydrate active chat + saved generations on mount.
   useEffect(() => {
     const id = getActiveChatId('audio')
     setActiveChatIdState(id)
@@ -75,7 +65,6 @@ export default function AudioPage() {
     e.preventDefault()
     if (!prompt.trim() || isGenerating) return
 
-    // Create a chat on first send so it shows up in the sidebar immediately.
     const chat = ensureActiveChat('audio', prompt, selectedModel.brandName)
     if (chat.id !== activeChatId) {
       setActiveChatIdState(chat.id)
@@ -96,10 +85,7 @@ export default function AudioPage() {
     const timers = stages.map(s => setTimeout(() => setStatusText(s.text), s.delay))
 
     try {
-      // Forward an optional local key (if saved in Super Admin). Server already
-      // reads env vars first, so most of the time this is undefined.
       const clientApiKey = getProviderApiKey(selectedModel.provider)
-
       const res = await fetch('/api/generate-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -120,8 +106,6 @@ export default function AudioPage() {
         prompt,
         brand: selectedModel.brandName,
         version: selectedModel.version || selectedModel.name,
-        // Prefer the *real* duration the provider returned (in seconds) over
-        // the user's requested target, which isn't always honoured.
         duration: Math.round(data.durationSec ?? selectedDuration),
         createdAt: Date.now(),
       }
@@ -144,29 +128,13 @@ export default function AudioPage() {
     const raw = localStorage.getItem(GALLERY_KEY)
     const existing = raw ? JSON.parse(raw) as AudioClip[] : []
     localStorage.setItem(GALLERY_KEY, JSON.stringify([clip, ...existing]))
-    setStatusText('Saved to gallery')
+    setStatusText('saved')
     setTimeout(() => setStatusText(''), 1500)
   }
 
   const handleRefine = (clip: AudioClip) => {
     setPrompt(clip.prompt)
-    // Scroll the prompt into view
-    setTimeout(() => {
-      const ta = document.querySelector<HTMLTextAreaElement>('textarea')
-      ta?.focus()
-    }, 50)
-  }
-
-  const handleAITypeChange = (type: AIType) => {
-    setActiveAIType(type)
-    router.push(`/${type}`)
-  }
-
-  const aiTypeIcons = {
-    text: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
-    image: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
-    video: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>,
-    audio: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>,
+    setTimeout(() => document.querySelector<HTMLTextAreaElement>('textarea')?.focus(), 50)
   }
 
   const settingsPanel = (
@@ -185,117 +153,137 @@ export default function AudioPage() {
   )
 
   const sidebar = (
-    <ChatSidebar
-      modality="audio"
-      activeChatId={activeChatId ?? undefined}
-      onChatSelect={handleChatSelect}
-    />
+    <ChatSidebar modality="audio" activeChatId={activeChatId ?? undefined} onChatSelect={handleChatSelect} />
   )
+
+  const topTitle =
+    audios.length > 0
+      ? audios[0].prompt.split('\n')[0].slice(0, 64)
+      : 'New track'
 
   return (
     <AppLayout sidebar={sidebar} rightPanel={settingsPanel}>
-      <div className="flex flex-col h-full max-w-4xl mx-auto px-4 pt-10 pb-48">
-        {errorMessage && (
-          <div className="mb-4 p-4 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-hig-lg flex items-center gap-3">
-            <p className="flex-1 text-sm font-medium text-red-800 dark:text-red-200">{errorMessage}</p>
-            <button onClick={() => setErrorMessage('')} className="text-red-600 dark:text-red-400">✕</button>
+      <header className="flex items-center justify-between px-8 pt-5 pb-4 border-b border-hairline-soft">
+        <div className="min-w-0">
+          <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-muted">
+            audio · {selectedModel.brandName.toLowerCase()}
           </div>
-        )}
+          <h1 className="font-serif italic text-[26px] leading-tight tracking-[-0.005em] text-ink truncate mt-1">
+            {topTitle}
+          </h1>
+        </div>
+        <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted hidden md:inline">
+          {selectedDuration}s · {selectedQuality}
+        </span>
+      </header>
 
-        <motion.div variants={stagger} initial="initial" animate="animate" className="grid grid-cols-1 gap-6 flex-grow">
-          {/* Progress indicator */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="max-w-[820px] mx-auto px-8 pt-8 pb-[260px] space-y-6">
+
+          {errorMessage && (
+            <div className="px-4 py-3 border border-hairline bg-surface-alt rounded-sharp flex items-center gap-3">
+              <span className="font-mono text-[10px] tracking-[0.04em] uppercase text-accent">error</span>
+              <p className="flex-1 text-[13px] text-ink">{errorMessage}</p>
+              <button onClick={() => setErrorMessage('')} className="font-mono text-[11px] text-ink-muted hover:text-ink">×</button>
+            </div>
+          )}
+
           {isGenerating && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-surface dark:bg-surface-tertiary border border-separator rounded-2xl p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-apple-teal flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" /></svg>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 text-sm font-medium text-label-primary">
-                    <span className="w-2 h-2 rounded-full bg-apple-teal animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-2 h-2 rounded-full bg-apple-teal animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-2 h-2 rounded-full bg-apple-teal animate-bounce" style={{ animationDelay: '300ms' }} />
-                    <span className="ml-1">{statusText || `${selectedModel.brandName} is generating…`}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-label-tertiary">{selectedModel.brandName} {selectedModel.version} · {selectedDuration}s · {selectedQuality}</p>
-                </div>
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+              className="bg-surface border border-hairline rounded-card px-5 py-4">
+              <div className="flex items-baseline gap-3">
+                <span className="font-serif italic text-[15px] text-accent">Clox</span>
+                <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted">
+                  {statusText || `${selectedModel.brandName.toLowerCase()} is composing`}
+                  <span className="ml-1 inline-flex gap-0.5">
+                    <span className="w-1 h-1 rounded-full bg-ink-muted animate-pulse" />
+                    <span className="w-1 h-1 rounded-full bg-ink-muted animate-pulse" style={{ animationDelay: '120ms' }} />
+                    <span className="w-1 h-1 rounded-full bg-ink-muted animate-pulse" style={{ animationDelay: '240ms' }} />
+                  </span>
+                </span>
+              </div>
+              <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted mt-2">
+                {selectedModel.brandName.toLowerCase()} · {selectedModel.version} · {selectedDuration}s · {selectedQuality}
               </div>
             </motion.div>
           )}
 
-          <AnimatePresence>
-            {audios.map(a => (
-              <motion.div key={a.id} variants={cardVariant} className="bg-surface dark:bg-surface-tertiary border border-separator rounded-2xl overflow-hidden shadow-sm p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-full bg-apple-teal flex items-center justify-center text-white shrink-0">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                  </div>
-                  <div className="flex-grow min-w-0">
-                    <p className="text-sm font-medium line-clamp-2">{a.prompt}</p>
-                    <audio src={a.url} controls className="mt-3 w-full" />
-                    <div className="mt-3 flex justify-between items-center text-[11px] text-label-secondary uppercase font-bold tracking-tight">
-                      <span>{a.brand} · {a.version}</span>
-                      <span>{a.duration}s</span>
-                    </div>
-                    <div className="mt-3 flex items-center gap-2">
-                      <button onClick={() => handleRefine(a)} className="h-8 px-3 rounded-lg text-xs font-semibold bg-fill/40 hover:bg-fill/60 transition-colors">
-                        Reply / Refine
-                      </button>
-                      <button onClick={() => handleSaveToGallery(a)} className="h-8 px-3 rounded-lg text-xs font-semibold bg-apple-teal/10 text-apple-teal hover:bg-apple-teal/20 transition-colors">
-                        Save to Gallery
-                      </button>
-                      <a href={a.url} download className="h-8 px-3 rounded-lg text-xs font-semibold bg-fill/40 hover:bg-fill/60 transition-colors inline-flex items-center">
-                        Download
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </motion.div>
-
-        {/* Message Input with Integrated Tabs */}
-        <div className="fixed bottom-0 left-[304px] right-[368px] p-6 bg-gradient-to-t from-surface-secondary/95 via-surface-secondary/90 to-transparent dark:from-surface-secondary/95 dark:via-surface-secondary/90 dark:to-transparent backdrop-blur-sm pointer-events-none">
-          <div className="max-w-4xl mx-auto pointer-events-auto">
-            <div className="glass-float rounded-hig-2xl shadow-float overflow-hidden border border-separator/50">
-              <div className="flex items-center border-b border-separator/30 bg-surface-secondary/40 dark:bg-[#2C2C2E]/40 backdrop-blur-sm">
-                {(['text', 'image', 'video', 'audio'] as AIType[]).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => handleAITypeChange(type)}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-bold text-xs uppercase tracking-wider transition-all border-b-2 ${
-                      activeAIType === type
-                        ? 'border-apple-teal bg-white dark:bg-[#2C2C2E] text-apple-teal'
-                        : 'border-transparent text-label-tertiary hover:text-label-primary hover:bg-white/30 dark:hover:bg-[#2C2C2E]/30'
-                    }`}
-                  >
-                    {aiTypeIcons[type]}
-                    <span>{type}</span>
-                  </button>
-                ))}
-              </div>
-
-              <form onSubmit={handleGenerate} className="relative">
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Describe your sound or enter text for TTS…"
-                  className="w-full min-h-[80px] max-h-[240px] p-6 pr-16 bg-white dark:bg-[#2C2C2E] outline-none resize-none font-medium placeholder:text-label-tertiary text-label-primary"
-                  rows={1}
-                />
-                <button
-                  type="submit"
-                  className="absolute right-4 bottom-4 w-12 h-12 flex items-center justify-center bg-apple-teal text-white rounded-hig-xl shadow-apple-teal disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
-                  disabled={isGenerating}
-                >
-                  <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M8 3.33331V12.6666M8 3.33331L4 7.33331M8 3.33331L12 7.33331" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </button>
-              </form>
+          {audios.length === 0 && !isGenerating && (
+            <div className="text-center py-24">
+              <div className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-muted mb-4">begin</div>
+              <h2 className="font-serif italic text-[40px] leading-[1.1] tracking-[-0.01em] text-ink max-w-[520px] mx-auto">
+                A line spoken. A theme played. A sound made.
+              </h2>
             </div>
-          </div>
+          )}
+
+          <motion.div variants={stagger} initial="initial" animate="animate" className="space-y-4">
+            <AnimatePresence>
+              {audios.map((a, idx) => (
+                <motion.figure
+                  key={a.id}
+                  variants={cardVariant}
+                  className="bg-surface border border-hairline px-5 py-4"
+                >
+                  <div className="flex items-baseline gap-3 mb-2">
+                    <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted">
+                      №{String(audios.length - idx).padStart(3, '0')}
+                    </span>
+                    <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted">
+                      {a.brand.toLowerCase()} · {a.version.toLowerCase()} · {a.duration}s
+                    </span>
+                  </div>
+                  <p className="font-serif italic text-[15px] leading-[1.4] text-ink mb-3 line-clamp-2">
+                    {a.prompt}
+                  </p>
+                  <audio src={a.url} controls className="w-full" />
+                  <div className="mt-3 flex">
+                    <button
+                      onClick={() => handleRefine(a)}
+                      className="flex-1 h-8 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft hover:text-ink hover:bg-rail-soft border-r border-hairline-soft transition-colors"
+                    >
+                      refine
+                    </button>
+                    <button
+                      onClick={() => handleSaveToGallery(a)}
+                      className="flex-1 h-8 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft hover:text-ink hover:bg-rail-soft border-r border-hairline-soft transition-colors"
+                    >
+                      save
+                    </button>
+                    <a
+                      href={a.url}
+                      download
+                      className="flex-1 h-8 inline-flex items-center justify-center font-mono text-[10px] tracking-[0.18em] uppercase text-ink-soft hover:text-ink hover:bg-rail-soft transition-colors"
+                    >
+                      download ↓
+                    </a>
+                  </div>
+                </motion.figure>
+              ))}
+            </AnimatePresence>
+          </motion.div>
         </div>
       </div>
+
+      {statusText && !isGenerating && (
+        <div className="absolute top-20 right-8 px-3 h-7 inline-flex items-center bg-ink text-bg font-mono text-[10px] tracking-[0.18em] uppercase z-40">
+          {statusText}
+        </div>
+      )}
+
+      <MediaComposer
+        activeType="audio"
+        prompt={prompt}
+        onPromptChange={setPrompt}
+        onSubmit={handleGenerate}
+        isGenerating={isGenerating}
+        meta={[
+          (selectedModel.version || selectedModel.name).toLowerCase(),
+          `${selectedDuration}s`,
+          selectedQuality,
+        ]}
+        placeholder="A line to speak. A theme to play. A sound to make."
+      />
     </AppLayout>
   )
 }

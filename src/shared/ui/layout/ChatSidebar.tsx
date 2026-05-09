@@ -226,9 +226,9 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
 
         {/* Projects */}
         {filteredChats.filter(c => c.type === 'project').length > 0 && (
-          <div className="space-y-1">
-            <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest">
-              Projects
+          <div className="space-y-0.5">
+            <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted px-4 mb-1.5">
+              projects
             </div>
             <div className="space-y-2">
               {filteredChats.filter(c => c.type === 'project').map(project => (
@@ -255,7 +255,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                         e.stopPropagation()
                         openProjectSettings(project.id)
                       }}
-                      className="p-1.5 rounded-lg hover:bg-surface-tertiary dark:hover:bg-surface text-label-tertiary hover:text-mint dark:hover:text-teal transition-colors"
+                      className="p-1.5 hover:bg-rail-soft text-ink-muted hover:text-ink transition-colors"
                       title="Project Settings"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -266,7 +266,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                   </div>
                   {/* Chats within this project */}
                   {getChatsByProject(project.id).length > 0 && (
-                    <div className="ml-4 pl-3 border-l border-separator/30 space-y-0.5">
+                    <div className="ml-7 pl-3 border-l border-hairline-soft space-y-0">
                       {getChatsByProject(project.id).map(chat => (
                         <SidebarItem
                           key={chat.id}
@@ -294,9 +294,9 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
 
         {/* Folders */}
         {folders.length > 0 && (
-          <div className="space-y-1">
-            <div className="text-[10px] font-bold text-label-secondary px-3 mb-2 uppercase tracking-widest">
-              Folders
+          <div className="space-y-0.5">
+            <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted px-4 mb-1.5">
+              folders
             </div>
             <div className="space-y-0.5">
               {folders.map(folder => (
@@ -324,27 +324,25 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
 
       {/* Project Settings Modal */}
       {showProjectSettings && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowProjectSettings(null)}>
-          <div className="bg-surface-secondary dark:bg-[#2C2C2E] rounded-hig-2xl border border-separator shadow-float w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-separator">
-              <h3 className="text-lg font-bold text-label-primary">Project Settings</h3>
-              <p className="text-xs text-label-tertiary mt-1">Configure default settings for this project</p>
+        <div className="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowProjectSettings(null)}>
+          <div className="bg-surface border border-hairline w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-hairline">
+              <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">project</div>
+              <h3 className="font-serif italic text-2xl text-ink mt-1">Settings</h3>
             </div>
-            <div className="p-6 space-y-4">
-              {/* System Prompt */}
+            <div className="px-6 py-5 space-y-5">
               <div>
-                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">System Prompt</label>
+                <label className="block font-mono text-[10px] tracking-[0.04em] text-ink-muted mb-2 uppercase">system prompt</label>
                 <textarea
                   value={projectSettings.systemPrompt}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, systemPrompt: e.target.value }))}
                   placeholder="Enter a system prompt for this project..."
-                  className="w-full h-24 p-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-sm outline-none focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20 resize-none"
+                  className="w-full h-24 p-3 bg-bg border border-hairline rounded-card text-sm text-ink outline-none focus:border-ink/40 resize-none"
                 />
               </div>
-              {/* Temperature */}
               <div>
-                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">
-                  Temperature: {projectSettings.temperature}
+                <label className="block font-mono text-[10px] tracking-[0.04em] text-ink-muted mb-2 uppercase">
+                  temperature — {projectSettings.temperature}
                 </label>
                 <input
                   type="range"
@@ -353,13 +351,12 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                   step="0.1"
                   value={projectSettings.temperature}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))}
-                  className="w-full accent-mint dark:accent-teal"
+                  className="w-full accent-accent"
                 />
               </div>
-              {/* Max Tokens */}
               <div>
-                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">
-                  Max Tokens: {projectSettings.maxTokens}
+                <label className="block font-mono text-[10px] tracking-[0.04em] text-ink-muted mb-2 uppercase">
+                  max tokens — {projectSettings.maxTokens}
                 </label>
                 <input
                   type="range"
@@ -368,16 +365,15 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                   step="256"
                   value={projectSettings.maxTokens}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, maxTokens: parseInt(e.target.value) }))}
-                  className="w-full accent-mint dark:accent-teal"
+                  className="w-full accent-accent"
                 />
               </div>
-              {/* Model Selection */}
               <div>
-                <label className="block text-xs font-bold text-label-secondary mb-2 uppercase tracking-widest">Default Model</label>
+                <label className="block font-mono text-[10px] tracking-[0.04em] text-ink-muted mb-2 uppercase">default model</label>
                 <select
                   value={projectSettings.modelId}
                   onChange={(e) => setProjectSettings(prev => ({ ...prev, modelId: e.target.value }))}
-                  className="w-full p-3 bg-surface-tertiary dark:bg-surface border border-separator/30 rounded-hig-lg text-sm outline-none focus:ring-2 focus:ring-mint/20 dark:focus:ring-teal/20"
+                  className="w-full p-3 bg-bg border border-hairline rounded-card text-sm text-ink outline-none focus:border-ink/40"
                 >
                   <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                   <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
@@ -387,18 +383,18 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                 </select>
               </div>
             </div>
-            <div className="p-6 border-t border-separator flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-hairline flex justify-end gap-2">
               <button
                 onClick={() => setShowProjectSettings(null)}
-                className="px-4 py-2 text-sm font-bold text-label-primary hover:bg-surface-tertiary dark:hover:bg-surface rounded-hig-lg transition-colors"
+                className="px-4 py-2 font-mono text-[11px] tracking-[0.04em] uppercase text-ink-soft hover:text-ink transition-colors"
               >
-                Cancel
+                cancel
               </button>
               <button
                 onClick={saveProjectSettings}
-                className="px-4 py-2 text-sm font-bold gradient-mint-teal text-white rounded-hig-lg shadow-mint-glow hover:scale-105 transition-transform"
+                className="px-4 py-2 font-mono text-[11px] tracking-[0.04em] uppercase bg-ink text-bg hover:bg-ink-soft transition-colors"
               >
-                Save Settings
+                save
               </button>
             </div>
           </div>
@@ -445,9 +441,8 @@ export function SidebarItem({
   const [showMoveMenu, setShowMoveMenu] = useState(false)
   return (
     <motion.div
-      whileHover={{ x: 4 }}
       onClick={onClick}
-      className={`group px-3 py-2.5 rounded-hig-lg cursor-pointer transition-all flex items-center justify-between relative hover:bg-surface-tertiary dark:hover:bg-surface`}
+      className={`group relative pl-4 pr-2 py-2 cursor-pointer transition-colors flex items-center justify-between hover:bg-rail-soft ${active ? 'bg-rail-soft' : ''}`}
     >
       <div className="flex-grow min-w-0 mr-2">
         {isEditing ? (
@@ -461,16 +456,16 @@ export function SidebarItem({
             }}
             onBlur={onSaveEdit}
             autoFocus
-            className="w-full text-sm font-bold bg-transparent outline-none border-b border-mint dark:border-teal"
+            className="w-full text-[13px] font-medium bg-transparent outline-none border-b border-ink"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <div className={`text-sm font-bold truncate ${active ? 'text-mint dark:text-teal' : 'text-label-primary'}`}>
+          <div className={`text-[13px] truncate ${active ? 'text-ink font-medium' : 'text-ink-soft'}`}>
             {title}
           </div>
         )}
         {model && !isEditing && (
-          <div className={`text-[10px] font-medium ${active ? 'text-mint/70 dark:text-teal/70' : 'text-label-tertiary'} truncate`}>
+          <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted truncate mt-0.5">
             {model}
           </div>
         )}
@@ -536,7 +531,7 @@ export function SidebarItem({
       {active && (
         <motion.div
           layoutId="sidebar-active"
-          className="absolute left-0 top-1 bottom-1 w-1 bg-mint dark:bg-teal rounded-full"
+          className="absolute left-0 top-0 bottom-0 w-[2px] bg-ink"
         />
       )}
     </motion.div>
@@ -577,19 +572,19 @@ function FolderItem({
     <div>
       <div 
         onClick={() => setIsExpanded(!isExpanded)}
-        className="group px-3 py-2 rounded-hig-lg cursor-pointer transition-all hover:bg-surface-tertiary dark:hover:bg-surface flex items-center justify-between"
+        className="group px-4 py-2 cursor-pointer transition-colors hover:bg-rail-soft flex items-center justify-between"
       >
         <div className="flex items-center gap-2.5 min-w-0 flex-grow">
           <svg 
-            className={`w-3 h-3 text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-all ${isExpanded ? 'rotate-90' : ''}`} 
+            className={`w-3 h-3 text-ink-muted transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
             fill="none" 
             viewBox="0 0 24 24" 
             stroke="currentColor"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
           </svg>
-          <svg className="w-4 h-4 text-label-secondary group-hover:text-mint dark:group-hover:text-teal transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          <svg className="w-4 h-4 text-ink-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
           {isEditing ? (
             <input
@@ -602,15 +597,15 @@ function FolderItem({
               }}
               onBlur={onSaveEdit}
               autoFocus
-              className="flex-grow text-sm font-medium bg-transparent outline-none border-b border-mint dark:border-teal"
+              className="flex-grow text-[13px] bg-transparent outline-none border-b border-ink"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span className="text-sm font-medium text-label-primary group-hover:text-mint dark:group-hover:text-teal truncate">{title}</span>
+            <span className="text-[13px] text-ink-soft truncate">{title}</span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold text-label-secondary group-hover:text-teal dark:group-hover:text-mint transition-colors">
+          <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted">
             {chats.length}
           </span>
           {!isEditing && (
@@ -638,15 +633,15 @@ function FolderItem({
         </div>
       </div>
       {isExpanded && chats.length > 0 && (
-        <div className="ml-6 mt-1 space-y-0.5">
+        <div className="ml-9 mt-0.5 space-y-0">
           {chats.map(chat => (
             <div 
               key={chat.id}
               onClick={() => onChatSelect?.(chat.id)}
-              className={`px-3 py-1.5 text-xs cursor-pointer transition-colors rounded-md ${
+              className={`px-2 py-1.5 text-[12px] cursor-pointer transition-colors ${
                 chat.id === activeChatId 
-                  ? 'text-mint dark:text-teal font-medium' 
-                  : 'text-label-secondary hover:text-label-primary'
+                  ? 'text-ink font-medium' 
+                  : 'text-ink-soft hover:text-ink'
               }`}
             >
               {chat.title}

@@ -328,7 +328,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
       {/* Main column                                                     */}
       {/* ============================================================== */}
 
-      <main className="flex-1 min-w-0 flex flex-col bg-bg overflow-hidden">
+      <main className="relative flex-1 min-w-0 flex flex-col bg-bg overflow-hidden">
         {children}
       </main>
 
