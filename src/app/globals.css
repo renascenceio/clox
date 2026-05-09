@@ -412,3 +412,12 @@ body {
   vertical-align: -0.18em;
   animation: editorial-caret-blink 1s steps(2) infinite;
 }
+
+/* Landing-page audio waveform pulse — used by the inline composer demo. */
+@keyframes landingWave {
+  0%, 100% { height: 12%; }
+  50%      { height: 88%; }
+}
+.landing-wave-bar {
+  animation: landingWave 1.4s ease-in-out infinite;
+}
