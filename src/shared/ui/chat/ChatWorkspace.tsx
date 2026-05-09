@@ -2808,7 +2808,12 @@ function MicButton({
 }) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  const { state, toggle, isBusy } = useDictation({
+  // `isBusy` is also exposed by the hook but we drive the visual
+  // disabled state directly off `state === 'transcribing'` below, so
+  // pulling it here would just be dead weight (and the linter rightly
+  // flagged it). If we ever need a "either recording or transcribing"
+  // affordance, re-add it then.
+  const { state, toggle } = useDictation({
     onTranscript(text) {
       // Append a single space between the existing text and the
       // transcript when needed — handles "dictate, type, dictate"
