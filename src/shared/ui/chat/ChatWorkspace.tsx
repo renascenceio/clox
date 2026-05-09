@@ -30,6 +30,15 @@ import {
   type Palette,
   type PaletteKey,
 } from './palettes'
+import {
+  buildAcceptAttribute,
+  summarizeAcceptedFiles,
+  type AudioCapability,
+  type Capability,
+  type ImageCapability,
+  type TextCapability,
+  type VideoCapability,
+} from '@/lib/ai-capabilities'
 
 /* =====================================================================
    Public types
@@ -178,6 +187,19 @@ export interface ChatWorkspaceProps {
   // config drawer
   systemPrompt?: string
   onChangeSystemPrompt?: (v: string) => void
+  /** Generic parameter bag driven by the selected model's capability entry.
+   *  Keys correspond to the spec field names in `lib/ai-capabilities.ts`
+   *  (`temperature`, `topP`, `topK`, `maxTokens`, `presencePenalty`,
+   *  `frequencyPenalty`, `reasoningEffort`, `jsonMode`, `toolUse`,
+   *  `aspectRatio`, `quality`, `style`, `voice`, etc.). The page reads /
+   *  writes the same bag, so adding a new knob is one capability-spec edit. */
+  params?: Record<string, unknown>
+  onChangeParam?: (key: string, value: unknown) => void
+  /** Capability of the currently-selected model. When omitted the drawer
+   *  falls back to a conservative text default (temperature + max tokens). */
+  capability?: Capability
+  /** Legacy temperature/top-p/max-tokens props — wired for back-compat with
+   *  pages that haven't moved to `params` yet. New code should not pass these. */
   temperature?: number
   onChangeTemperature?: (v: number) => void
   topP?: number
