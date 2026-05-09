@@ -1,9 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState, useCallback, use } from 'react'
-import AppLayout from '@/shared/ui/layout/AppLayout'
-import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
+import { useEffect, useMemo, useState, useCallback, use } from 'react'
+
+// Same chrome contract as /history, /gallery, /skills, /settings and
+// /projects (index). Using `ChatWorkspace` here keeps the topstrip nav
+// (Projects · Chats · History · Gallery) consistent with sibling pages
+// and makes the left rail's vertical rhythm match too.
+import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
+import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
+import { listChats } from '@/lib/chat-store'
+
 import ProjectHeader from './_components/ProjectHeader'
 import ChatsTab from './_components/ChatsTab'
 import MembersTab from './_components/MembersTab'
@@ -19,9 +26,30 @@ export default function ProjectWorkspacePage({
   params,
 }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const chrome = useChatChrome('projects')
   const [project, setProject] = useState<ProjectFull | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('chats')
+
+  // Recent text chats for the left rail — identical recipe to /history,
+  // /skills, etc. Click jumps to /text on the selected thread.
+  const recent: RailRecentItem[] = useMemo(() => {
+    return listChats()
+      .filter(c => (c.modality ?? 'text') === 'text')
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 8)
+      .map(c => ({
+        id: c.id,
+        title: c.title,
+        meta:
+          new Date(c.createdAt).toLocaleString([], { month: 'short', day: 'numeric' }) +
+          ' · ' + c.model.toLowerCase(),
+        onClick: () => {
+          if (typeof window !== 'undefined') localStorage.setItem('activeChatId:text', c.id)
+          chrome.router.push('/text')
+        },
+      }))
+  }, [chrome.router])
 
   const load = useCallback(async () => {
     try {
@@ -47,40 +75,38 @@ export default function ProjectWorkspacePage({
 
   useEffect(() => { load() }, [load])
 
+  // The body content varies by state (error / loading / loaded). The chrome
+  // around it is identical, so we compute the body first and then wrap it
+  // once below — this is what keeps the topstrip nav and rail spacing
+  // consistent across every state of the page.
+  const canManage =
+    project ? project.my_role === 'owner' || project.my_role === 'admin' : false
+
+  let body: React.ReactNode
   if (error) {
-    return (
-      <AppLayout sidebar={<ChatSidebar />}>
-        <div className="max-w-[720px] mx-auto px-8 py-24 text-center">
-          <div className="font-mono text-[10.5px] tracking-[0.16em] uppercase text-ink-muted mb-3">
-            workspaces · project
-          </div>
-          <h1 className="font-serif italic text-[36px] text-ink mb-3">Not available.</h1>
-          <p className="text-[14px] text-ink-soft mb-6">{error}</p>
-          <Link
-            href="/projects"
-            className="font-mono text-[11px] tracking-[0.08em] uppercase bg-ink text-bg px-5 py-2 hover:bg-ink-soft inline-block transition-colors"
-          >
-            ← Back to projects
-          </Link>
+    body = (
+      <div className="max-w-[720px] mx-auto px-8 py-24 text-center">
+        <div className="font-mono text-[10.5px] tracking-[0.16em] uppercase text-ink-muted mb-3">
+          workspaces · project
         </div>
-      </AppLayout>
+        <h1 className="font-serif italic text-[36px] text-ink mb-3">Not available.</h1>
+        <p className="text-[14px] text-ink-soft mb-6">{error}</p>
+        <Link
+          href="/projects"
+          className="font-mono text-[11px] tracking-[0.08em] uppercase bg-ink text-bg px-5 py-2 hover:bg-ink-soft inline-block transition-colors"
+        >
+          ← Back to projects
+        </Link>
+      </div>
     )
-  }
-
-  if (!project) {
-    return (
-      <AppLayout sidebar={<ChatSidebar />}>
-        <div className="max-w-[1100px] mx-auto px-8 py-24 text-center font-mono text-[11px] tracking-[0.08em] uppercase text-ink-muted">
-          loading project…
-        </div>
-      </AppLayout>
+  } else if (!project) {
+    body = (
+      <div className="max-w-[1100px] mx-auto px-8 py-24 text-center font-mono text-[11px] tracking-[0.08em] uppercase text-ink-muted">
+        loading project…
+      </div>
     )
-  }
-
-  const canManage = project.my_role === 'owner' || project.my_role === 'admin'
-
-  return (
-    <AppLayout sidebar={<ChatSidebar />}>
+  } else {
+    body = (
       <div className="min-h-full bg-bg">
         <div className="max-w-[1280px] mx-auto px-8 py-10">
 
@@ -116,6 +142,41 @@ export default function ProjectWorkspacePage({
 
         </div>
       </div>
-    </AppLayout>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 isolate">
+      <ChatWorkspace
+        theme={chrome.theme}
+        onChangeTheme={chrome.handleThemeChange}
+        brandName="Clox"
+        brandVersion="0.5"
+        user={chrome.user}
+        language={chrome.language}
+        onChangeLanguage={chrome.handleChangeLanguage}
+        onOpenSettings={chrome.onOpenSettings}
+        onOpenSuperAdmin={chrome.onOpenSuperAdmin}
+        onOpenSkills={chrome.onOpenSkills}
+        onSignOut={chrome.handleSignOut}
+        onDeleteAccount={chrome.handleDeleteAccount}
+        nav={chrome.nav}
+        recent={recent}
+        onNewChat={chrome.onNewChat}
+        breadcrumb={project ? `workspaces · ${project.title}` : 'workspaces · project'}
+        title={project?.title ?? 'Project'}
+        models={[]}
+        modelId=""
+        onChangeModel={() => undefined}
+        modes={[]}
+        modeId=""
+        onChangeMode={() => undefined}
+        transcript={[]}
+        inputValue=""
+        onInputChange={() => undefined}
+        onSend={() => undefined}
+        bodySlot={body}
+      />
+    </div>
   )
 }
