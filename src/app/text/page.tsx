@@ -21,6 +21,7 @@ import {
 import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
 import { useAvailableModels } from '@/lib/use-available-models'
 import { getAdminSettings } from '@/lib/admin-settings'
+import { createClient } from '@/lib/supabase/client'
 import {
   ensureActiveChat,
   getActiveChatId,
@@ -29,18 +30,21 @@ import {
   touchChat,
   type Chat,
 } from '@/lib/chat-store'
+import type { AppLanguage } from '@/shared/ui/chat/ChatWorkspace'
 
 /* =====================================================================
-   Modes — text route is "chat / research / code". Image / voice routes
-   live elsewhere; selecting them swaps to those surfaces.
+   Modes — text route is "chat / research / code"; image, voice and video
+   live on their own surfaces and selecting them swaps routes. The numbering
+   matches the design reference (01..06).
    ===================================================================== */
 
 const TEXT_MODES: ModeOption[] = [
-  { id: 'chat', label: 'Chat', hint: 'plain conversation' },
+  { id: 'chat',     label: 'Chat',     hint: 'plain conversation' },
   { id: 'research', label: 'Research', hint: 'web + citations' },
-  { id: 'code', label: 'Code', hint: 'agent + tools' },
-  { id: 'image', label: 'Image', hint: 'visual generation' },
-  { id: 'voice', label: 'Voice', hint: 'spoken reply' },
+  { id: 'code',     label: 'Code',     hint: 'agent + tools' },
+  { id: 'image',    label: 'Image',    hint: 'visual generation' },
+  { id: 'voice',    label: 'Voice',    hint: 'spoken reply' },
+  { id: 'video',    label: 'Video',    hint: 'motion + frames' },
 ]
 
 function modelTagFor(provider: string, brandName?: string): string {
@@ -167,7 +171,8 @@ export default function TextPage() {
 
   // Cast through `any` because @ai-sdk/react types differ across versions.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false, setMessages } = chat as any
+  const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false, status, setMessages } = chat as any
+  const isStreaming = Boolean(isLoading) || status === 'submitted' || status === 'streaming'
   const setInput = (v: string) => {
     handleInputChange?.({ target: { value: v } } as unknown as React.ChangeEvent<HTMLTextAreaElement>)
   }
@@ -303,14 +308,78 @@ export default function TextPage() {
 
   function handleModeChange(id: string) {
     setModeId(id)
-    if (id === 'image') router.push('/image')
+    if (id === 'image')      router.push('/image')
     else if (id === 'voice') router.push('/audio')
-    // 'chat' / 'research' / 'code' all stay on /text
+    else if (id === 'video') router.push('/video')
+    // 'chat' / 'research' / 'code' stay on /text
   }
 
   function handleThemeChange(next: PaletteKey) {
     setTheme(next)
     setStoredPalette(next)
+  }
+
+  /* ----- avatar dropdown actions ------------------------------------ */
+  const [language, setLanguage] = useState<AppLanguage>('en')
+  useEffect(() => {
+    const stored = (typeof window !== 'undefined' && localStorage.getItem('clox.language')) as AppLanguage | null
+    if (stored === 'en' || stored === 'ru') setLanguage(stored)
+  }, [])
+
+  function handleChangeLanguage(next: AppLanguage) {
+    setLanguage(next)
+    if (typeof window !== 'undefined') localStorage.setItem('clox.language', next)
+  }
+
+  async function handleSignOut() {
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.error('[v0] sign-out error:', e)
+    }
+    if (typeof window !== 'undefined') window.location.href = '/login'
+  }
+
+  async function handleDeleteAccount() {
+    const ok = typeof window !== 'undefined'
+      && window.confirm('Permanently delete your Clox account? This cannot be undone.')
+    if (!ok) return
+    try {
+      const res = await fetch('/api/account/delete', { method: 'POST' })
+      if (!res.ok) throw new Error(`delete failed: ${res.status}`)
+    } catch (e) {
+      console.error('[v0] delete-account error:', e)
+      window.alert('We could not delete your account. Please contact support.')
+      return
+    }
+    await handleSignOut()
+  }
+
+  /* ----- share -------------------------------------------------------- */
+  async function handleShare() {
+    const url = `${window.location.origin}/text?chat=${encodeURIComponent(activeChatId)}`
+    try {
+      if (typeof navigator !== 'undefined' && 'share' in navigator) {
+        await (navigator as Navigator & { share: (d: ShareData) => Promise<void> }).share({
+          title: topTitle || 'Clox conversation',
+          text: 'Conversation from Clox',
+          url,
+        })
+        return
+      }
+    } catch { /* user-cancelled — fall through to clipboard */ }
+    try {
+      await navigator.clipboard.writeText(url)
+      // Lightweight, non-blocking confirmation.
+      const banner = document.createElement('div')
+      banner.textContent = 'Link copied'
+      banner.style.cssText = 'position:fixed;left:50%;bottom:32px;transform:translateX(-50%);background:#161410;color:#fbf7ee;font:12px/1 ui-monospace,monospace;letter-spacing:.08em;padding:10px 16px;border-radius:3px;z-index:9999;box-shadow:0 18px 56px rgba(0,0,0,.25)'
+      document.body.appendChild(banner)
+      setTimeout(() => banner.remove(), 1800)
+    } catch (e) {
+      console.error('[v0] share error:', e)
+    }
   }
 
   /* ----- topstrip title --------------------------------------------- */
@@ -332,13 +401,20 @@ export default function TextPage() {
         brandName="Clox"
         brandVersion="0.5"
         user={user}
-        onOpenSettings={() => router.push('/admin')}
+        onOpenSettings={() => router.push('/settings')}
         onChangeTheme={handleThemeChange}
+        language={language}
+        onChangeLanguage={handleChangeLanguage}
+        onOpenSuperAdmin={() => router.push('/admin')}
+        onOpenSkills={() => router.push('/skills')}
+        onSignOut={handleSignOut}
+        onDeleteAccount={handleDeleteAccount}
         nav={nav}
         recent={recent}
         onNewChat={handleNewChat}
         breadcrumb={breadcrumb}
         title={topTitle}
+        onShare={handleShare}
         models={models}
         modelId={selectedModel.id}
         onChangeModel={(id) => {
@@ -352,7 +428,7 @@ export default function TextPage() {
         modeId={modeId}
         onChangeMode={handleModeChange}
         transcript={transcript}
-        isStreaming={isLoading}
+        isStreaming={isStreaming}
         inputValue={input}
         onInputChange={setInput}
         onSend={handleSend}

@@ -21,7 +21,18 @@ export const I: Record<
   | 'share'
   | 'config'
   | 'close'
-  | 'doc',
+  | 'doc'
+  | 'user'
+  | 'lang'
+  | 'moon'
+  | 'sun'
+  | 'shield'
+  | 'bulb'
+  | 'door'
+  | 'trash'
+  | 'video'
+  | 'check'
+  | 'sparkle',
   ReactNode
 > = {
   home: (
@@ -106,6 +117,68 @@ export const I: Record<
   doc: (
     <svg width="11" height="13" viewBox="0 0 11 13" fill="none">
       <path d="M1 1h6l3 3v8H1z" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  ),
+  user: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <circle cx="6.5" cy="4.5" r="2.2" stroke="currentColor" strokeWidth="1.1" />
+      <path d="M2 11.5c.7-2.2 2.5-3.3 4.5-3.3s3.8 1.1 4.5 3.3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  ),
+  lang: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <path d="M2 10 4.5 3 7 10M3 8h3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 6.5h4M10 5v8M8.5 8.5c.7 1.5 1.7 2.6 3 3M11.5 8.5c-.7 1.5-1.7 2.6-3 3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  ),
+  moon: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <path d="M10.5 7.8A4 4 0 0 1 5.2 2.5 4.5 4.5 0 1 0 10.5 7.8z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+    </svg>
+  ),
+  sun: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <circle cx="6.5" cy="6.5" r="2.2" stroke="currentColor" strokeWidth="1.1" />
+      <path d="M6.5 1v1.5M6.5 10.5V12M1 6.5h1.5M10.5 6.5H12M2.7 2.7l1 1M9.3 9.3l1 1M2.7 10.3l1-1M9.3 3.7l1-1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  ),
+  shield: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <path d="M6.5 1.5 2 3v3.5c0 2.6 1.8 4.7 4.5 5.5C9.2 11.2 11 9.1 11 6.5V3z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+    </svg>
+  ),
+  bulb: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <path d="M4.5 8.5c-1-.6-1.7-1.7-1.7-3a3.7 3.7 0 1 1 7.4 0c0 1.3-.7 2.4-1.7 3v1.2H4.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+      <path d="M5 11.2h3M5.5 12.2h2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  ),
+  door: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <path d="M7 2.5H3v8h4M7 1.5v10" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+      <path d="M9 4.5l2.5 2-2.5 2M11 6.5H6.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  trash: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <path d="M2 3.5h9M5 3.5V2.2c0-.4.3-.7.7-.7h1.6c.4 0 .7.3.7.7v1.3M3.5 3.5l.5 7.3c0 .4.4.7.8.7h3.4c.4 0 .8-.3.8-.7l.5-7.3M5.5 5.5v4M7.5 5.5v4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  video: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <rect x="1.5" y="3.5" width="7.5" height="6" rx="0.5" stroke="currentColor" strokeWidth="1.1" />
+      <path d="m9 6.5 3-1.5v3.5L9 7" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+    </svg>
+  ),
+  check: (
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+      <path d="m2 5.7 2.4 2.3L9 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  sparkle: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <path d="M6.5 1.5v3M6.5 8.5v3M1.5 6.5h3M8.5 6.5h3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      <path d="M6.5 4.5 8 6.5l-1.5 2L5 6.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
     </svg>
   ),
 }
