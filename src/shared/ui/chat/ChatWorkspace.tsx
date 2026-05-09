@@ -33,11 +33,7 @@ import {
 import {
   buildAcceptAttribute,
   summarizeAcceptedFiles,
-  type AudioCapability,
   type Capability,
-  type ImageCapability,
-  type TextCapability,
-  type VideoCapability,
 } from '@/lib/ai-capabilities'
 
 /* =====================================================================
