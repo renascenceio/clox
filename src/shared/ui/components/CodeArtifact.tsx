@@ -242,10 +242,19 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
    */
   function handleOpenExternally() {
     try {
+      // Same body-shape decision as the PDF/DOCX exporters: for the
+      // `pdf` and `docx` fence tags the body could be either markdown
+      // or HTML, so we sniff before deciding whether to run mdToHtml.
+      // Without this, opening a markdown-bodied `pdf` artifact in a
+      // new tab would show literal "# Heading" text.
+      const isMarkdownTag = lang === 'markdown' || lang === 'md'
+      const isDocTag = lang === 'pdf' || lang === 'docx'
       const html =
-        lang === 'markdown' || lang === 'md' ? wrapInPreviewScaffold(mdToHtml(code)) :
+        isMarkdownTag ? wrapInPreviewScaffold(mdToHtml(code)) :
         lang === 'svg' ? svgToFullHtml(code) :
         lang === 'xml' ? xmlToFullHtml(code) :
+        isDocTag
+          ? (isHtmlBody(code) ? wrapInPreviewScaffold(code) : wrapInPreviewScaffold(mdToHtml(code))) :
         wrapInPreviewScaffold(code)
       const id =
         // crypto.randomUUID is available in every modern browser; the
@@ -463,9 +472,22 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
         import('html2canvas'),
       ])
       const html2canvas = html2canvasMod.default
+      // Materialise the artifact body as a styled HTML document so
+      // html2canvas can rasterise it. The branching here matters:
+      //   • markdown / md  — always run mdToHtml, then wrap.
+      //   • svg            — wrap in svgToFullHtml (centred canvas).
+      //   • pdf / docx     — author chose either body shape; detect
+      //                      it and route through mdToHtml when the
+      //                      body is markdown, otherwise pass through.
+      //                      Without this branch the markdown body
+      //                      is treated as raw HTML and the PDF
+      //                      shows literal "# Heading" text.
+      //   • html / fallback — treat as HTML and ensure full doc.
       const html =
-        lang === 'markdown' || lang === 'md' ? mdToHtml(code) :
+        (lang === 'markdown' || lang === 'md') ? ensureFullHtml(mdToHtml(code)) :
         lang === 'svg' ? svgToFullHtml(code) :
+        (lang === 'pdf' || lang === 'docx')
+          ? (isHtmlBody(code) ? ensureFullHtml(code) : ensureFullHtml(mdToHtml(code))) :
         ensureFullHtml(code)
 
       // Off-screen iframe at A4 content width. We keep it visible
@@ -1057,7 +1079,17 @@ function MarkdownPreview({
   code: string
   iframeRef?: React.MutableRefObject<HTMLIFrameElement | null>
 }) {
-  const html = useMemo(() => mdToHtml(code), [code])
+  // The PreviewPane routes BOTH `markdown`/`md` and `pdf`/`docx`
+  // through here, because all four can carry markdown bodies. But
+  // `pdf` and `docx` are also allowed to carry an HTML body — in
+  // which case running the markdown parser would mangle structures
+  // it doesn't understand (notably `<table>`, `<style>`, full HTML
+  // documents). Sniff the body and skip mdToHtml when it's already
+  // HTML so the inline preview matches the eventual export.
+  const html = useMemo(
+    () => (isHtmlBody(code) ? code : mdToHtml(code)),
+    [code],
+  )
   return <HtmlPreview code={html} lang="html" iframeRef={iframeRef} />
 }
 
@@ -1066,6 +1098,45 @@ function escapeHtml(s: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+}
+
+/**
+ * Heuristic: does this body look like HTML rather than markdown?
+ *
+ * For `pdf` and `docx` artifacts the model can author EITHER format
+ * (a markdown report, or a richer HTML page). The export pipeline
+ * needs to know which one it has so it can route the body through
+ * the right converter — markdown→HTML→PDF for markdown, or pass-
+ * through→PDF for HTML; markdown→docx-runs for markdown, or
+ * htmlToMarkdownLite→docx-runs for HTML.
+ *
+ * Detection rules, ordered most-specific first:
+ *   1. A `<!doctype>` / `<html>` / `<head>` / `<body>` opener is
+ *      definitive — that's a complete HTML document.
+ *   2. ≥ 3 distinct HTML element tags (`<div>`, `<p>`, `<table>`,
+ *      `<h1>`, etc.) at the start of a line strongly implies HTML.
+ *      This catches "fragment" HTML the model emits without the
+ *      `<html>` wrapper.
+ *   3. Otherwise we treat the body as markdown — even if it has
+ *      occasional inline `<br>` or `<a>` tags (markdown allows
+ *      embedded HTML so this is the safe default).
+ */
+function isHtmlBody(body: string): boolean {
+  const head = body.slice(0, 2000)
+  if (/<!doctype\s/i.test(head)) return true
+  if (/<\s*(html|head|body)[\s>]/i.test(head)) return true
+  // Count distinct block-level HTML tags appearing at line starts.
+  // Markdown bodies routinely contain a stray `<br>` or `<a>` inline,
+  // but they don't start lines with `<div>`, `<table>`, `<section>`,
+  // etc. — so the line-start anchor is what gives us a clean signal.
+  const blockTags = new Set<string>()
+  const blockTagRe = /^\s*<\s*(div|p|table|thead|tbody|tr|td|th|ul|ol|li|h[1-6]|section|article|header|footer|nav|main|aside|form|button|input|label|figure|pre|blockquote|hr)\b/gim
+  let m: RegExpExecArray | null
+  while ((m = blockTagRe.exec(head)) !== null) {
+    blockTags.add(m[1].toLowerCase())
+    if (blockTags.size >= 3) return true
+  }
+  return false
 }
 
 /**
@@ -1307,9 +1378,19 @@ function buildDocxChildren(docx: typeof import('docx'), source: string, lang: st
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const children: any[] = []
 
-  const md =
-    lang === 'html' ? htmlToMarkdownLite(source) :
-    source
+  // Normalise the source to markdown so the rest of the function only
+  // has to handle one shape. Three input cases:
+  //   • lang=html         — explicit HTML, run the lite converter.
+  //   • lang=pdf|docx     — author chose either shape; if the body
+  //                         smells like HTML, convert to markdown,
+  //                         otherwise pass through as markdown.
+  //                         Without this branch a `pdf` artifact
+  //                         with an HTML body would dump literal
+  //                         <p>/<h1>/<table> tags into the .docx.
+  //   • lang=md|markdown  — already markdown, pass through.
+  const looksHtml =
+    lang === 'html' || ((lang === 'pdf' || lang === 'docx') && isHtmlBody(source))
+  const md = looksHtml ? htmlToMarkdownLite(source) : source
 
   const lines = md.split(/\r?\n/)
   let inFence = false
