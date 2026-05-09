@@ -193,10 +193,13 @@ function ChatRow({
 }
 
 function surfaceForModality(m: string): string {
+  // The four chat modalities are all hosted by /text; we just pass the
+  // mode through the query string. Research and code still have their
+  // own dedicated surfaces.
   switch (m) {
-    case 'image': return '/image'
-    case 'video': return '/video'
-    case 'audio': return '/audio'
+    case 'image': return '/text?mode=image'
+    case 'video': return '/text?mode=video'
+    case 'audio': return '/text?mode=voice'
     case 'research': return '/research'
     case 'code': return '/code'
     default: return '/text'

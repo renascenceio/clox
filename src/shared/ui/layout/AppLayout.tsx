@@ -95,14 +95,29 @@ function writeCachedProfile(p: UserProfile) {
   }
 }
 
-/* Primary nav — maps to the four chat surfaces + gallery + history. */
-const PRIMARY_NAV: { href: string; label: string; icon: ReactNode; count?: number | null }[] = [
-  { href: '/text',  label: 'Chat',    icon: <NavIcon path="M2 3h9v6H6L3 11.5V9H2z" /> },
-  { href: '/image', label: 'Image',   icon: <NavIcon path="M1.5 2.5h10v8h-10z M1.5 8.5L4 6l2 2 2-2.5 3.5 3.5" extra="M4.5 5a.7.7 0 110-1.4.7.7 0 010 1.4z" /> },
-  { href: '/video', label: 'Video',   icon: <NavIcon path="M1.5 3h7v7h-7z M9 5l3-1.5v6L9 8z" /> },
-  { href: '/audio', label: 'Audio',   icon: <NavIcon path="M5 2v9 M3 4v5 M7 3v7 M9 5v3 M1 5v3 M11 4v5" /> },
-  { href: '/projects', label: 'Projects', icon: <NavIcon path="M1.5 3.5h4l1 1.2h5v6.3h-10z" /> },
-  { href: '/gallery', label: 'Gallery', icon: <NavIcon path="M1.5 2.5h10v8h-10z M1.5 8.5L4 6l2 2 2-2.5 3.5 3.5" /> },
+/* Primary nav — every modality lives on `/text` now and the four chat
+   entries differ only by the `?mode=…` query param. The dedicated
+   `/image`, `/video`, `/audio` routes are server-side redirects that
+   forward to `/text?mode=…`; we link straight at the canonical URL so
+   the user gets a single hop with no flash. */
+const PRIMARY_NAV: {
+  href: string
+  label: string
+  icon: ReactNode
+  count?: number | null
+  /** Optional `?mode=…` value this rail item represents. When present,
+   *  the active-state highlight only fires if the current URL matches
+   *  both the path AND the mode (so "Chat" doesn't light up while the
+   *  user is in image mode). Items without a `mode` use a plain
+   *  startsWith match against `pathname`. */
+  mode?: 'chat' | 'image' | 'video' | 'voice'
+}[] = [
+  { href: '/text',             label: 'Chat',     mode: 'chat',  icon: <NavIcon path="M2 3h9v6H6L3 11.5V9H2z" /> },
+  { href: '/text?mode=image',  label: 'Image',    mode: 'image', icon: <NavIcon path="M1.5 2.5h10v8h-10z M1.5 8.5L4 6l2 2 2-2.5 3.5 3.5" extra="M4.5 5a.7.7 0 110-1.4.7.7 0 010 1.4z" /> },
+  { href: '/text?mode=video',  label: 'Video',    mode: 'video', icon: <NavIcon path="M1.5 3h7v7h-7z M9 5l3-1.5v6L9 8z" /> },
+  { href: '/text?mode=voice',  label: 'Voice',    mode: 'voice', icon: <NavIcon path="M5 2v9 M3 4v5 M7 3v7 M9 5v3 M1 5v3 M11 4v5" /> },
+  { href: '/projects',         label: 'Projects', icon: <NavIcon path="M1.5 3.5h4l1 1.2h5v6.3h-10z" /> },
+  { href: '/gallery',          label: 'Gallery',  icon: <NavIcon path="M1.5 2.5h10v8h-10z M1.5 8.5L4 6l2 2 2-2.5 3.5 3.5" /> },
 ]
 
 function NavIcon({ path, extra }: { path: string; extra?: string }) {
@@ -116,6 +131,15 @@ function NavIcon({ path, extra }: { path: string; extra?: string }) {
 
 export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutProps) {
   const pathname = usePathname()
+  // Mode-aware highlight for the four chat rail items. They all share the
+  // `/text` path now and only differ by `?mode=…`, so a plain pathname
+  // startsWith would light up every chat entry at once. We read the mode
+  // from the live URL instead. Using window.location keeps it cheap on the
+  // client without paying for the Suspense boundary that `useSearchParams`
+  // would otherwise require here.
+  const currentMode = typeof window !== 'undefined' && pathname === '/text'
+    ? (new URLSearchParams(window.location.search).get('mode') ?? 'chat')
+    : null
   const [showUserMenu, setShowUserMenu] = useState(false)
 
   // Initial state is the cached profile so the rail renders fully populated
@@ -280,10 +304,14 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
         {/* Primary nav with active 2px accent bar on the left edge */}
         <nav className="px-2 pb-2" aria-label="Primary">
           {PRIMARY_NAV.map(n => {
-            const active = pathname?.startsWith(n.href) ?? false
+            // Items with a `mode` light up only when both the path and the
+            // mode match. Plain items fall back to the historic startsWith.
+            const active = n.mode
+              ? pathname === '/text' && currentMode === n.mode
+              : pathname?.startsWith(n.href) ?? false
             return (
               <Link
-                key={n.href}
+                key={n.label}
                 href={n.href}
                 className={`relative flex items-center gap-2.5 px-[10px] py-[7px] rounded-sharp text-[13px] ${
                   active

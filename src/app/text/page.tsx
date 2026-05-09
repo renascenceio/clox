@@ -89,9 +89,19 @@ export default function TextPage() {
      The /text surface is the single shell for every modality. `modeId`
      drives which model registry is active, which generation endpoint
      `handleSend` hits, and which capability spec the ConfigDrawer reads
-     from. The legacy /image, /audio, /video routes still exist for direct
-     deep-links, but the slash menu and intra-app navigation stay here. */
-  const [modeId, setModeId] = useState<string>('chat')
+     from. The legacy /image, /audio, /video routes are now thin
+     server-side redirects that forward here with `?mode=…` set, so a
+     direct bookmark or deeplink lands in the right composer instead of
+     the deprecated standalone surfaces. */
+  // Read the initial modality from the URL once on mount. We use raw
+  // `window.location.search` rather than `useSearchParams` so we don't need
+  // a Suspense boundary around the page (a requirement Next imposes on
+  // pages that subscribe to search params during static generation).
+  const [modeId, setModeId] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'chat'
+    const m = new URLSearchParams(window.location.search).get('mode')
+    return m === 'image' || m === 'video' || m === 'voice' || m === 'chat' ? m : 'chat'
+  })
   const modality: 'text' | 'image' | 'video' | 'audio' =
     modeId === 'image' ? 'image' :
     modeId === 'video' ? 'video' :
