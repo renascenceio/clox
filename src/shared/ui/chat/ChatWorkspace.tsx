@@ -22,6 +22,8 @@ import {
   type ReactNode,
 } from 'react'
 import { I } from './icons'
+import { useDictation, type DictationState } from './useDictation'
+import { useFileDrop } from './useFileDrop'
 import {
   PALETTES,
   MONO_STACK,
@@ -315,6 +317,19 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
   const [configOpen, setConfigOpen] = useState(initialConfigOpen)
   const [cmdkOpen, setCmdkOpen] = useState(initialCmdkOpen)
 
+  // Page-level drag-and-drop. Files dropped anywhere on the chat
+  // surface (header, transcript, composer) flow into the same
+  // `onAttach` channel the paperclip button uses, so the rest of
+  // the pipeline (preview chips, useChat's experimental_attachments,
+  // server-side handling) needs zero changes. We disable the hook
+  // entirely when the host page didn't pass an `onAttach` handler —
+  // a chat in a read-only context shouldn't show a drop overlay
+  // that would silently swallow the user's file.
+  const { active: dropActive, handlers: dropHandlers } = useFileDrop({
+    onFiles: onAttach,
+    enabled: Boolean(onAttach),
+  })
+
   // Global shortcuts — ⌘K palette, ⌘. config, ⌘N new chat.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -377,6 +392,11 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
       />
 
       <main
+        // `position: relative` anchors the drop overlay below to the
+        // main column rather than the whole viewport — the overlay
+        // covers exactly the chat surface and respects the config
+        // panel's right margin so it doesn't bleed under it.
+        {...dropHandlers}
         style={{
           flex: 1,
           display: 'flex',
@@ -384,6 +404,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
           minWidth: 0,
           marginRight: configOpen ? 320 : 0,
           transition: 'margin-right .22s ease',
+          position: 'relative',
         }}
       >
         <TopStrip
@@ -466,6 +487,86 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
           />
         )}
         </>
+        )}
+
+        {/* Drag-and-drop overlay. Rendered as the last child of <main>
+            so it stacks on top of the transcript + composer, but
+            inside the same positioning context (config panel margin,
+            etc.). pointer-events stay enabled because the overlay
+            itself needs to receive `dragleave` and `drop` events —
+            children with pointer-events:none would lose those.
+
+            Visual treatment follows the editorial palette: a soft
+            ink-tinted scrim with a single dashed hairline rectangle
+            and a centred caption. We deliberately avoid colour
+            accents so the overlay reads as part of the surface
+            rather than a separate UI layer. */}
+        {dropActive && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 40,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 24,
+              background: 'rgb(var(--ink-rgb) / 0.04)',
+              backdropFilter: 'blur(2px)',
+              WebkitBackdropFilter: 'blur(2px)',
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                border: `2px dashed ${p.ink}`,
+                borderRadius: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgb(var(--surface-rgb) / 0.85)',
+              }}
+            >
+              <div style={{ textAlign: 'center', maxWidth: 320 }}>
+                <div
+                  style={{
+                    fontFamily: mono,
+                    fontSize: 10,
+                    letterSpacing: '0.22em',
+                    textTransform: 'uppercase',
+                    color: p.inkMuted,
+                    marginBottom: 10,
+                  }}
+                >
+                  Drop to attach
+                </div>
+                <div
+                  style={{
+                    fontFamily: serif,
+                    fontSize: 18,
+                    lineHeight: 1.35,
+                    color: p.ink,
+                  }}
+                >
+                  Release to add files to this chat
+                </div>
+                <div
+                  style={{
+                    fontFamily: mono,
+                    fontSize: 11,
+                    color: p.inkSoft,
+                    marginTop: 10,
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  images · pdfs · text · csv · json
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </main>
 
@@ -947,17 +1048,95 @@ function Messages({
   userInitial: string
   userName: string
 }) {
-  const endRef = useRef<HTMLDivElement | null>(null)
+  // Sticky-to-bottom scrolling. The previous implementation called
+  // `endRef.current.scrollIntoView({ behavior: 'smooth' })` on every
+  // change to `[transcript.length, isStreaming]`, which had three
+  // bad failure modes once a transcript got long:
+  //
+  //  1. `scrollIntoView` walks UP from the target to find the nearest
+  //     scrollable ancestor. With our outer page also scrollable on
+  //     some viewports, both the inner messages list AND the document
+  //     scrolled, doubling the distance and feel.
+  //  2. `behavior: 'smooth'` animates over ~300ms regardless of
+  //     distance. After a long generation the bottom can be thousands
+  //     of pixels below the user's view, so the smooth animation
+  //     "feels" like an endless slow scroll when stream ends.
+  //  3. The deps only fire on `transcript.length` changes, which DON'T
+  //     trigger during streaming (the array length is stable once the
+  //     assistant message is appended; only its content grows). So
+  //     during streaming the user's view falls progressively behind,
+  //     and the catch-up at end-of-stream is the long animation
+  //     described in (2).
+  //
+  // The new implementation owns its own scroll container ref, watches
+  // it with a ResizeObserver so content growth is detected directly,
+  // and only auto-scrolls when the user is already near the bottom.
+  // Scrolls are instant during streaming (so the tail tracks at any
+  // speed without animation pile-up) and instant on new-message
+  // append for the same reason. If the user has scrolled up to read
+  // history we leave them alone — they explicitly opted out.
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  /** Stickiness flag — true when the user's viewport is "close
+   *  enough" to the bottom that auto-scroll should keep them pinned.
+   *  We treat anything within ~80px as "at the bottom" so a one-line
+   *  scroll-up doesn't immediately disable autoscroll. */
+  const stickRef = useRef(true)
+
+  // Track scroll position to flip stickiness. We don't use React
+  // state because we don't need to re-render on every scroll event —
+  // the flag is read by the auto-scroll effect on demand.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      stickRef.current = distanceFromBottom <= 80
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // Auto-scroll on new messages or when streaming starts/stops. We
+  // use the imperative scroll API on our explicit container (NOT
+  // scrollIntoView) so we never accidentally scroll a parent. Behaviour
+  // is `auto` (instant) — smooth animation across long distances was
+  // the source of the "endless scroll" feel.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || !stickRef.current) return
+    el.scrollTop = el.scrollHeight
   }, [transcript.length, isStreaming])
 
+  // Track content growth during streaming. ResizeObserver fires once
+  // per layout pass when the inner content height changes, which is
+  // exactly what we want for tail-following without polling. The
+  // observer is only active while streaming so we don't pay for it
+  // when the chat is idle.
+  useEffect(() => {
+    if (!isStreaming) return
+    const el = scrollRef.current
+    if (!el) return
+    const inner = el.firstElementChild as HTMLElement | null
+    if (!inner) return
+    const ro = new ResizeObserver(() => {
+      if (!stickRef.current) return
+      el.scrollTop = el.scrollHeight
+    })
+    ro.observe(inner)
+    return () => ro.disconnect()
+  }, [isStreaming])
+
   return (
-    <div style={{
+    <div ref={scrollRef} style={{
       flex: 1, overflow: 'auto',
       padding: '24px 56px 18px',
       fontFamily: SANS_STACK,
       color: p.ink,
+      // Anchor the inner content at the top of the scroll container
+      // so the browser doesn't try to be clever about anchoring during
+      // resize. Combined with our explicit scrollTop writes this gives
+      // us deterministic control over the viewport.
+      overflowAnchor: 'none',
     }}>
       <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
         {transcript.length === 0 && !isStreaming && (
@@ -979,7 +1158,6 @@ function Messages({
         ))}
 
         {isStreaming && <ThinkingIndicator p={p} mono={mono} serif={serif} />}
-        <div ref={endRef} />
       </div>
     </div>
   )
@@ -1303,9 +1481,13 @@ function ComposerChip({
                 background: 'transparent', border: 'none', outline: 'none',
               }}
             />
-            <button title="Voice input" style={{ ...iconBtn(p, 34), border: `1px solid ${p.hairline}`, color: p.ink }}>
-              {I.mic}
-            </button>
+            <MicButton
+              p={p}
+              size={34}
+              value={inputValue}
+              onChange={onInputChange}
+              fillOnRecord
+            />
             <button onClick={onSend} disabled={!inputValue.trim()} style={{
               padding: '8px 14px',
               background: p.ink, color: p.bg,
@@ -1887,7 +2069,7 @@ function ComposerSlash({
               }}
             />
             <div style={{ flex: 1 }} />
-            <button title="Voice input" style={iconBtn(p, 28)}>{I.mic}</button>
+            <MicButton p={p} size={28} value={inputValue} onChange={onInputChange} />
             <button onClick={onSend} disabled={!inputValue.trim()} style={{
               padding: '6px 12px',
               background: p.ink, color: p.bg,
@@ -2589,3 +2771,178 @@ function iconBtn(p: Palette, size = 26): CSSProperties {
     padding: 0,
   }
 }
+
+/**
+ * MicButton — voice-to-text dictation control shared by every composer.
+ *
+ * Lifecycle:
+ *   1. Click while idle → starts MediaRecorder and shows a red dot.
+ *   2. Click while recording → stops, uploads to /api/transcribe.
+ *   3. While the upload is in flight → shows a hairline spinner and is
+ *      visually disabled so the user can't double-fire.
+ *
+ * The transcript is APPENDED to the current input value rather than
+ * replacing it, so a user can dictate a phrase, type a correction,
+ * and dictate again without losing earlier text. We add a single
+ * space when the existing input doesn't end with whitespace.
+ *
+ * Errors surface inline as a brief tooltip-style flash under the
+ * button — non-modal, dismissed by the next click. We avoid `alert()`
+ * to keep the editorial composer's quiet aesthetic intact.
+ */
+function MicButton({
+  p, size, value, onChange, fillOnRecord = false,
+}: {
+  p: Palette
+  /** Square size matching the surrounding icon-button dimensions. */
+  size: number
+  /** Current composer value — needed so we can append the transcript. */
+  value: string
+  /** Composer's onChange — receives the new full value (existing + transcript). */
+  onChange: (v: string) => void
+  /** When true (chip composer), recording fills the button with `ink`
+   *  for stronger emphasis. When false (slash composer), recording is
+   *  shown more subtly so the dot stays in keeping with the smaller
+   *  button. */
+  fillOnRecord?: boolean
+}) {
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  const { state, toggle, isBusy } = useDictation({
+    onTranscript(text) {
+      // Append a single space between the existing text and the
+      // transcript when needed — handles "dictate, type, dictate"
+      // workflows naturally and never produces "wordsword".
+      const sep = value.length === 0 || /\s$/.test(value) ? '' : ' '
+      onChange(value + sep + text)
+    },
+    onError(msg) {
+      setErrorMsg(msg)
+      // Auto-dismiss the error toast after 3.5s; if the user clicks
+      // the mic again it'll clear immediately via toggle().
+      window.setTimeout(() => setErrorMsg(null), 3500)
+    },
+  })
+
+  // Pick title + visual decoration from the recorder state. The label
+  // doubles as the aria-label for screen-reader users.
+  const label =
+    state === 'recording'  ? 'Stop recording'
+    : state === 'transcribing' ? 'Transcribing…'
+    : 'Voice input'
+
+  const recording = state === 'recording'
+  const transcribing = state === 'transcribing'
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        type="button"
+        title={label}
+        aria-label={label}
+        aria-pressed={recording}
+        onClick={() => { setErrorMsg(null); toggle() }}
+        disabled={transcribing}
+        style={{
+          ...iconBtn(p, size),
+          // Recording: red dot in the middle. We render the icon with
+          // a recording overlay rather than swapping the icon entirely
+          // so the affordance stays visually anchored.
+          background: recording && fillOnRecord ? p.ink : 'transparent',
+          color: recording
+            ? (fillOnRecord ? p.bg : '#c2362b')
+            : p.inkSoft,
+          borderColor: recording ? '#c2362b' : p.hairlineSoft,
+          cursor: transcribing ? 'progress' : 'pointer',
+          opacity: transcribing ? 0.6 : 1,
+        }}
+      >
+        {transcribing ? (
+          <DictationSpinner color={p.inkSoft} />
+        ) : recording ? (
+          <span
+            style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: '#c2362b',
+              boxShadow: '0 0 0 0 rgba(194, 54, 43, 0.6)',
+              animation: 'clox-mic-pulse 1.2s ease-out infinite',
+              display: 'inline-block',
+            }}
+          />
+        ) : (
+          I.mic
+        )}
+      </button>
+
+      {/* Error toast — anchored above the button so it doesn't push
+          composer layout around. Pointer-events:none so a click goes
+          straight to the mic button to retry. */}
+      {errorMsg && (
+        <span
+          role="status"
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 6px)',
+            right: 0,
+            whiteSpace: 'nowrap',
+            background: p.ink,
+            color: p.bg,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: 10.5,
+            padding: '4px 8px',
+            borderRadius: 2,
+            letterSpacing: '0.02em',
+            pointerEvents: 'none',
+            maxWidth: 280,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {errorMsg}
+        </span>
+      )}
+
+      {/* Keyframes for the recording dot pulse. Scoped to a unique
+          name so it can't collide with other animations on the page,
+          and rendered inline so we don't have to plumb through the
+          global stylesheet. */}
+      {recording && (
+        <style jsx>{`
+          @keyframes clox-mic-pulse {
+            0%   { box-shadow: 0 0 0 0   rgba(194, 54, 43, 0.55); }
+            70%  { box-shadow: 0 0 0 8px rgba(194, 54, 43, 0);    }
+            100% { box-shadow: 0 0 0 0   rgba(194, 54, 43, 0);    }
+          }
+        `}</style>
+      )}
+    </span>
+  )
+}
+
+/** Tiny inline SVG spinner for the transcribing state. We avoid
+ *  pulling in a dependency for a single 12px graphic. */
+function DictationSpinner({ color }: { color: string }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
+      <circle cx="6.5" cy="6.5" r="5" fill="none" stroke={color} strokeOpacity="0.25" strokeWidth="1.4" />
+      <path
+        d="M11.5 6.5a5 5 0 0 0-5-5"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        style={{ transformOrigin: '6.5px 6.5px', animation: 'clox-spin 0.9s linear infinite' }}
+      />
+      <style jsx>{`
+        @keyframes clox-spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </svg>
+  )
+}
+
+// Avoid TS complaining about an unused export when DictationState is
+// referenced only via the hook; importing the type keeps the editor
+// hint surface in sync between this file and useDictation.
+type _MicStateRef = DictationState // eslint-disable-line @typescript-eslint/no-unused-vars

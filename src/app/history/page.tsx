@@ -12,6 +12,10 @@ import {
   // action below would soft-archive a chat but leave it visible in
   // History, defeating the action.
   listActiveChats,
+  // Used solely to count archived chats so we can render a
+  // "Archives · 12" affordance next to the filter rail. The full
+  // listing of archived chats lives on /archives.
+  listChats,
   archiveChat,
   permanentlyDeleteChat,
   renameChat,
@@ -61,13 +65,28 @@ export default function HistoryPage() {
   const serif = `'Newsreader', Georgia, serif`
 
   const [chats, setChats] = useState<Chat[]>([])
+  // Track archived count separately so the "Archives · N" link can
+  // display a live tally without paying the cost of materialising the
+  // full archived list. We deliberately don't store the archived
+  // chats themselves — anyone wanting to interact with them gets
+  // routed to /archives.
+  const [archivedCount, setArchivedCount] = useState(0)
   // Inline rename state — keyed by chat id so only the row being
   // edited shows an input. Same pattern the sidebar uses.
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
 
   useEffect(() => {
-    const refresh = () => setChats(listActiveChats().sort((a, b) => b.createdAt - a.createdAt))
+    const refresh = () => {
+      setChats(listActiveChats().sort((a, b) => b.createdAt - a.createdAt))
+      // listChats() returns ALL chats (active + archived); subtract
+      // the active count to get the archived tally. Cheaper than a
+      // dedicated `listArchivedChats()` call which would re-iterate
+      // localStorage a second time for the same data.
+      const all = listChats()
+      const archived = all.filter(c => c.archived).length
+      setArchivedCount(archived)
+    }
     refresh()
     window.addEventListener('storage', refresh)
     window.addEventListener('clox-chats-changed', refresh)
@@ -214,6 +233,43 @@ export default function HistoryPage() {
                 ))}
               </div>
               <div style={{ flex: 1 }} />
+              {/* Archives shortcut — placed right of the filter tabs
+                  so the user has a visible escape hatch to retrieve
+                  anything they've put away. Stays visible even when
+                  the archive count is 0 so users can build a mental
+                  map of where archived chats go BEFORE they archive
+                  anything. The count badge mirrors the bucket-header
+                  pattern below ("today  4") for visual consistency. */}
+              <a
+                href="/archives"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  fontFamily: mono, fontSize: 11, letterSpacing: '0.16em',
+                  textTransform: 'uppercase',
+                  padding: '6px 10px',
+                  border: `1px solid ${p.hairlineSoft}`,
+                  borderRadius: 2,
+                  color: p.inkSoft,
+                  textDecoration: 'none',
+                  transition: 'border-color .15s, color .15s',
+                }}
+                onMouseEnter={e => {
+                  ;(e.currentTarget as HTMLElement).style.borderColor = p.hairline
+                  ;(e.currentTarget as HTMLElement).style.color = p.ink
+                }}
+                onMouseLeave={e => {
+                  ;(e.currentTarget as HTMLElement).style.borderColor = p.hairlineSoft
+                  ;(e.currentTarget as HTMLElement).style.color = p.inkSoft
+                }}
+              >
+                <span>Archives</span>
+                <span
+                  // Render the badge in `ink` regardless of count so
+                  // a "0" reads as "you have an archive folder, it's
+                  // currently empty" rather than as a disabled affordance.
+                  style={{ color: p.ink, fontWeight: 500 }}
+                >{archivedCount}</span>
+              </a>
               <input
                 value={query}
                 onChange={e => setQuery(e.target.value)}
@@ -236,10 +292,21 @@ export default function HistoryPage() {
                 color: p.inkSoft,
               }}>
                 <div style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 22, color: p.ink, marginBottom: 6 }}>
-                  No conversations yet
+                  {archivedCount > 0 ? 'Nothing here right now' : 'No conversations yet'}
                 </div>
                 <div style={{ fontSize: 13, color: p.inkMuted }}>
-                  Start a thread on the <a href="/text" style={{ color: p.accent }}>chat</a> surface to see it appear here.
+                  {archivedCount > 0 ? (
+                    // Distinguish "no chats anywhere" from "no
+                    // ACTIVE chats but you have stuff archived" so a
+                    // user who's archived everything doesn't think
+                    // their data is gone.
+                    <>
+                      Start a new thread on the <a href="/text" style={{ color: p.accent }}>chat</a> surface,
+                      or restore one from <a href="/archives" style={{ color: p.accent }}>Archives</a> ({archivedCount}).
+                    </>
+                  ) : (
+                    <>Start a thread on the <a href="/text" style={{ color: p.accent }}>chat</a> surface to see it appear here.</>
+                  )}
                 </div>
               </div>
             ) : buckets.map(([bucket, items]) => (
