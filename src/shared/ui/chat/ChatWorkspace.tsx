@@ -22,6 +22,7 @@ import {
   type ReactNode,
 } from 'react'
 import { I } from './icons'
+import { useDictation, type DictationState } from './useDictation'
 import {
   PALETTES,
   MONO_STACK,
@@ -1303,9 +1304,13 @@ function ComposerChip({
                 background: 'transparent', border: 'none', outline: 'none',
               }}
             />
-            <button title="Voice input" style={{ ...iconBtn(p, 34), border: `1px solid ${p.hairline}`, color: p.ink }}>
-              {I.mic}
-            </button>
+            <MicButton
+              p={p}
+              size={34}
+              value={inputValue}
+              onChange={onInputChange}
+              fillOnRecord
+            />
             <button onClick={onSend} disabled={!inputValue.trim()} style={{
               padding: '8px 14px',
               background: p.ink, color: p.bg,
@@ -1887,7 +1892,7 @@ function ComposerSlash({
               }}
             />
             <div style={{ flex: 1 }} />
-            <button title="Voice input" style={iconBtn(p, 28)}>{I.mic}</button>
+            <MicButton p={p} size={28} value={inputValue} onChange={onInputChange} />
             <button onClick={onSend} disabled={!inputValue.trim()} style={{
               padding: '6px 12px',
               background: p.ink, color: p.bg,
@@ -2589,3 +2594,178 @@ function iconBtn(p: Palette, size = 26): CSSProperties {
     padding: 0,
   }
 }
+
+/**
+ * MicButton — voice-to-text dictation control shared by every composer.
+ *
+ * Lifecycle:
+ *   1. Click while idle → starts MediaRecorder and shows a red dot.
+ *   2. Click while recording → stops, uploads to /api/transcribe.
+ *   3. While the upload is in flight → shows a hairline spinner and is
+ *      visually disabled so the user can't double-fire.
+ *
+ * The transcript is APPENDED to the current input value rather than
+ * replacing it, so a user can dictate a phrase, type a correction,
+ * and dictate again without losing earlier text. We add a single
+ * space when the existing input doesn't end with whitespace.
+ *
+ * Errors surface inline as a brief tooltip-style flash under the
+ * button — non-modal, dismissed by the next click. We avoid `alert()`
+ * to keep the editorial composer's quiet aesthetic intact.
+ */
+function MicButton({
+  p, size, value, onChange, fillOnRecord = false,
+}: {
+  p: Palette
+  /** Square size matching the surrounding icon-button dimensions. */
+  size: number
+  /** Current composer value — needed so we can append the transcript. */
+  value: string
+  /** Composer's onChange — receives the new full value (existing + transcript). */
+  onChange: (v: string) => void
+  /** When true (chip composer), recording fills the button with `ink`
+   *  for stronger emphasis. When false (slash composer), recording is
+   *  shown more subtly so the dot stays in keeping with the smaller
+   *  button. */
+  fillOnRecord?: boolean
+}) {
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  const { state, toggle, isBusy } = useDictation({
+    onTranscript(text) {
+      // Append a single space between the existing text and the
+      // transcript when needed — handles "dictate, type, dictate"
+      // workflows naturally and never produces "wordsword".
+      const sep = value.length === 0 || /\s$/.test(value) ? '' : ' '
+      onChange(value + sep + text)
+    },
+    onError(msg) {
+      setErrorMsg(msg)
+      // Auto-dismiss the error toast after 3.5s; if the user clicks
+      // the mic again it'll clear immediately via toggle().
+      window.setTimeout(() => setErrorMsg(null), 3500)
+    },
+  })
+
+  // Pick title + visual decoration from the recorder state. The label
+  // doubles as the aria-label for screen-reader users.
+  const label =
+    state === 'recording'  ? 'Stop recording'
+    : state === 'transcribing' ? 'Transcribing…'
+    : 'Voice input'
+
+  const recording = state === 'recording'
+  const transcribing = state === 'transcribing'
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        type="button"
+        title={label}
+        aria-label={label}
+        aria-pressed={recording}
+        onClick={() => { setErrorMsg(null); toggle() }}
+        disabled={transcribing}
+        style={{
+          ...iconBtn(p, size),
+          // Recording: red dot in the middle. We render the icon with
+          // a recording overlay rather than swapping the icon entirely
+          // so the affordance stays visually anchored.
+          background: recording && fillOnRecord ? p.ink : 'transparent',
+          color: recording
+            ? (fillOnRecord ? p.bg : '#c2362b')
+            : p.inkSoft,
+          borderColor: recording ? '#c2362b' : p.hairlineSoft,
+          cursor: transcribing ? 'progress' : 'pointer',
+          opacity: transcribing ? 0.6 : 1,
+        }}
+      >
+        {transcribing ? (
+          <DictationSpinner color={p.inkSoft} />
+        ) : recording ? (
+          <span
+            style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: '#c2362b',
+              boxShadow: '0 0 0 0 rgba(194, 54, 43, 0.6)',
+              animation: 'clox-mic-pulse 1.2s ease-out infinite',
+              display: 'inline-block',
+            }}
+          />
+        ) : (
+          I.mic
+        )}
+      </button>
+
+      {/* Error toast — anchored above the button so it doesn't push
+          composer layout around. Pointer-events:none so a click goes
+          straight to the mic button to retry. */}
+      {errorMsg && (
+        <span
+          role="status"
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 6px)',
+            right: 0,
+            whiteSpace: 'nowrap',
+            background: p.ink,
+            color: p.bg,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: 10.5,
+            padding: '4px 8px',
+            borderRadius: 2,
+            letterSpacing: '0.02em',
+            pointerEvents: 'none',
+            maxWidth: 280,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {errorMsg}
+        </span>
+      )}
+
+      {/* Keyframes for the recording dot pulse. Scoped to a unique
+          name so it can't collide with other animations on the page,
+          and rendered inline so we don't have to plumb through the
+          global stylesheet. */}
+      {recording && (
+        <style jsx>{`
+          @keyframes clox-mic-pulse {
+            0%   { box-shadow: 0 0 0 0   rgba(194, 54, 43, 0.55); }
+            70%  { box-shadow: 0 0 0 8px rgba(194, 54, 43, 0);    }
+            100% { box-shadow: 0 0 0 0   rgba(194, 54, 43, 0);    }
+          }
+        `}</style>
+      )}
+    </span>
+  )
+}
+
+/** Tiny inline SVG spinner for the transcribing state. We avoid
+ *  pulling in a dependency for a single 12px graphic. */
+function DictationSpinner({ color }: { color: string }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
+      <circle cx="6.5" cy="6.5" r="5" fill="none" stroke={color} strokeOpacity="0.25" strokeWidth="1.4" />
+      <path
+        d="M11.5 6.5a5 5 0 0 0-5-5"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        style={{ transformOrigin: '6.5px 6.5px', animation: 'clox-spin 0.9s linear infinite' }}
+      />
+      <style jsx>{`
+        @keyframes clox-spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </svg>
+  )
+}
+
+// Avoid TS complaining about an unused export when DictationState is
+// referenced only via the hook; importing the type keeps the editor
+// hint surface in sync between this file and useDictation.
+type _MicStateRef = DictationState // eslint-disable-line @typescript-eslint/no-unused-vars
