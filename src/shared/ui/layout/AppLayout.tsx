@@ -351,6 +351,15 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
                   <span className="text-[12.5px] flex-1">Settings</span>
                 </Link>
 
+                {/* Archives — single home for everything the user has put away
+                    from the chat list, projects index, or gallery. The page
+                    itself groups by source and lets the user restore or
+                    permanently delete from one place. */}
+                <Link href="/archives" className="h-9 flex items-center gap-2.5 px-2.5 rounded-sharp hover:bg-rail-soft text-ink">
+                  <MenuIcon path="M5 8h14l-1.4 11.2A2 2 0 0115.62 21H8.38a2 2 0 01-1.98-1.8L5 8zM4 4h16v4H4z" />
+                  <span className="text-[12.5px] flex-1">Archives</span>
+                </Link>
+
                 <div className="h-9 flex items-center gap-2.5 px-2.5 rounded-sharp text-ink">
                   <MenuIcon path="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10" />
                   <span className="text-[12.5px] flex-1">Language</span>
