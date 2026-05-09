@@ -60,16 +60,22 @@ export async function GET() {
     b.spend += Number(r.cost_usd ?? 0); b.calls += 1
   }
 
-  // Model + chat-type mix (last 24 h)
+  // Model + chat-type + provider mix (last 24 h)
   const oneDayAgo = now.getTime() - DAY
   const u24 = u30.filter(r => new Date(r.created_at as string).getTime() >= oneDayAgo)
   const byModel = new Map<string, number>()
   const byChatType = new Map<string, number>()
+  const byProvider = new Map<string, { calls: number; cost: number }>()
   for (const r of u24) {
     const m = (r.model ?? 'unknown') as string
     byModel.set(m, (byModel.get(m) ?? 0) + 1)
     const t = (r.chat_type ?? 'chat') as string
     byChatType.set(t, (byChatType.get(t) ?? 0) + 1)
+    const p = ((r.provider ?? 'unknown') as string).toLowerCase() || 'unknown'
+    const acc = byProvider.get(p) ?? { calls: 0, cost: 0 }
+    acc.calls += 1
+    acc.cost += Number(r.cost_usd ?? 0)
+    byProvider.set(p, acc)
   }
 
   return NextResponse.json({
@@ -86,6 +92,9 @@ export async function GET() {
     spend_by_day: [...byDay.entries()].map(([day, v]) => ({ day, ...v })),
     model_mix_24h: [...byModel.entries()].map(([model, calls]) => ({ model, calls })).sort((a, b) => b.calls - a.calls),
     chat_type_mix_24h: [...byChatType.entries()].map(([chat_type, calls]) => ({ chat_type, calls })).sort((a, b) => b.calls - a.calls),
+    providers_24h: [...byProvider.entries()]
+      .map(([provider, v]) => ({ provider, calls_24h: v.calls, cost_24h: round2(v.cost) }))
+      .sort((a, b) => b.calls_24h - a.calls_24h),
   })
 }
 

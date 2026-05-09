@@ -38,6 +38,7 @@ interface DashboardData {
   spend_by_day: Array<{ day: string; spend: number; calls: number }>
   model_mix_24h: Array<{ model: string; calls: number }>
   chat_type_mix_24h: Array<{ chat_type: string; calls: number }>
+  providers_24h: Array<{ provider: string; calls_24h: number; cost_24h: number }>
 }
 
 /* ------------------------------------------------------------------ */
@@ -225,7 +226,11 @@ export default function AdminDashboardPage() {
           <RecentUsersTable />
         </AdminPanel>
         <AdminPanel title="System status" meta="usage signals · 30d">
-          <SystemStatus calls30d={kpis?.calls_30d ?? 0} activeUsers30d={kpis?.active_users_30d ?? 0} />
+          <SystemStatus
+            calls30d={kpis?.calls_30d ?? 0}
+            activeUsers30d={kpis?.active_users_30d ?? 0}
+            providers={data?.providers_24h ?? []}
+          />
         </AdminPanel>
       </div>
 
