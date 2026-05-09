@@ -1,5 +1,7 @@
 import { streamText } from 'ai'
 import { resolveLanguageModel, AIProvider } from '@/domains/text-generation/services/model-router'
+import { assertBudget } from '@/lib/projects/server'
+import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
 
 export const maxDuration = 60
 
@@ -69,6 +71,8 @@ export async function POST(req: Request) {
     maxTokens = 2048,
     systemPrompt,
     apiKey,
+    projectId,
+    chatId,
   }: {
     messages: unknown[]
     model: string
@@ -77,7 +81,22 @@ export async function POST(req: Request) {
     maxTokens?: number
     systemPrompt?: string
     apiKey?: string
+    projectId?: string | null
+    chatId?: string | null
   } = requestData
+
+  // Project budget gate — block before spending if the project is out of credit.
+  if (projectId) {
+    const caller = await getCallerForLogging()
+    if (caller) {
+      try {
+        await assertBudget({ projectId, userId: caller.userId })
+      } catch (e) {
+        const err = e as Error & { status?: number }
+        return Response.json({ error: err.message }, { status: err.status ?? 402 })
+      }
+    }
+  }
 
   console.log('[v0] /api/chat:', {
     provider,
@@ -101,6 +120,8 @@ export async function POST(req: Request) {
     // exist even if it cannot decode them.
     const inflatedMessages = (Array.isArray(messages) ? messages : []).map(inflateAttachments)
 
+    const caller = await getCallerForLogging()
+
     const result = streamText({
       // The AI SDK 4 `model` field accepts either a LanguageModelV1 instance or
       // a gateway model-id string like `openai/gpt-4o`.
@@ -111,6 +132,25 @@ export async function POST(req: Request) {
         : (inflatedMessages as never[]),
       temperature,
       maxTokens,
+      onFinish: async ({ usage }) => {
+        if (!caller) return
+        try {
+          await recordUsage({
+            userId: caller.userId,
+            domain: caller.domain,
+            provider: String(provider),
+            model,
+            modality: 'text',
+            chatType: 'text',
+            promptTokens: usage?.promptTokens,
+            completionTokens: usage?.completionTokens,
+            projectId: projectId ?? null,
+            chatId: chatId ?? null,
+          })
+        } catch (e) {
+          console.error('[v0] usage log failed:', (e as Error).message)
+        }
+      },
     })
 
     return result.toDataStreamResponse()

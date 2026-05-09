@@ -15,6 +15,8 @@
 
 import { experimental_generateImage as generateImage } from 'ai'
 import { createOpenAI, openai as defaultOpenai } from '@ai-sdk/openai'
+import { assertBudget } from '@/lib/projects/server'
+import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
 
 export const maxDuration = 60
 
@@ -173,6 +175,8 @@ export async function POST(request: Request) {
     model?: string
     ratio?: string
     apiKey?: string
+    projectId?: string | null
+    chatId?: string | null
   }
   try {
     body = await request.json()
@@ -185,7 +189,19 @@ export async function POST(request: Request) {
     model: requestedModelId = 'nano-banana',
     ratio = '1:1',
     apiKey: clientApiKey,
+    projectId,
+    chatId,
   } = body
+
+  const caller = await getCallerForLogging()
+  if (projectId && caller) {
+    try {
+      await assertBudget({ projectId, userId: caller.userId })
+    } catch (e) {
+      const err = e as Error & { status?: number }
+      return Response.json({ success: false, error: err.message }, { status: err.status ?? 402 })
+    }
+  }
 
   if (!prompt || !prompt.trim()) {
     return Response.json({ success: false, error: 'Prompt is required' }, { status: 400 })
@@ -230,6 +246,18 @@ export async function POST(request: Request) {
           ? await generateWithImagen(mapped.modelId, prompt, ratio, key)
           : await generateWithGeminiImage(mapped.modelId, prompt, key)
 
+      if (caller) {
+        void recordUsage({
+          userId: caller.userId,
+          domain: caller.domain,
+          provider: 'google',
+          model: requestedModelId,
+          modality: 'image',
+          chatType: 'image',
+          projectId: projectId ?? null,
+          chatId: chatId ?? null,
+        })
+      }
       return Response.json({
         success: true,
         url: dataUrl,
@@ -259,6 +287,18 @@ export async function POST(request: Request) {
         size,
       })
       const dataUrl = `data:${image.mimeType};base64,${image.base64}`
+      if (caller) {
+        void recordUsage({
+          userId: caller.userId,
+          domain: caller.domain,
+          provider: 'openai',
+          model: requestedModelId,
+          modality: 'image',
+          chatType: 'image',
+          projectId: projectId ?? null,
+          chatId: chatId ?? null,
+        })
+      }
       return Response.json({ success: true, url: dataUrl, prompt, model: mapped.modelId })
     }
 
