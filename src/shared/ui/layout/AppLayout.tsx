@@ -57,6 +57,44 @@ interface UserProfile {
   avatarSeed: string
 }
 
+/**
+ * Profile cache — module-level + sessionStorage. The shell mounts once per
+ * page, but the profile only changes after sign-in / sign-out. Without this
+ * cache every Link click pays for two Supabase round-trips (profiles +
+ * credits), which is the "long thinking pause" the user reported.
+ *
+ * Resolution rules:
+ *   1. Read cached value synchronously on first render — UI fills immediately.
+ *   2. Kick off a background refresh on the *first mount only* of this tab,
+ *      then update the cache + state. Stale-while-revalidate.
+ *   3. Subsequent mounts see the cache and skip the network entirely.
+ */
+const PROFILE_CACHE_KEY = 'clox.cache.profile.v1'
+let profileMemo: UserProfile | null = null
+let profileFetchedThisSession = false
+let chatSyncRanThisSession = false
+
+function readCachedProfile(): UserProfile | null {
+  if (profileMemo) return profileMemo
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(PROFILE_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as UserProfile
+    profileMemo = parsed
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writeCachedProfile(p: UserProfile) {
+  profileMemo = p
+  if (typeof window !== 'undefined') {
+    try { window.sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(p)) } catch { /* quota — fine */ }
+  }
+}
+
 /* Primary nav — maps to the four chat surfaces + gallery + history. */
 const PRIMARY_NAV: { href: string; label: string; icon: ReactNode; count?: number | null }[] = [
   { href: '/text',  label: 'Chat',    icon: <NavIcon path="M2 3h9v6H6L3 11.5V9H2z" /> },
@@ -79,7 +117,11 @@ function NavIcon({ path, extra }: { path: string; extra?: string }) {
 export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutProps) {
   const pathname = usePathname()
   const [showUserMenu, setShowUserMenu] = useState(false)
-  const [profile, setProfile] = useState<UserProfile>({
+
+  // Initial state is the cached profile so the rail renders fully populated
+  // on first paint. We only show the empty placeholder for genuinely-new
+  // visitors who haven't authenticated yet.
+  const [profile, setProfile] = useState<UserProfile>(() => readCachedProfile() ?? {
     email: '',
     firstName: '',
     role: 'user',
@@ -100,7 +142,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
 
     const firstName = profileRes.data?.first_name || email.split('@')[0]
     const lastName = profileRes.data?.last_name || ''
-    setProfile({
+    const next: UserProfile = {
       email,
       firstName: lastName ? `${firstName} ${lastName}` : firstName,
       role: profileRes.data?.role || 'user',
@@ -108,14 +150,26 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
         ? parseFloat(creditsRes.data.balance_usd).toFixed(2)
         : '0.00',
       avatarSeed: profileRes.data?.avatar_seed || '',
-    })
+    }
+    writeCachedProfile(next)
+    setProfile(next)
   }, [])
 
-  useEffect(() => { loadProfile() }, [loadProfile])
-
-  // One-shot localStorage→DB chat migration. Idempotent; runs at most once
-  // per session. See lib/projects/chat-sync.ts for the contract.
+  // Refetch only once per session. Subsequent navigations read the cached
+  // value synchronously, so flipping between Chat / Image / Projects /
+  // Gallery feels instant.
   useEffect(() => {
+    if (profileFetchedThisSession) return
+    profileFetchedThisSession = true
+    void loadProfile()
+  }, [loadProfile])
+
+  // One-shot localStorage→DB chat migration. Guarded with a module-level
+  // flag so it runs at most once per tab regardless of how many times
+  // AppLayout mounts (each route is its own React tree).
+  useEffect(() => {
+    if (chatSyncRanThisSession) return
+    chatSyncRanThisSession = true
     const t = window.setTimeout(() => { void syncLocalChatsToDB() }, 600)
     return () => window.clearTimeout(t)
   }, [])
@@ -144,6 +198,9 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
   }, [])
 
   const handleSignOut = async () => {
+    profileMemo = null
+    profileFetchedThisSession = false
+    try { window.sessionStorage.removeItem(PROFILE_CACHE_KEY) } catch { /* fine */ }
     const supabase = createClient()
     await supabase.auth.signOut()
     window.location.href = '/auth/login'
@@ -151,6 +208,9 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
 
   const handleDeleteAccount = async () => {
     if (!confirm('Are you sure you want to permanently delete your account? This cannot be undone.')) return
+    profileMemo = null
+    profileFetchedThisSession = false
+    try { window.sessionStorage.removeItem(PROFILE_CACHE_KEY) } catch { /* fine */ }
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (user) await supabase.from('profiles').delete().eq('id', user.id)

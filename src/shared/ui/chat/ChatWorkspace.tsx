@@ -1997,7 +1997,11 @@ function ConfigDrawer({
       {/* Tool toggles — only render the slots the capability actually
           supports. Models without function-calling don't get a "tools"
           section at all. */}
-      {capability?.kind === 'text' && (capability as TextCapability).toolUse && (
+      {/* Tools section is now rendered inline by `renderCapabilityFields`
+          via the `toolUse` toggle field. The drawer no longer needs its
+          own dedicated tools section because the capability declaratively
+          owns whether tool use is exposed. */}
+      {false && capability?.kind === 'text' && (
         <Section p={p} mono={mono} title="Tools">
           {(toolsState ?? [
             { label: 'Web search', on: true },
