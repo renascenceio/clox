@@ -59,7 +59,7 @@ export default function AuditPage() {
       eyebrow="every super-admin action · append-only"
       heading={<>Who changed what, <em className="italic">and when.</em></>}
       lead="An immutable receipt of every privileged action — flag toggles, setting writes, user changes. Filter by actor or action class to assemble a paper trail."
-      headExtra={(['all', 'flag', 'setting', 'user', 'invoice'] as const).map(f => (
+      headExtra={ACTION_FILTERS.map(f => (
         <AdminFilter key={f} active={actionFilter === f} onClick={() => setActionFilter(f)}>
           {f}
         </AdminFilter>

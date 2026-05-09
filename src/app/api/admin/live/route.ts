@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const rows = data ?? []
-  const userIds = [...new Set(rows.map(r => r.user_id).filter((x): x is string => Boolean(x)))]
+  const userIds = Array.from(new Set(rows.map(r => r.user_id).filter((x): x is string => Boolean(x))))
   let nameByUser = new Map<string, { name: string; email: string }>()
   if (userIds.length > 0) {
     const [{ data: profs }, emailMap] = await Promise.all([

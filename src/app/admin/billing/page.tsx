@@ -81,7 +81,7 @@ export default function BillingPage() {
       eyebrow="invoices · payouts · outstanding credit"
       heading={<>The money <em className="italic">side of the house.</em></>}
       lead="Every invoice on the platform, plus the float of outstanding credit. Filter by status to triage failed payments and chase open balances."
-      headExtra={(['all', 'paid', 'open', 'pending', 'failed', 'refunded'] as const).map(s => (
+      headExtra={STATUS_FILTERS.map(s => (
         <AdminFilter key={s} active={status === s} onClick={() => setStatus(s)}>
           {s}
         </AdminFilter>

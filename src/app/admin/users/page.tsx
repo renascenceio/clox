@@ -74,7 +74,7 @@ export default function UsersPage() {
       eyebrow="every account on the platform"
       heading={<>Who&apos;s on, <em className="italic">and what they&apos;re doing.</em></>}
       lead="Search by name, email, or company. Filter by role. Click a row to inspect a single account, see balance, and review their last 30 days of activity."
-      headExtra={(['all', 'super_admin', 'admin', 'member'] as const).map(r => (
+      headExtra={ROLE_FILTERS.map(r => (
         <AdminFilter key={r} active={role === r} onClick={() => setRole(r)}>
           {r.replace('_', ' ')}
         </AdminFilter>

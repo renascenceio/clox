@@ -89,12 +89,14 @@ export async function GET() {
       calls_30d: calls30,
       mrr_usd: round2(mrr),
     },
-    spend_by_day: [...byDay.entries()].map(([day, v]) => ({ day, ...v })),
-    model_mix_24h: [...byModel.entries()].map(([model, calls]) => ({ model, calls })).sort((a, b) => b.calls - a.calls),
-    chat_type_mix_24h: [...byChatType.entries()].map(([chat_type, calls]) => ({ chat_type, calls })).sort((a, b) => b.calls - a.calls),
-    providers_24h: [...byProvider.entries()]
-      .map(([provider, v]) => ({ provider, calls_24h: v.calls, cost_24h: round2(v.cost) }))
-      .sort((a, b) => b.calls_24h - a.calls_24h),
+    spend_by_day: Array.from(byDay, ([day, v]) => ({ day, ...v })),
+    model_mix_24h: Array.from(byModel, ([model, calls]) => ({ model, calls })).sort((a, b) => b.calls - a.calls),
+    chat_type_mix_24h: Array.from(byChatType, ([chat_type, calls]) => ({ chat_type, calls })).sort((a, b) => b.calls - a.calls),
+    providers_24h: Array.from(byProvider, ([provider, v]) => ({
+      provider,
+      calls_24h: v.calls,
+      cost_24h: round2(v.cost),
+    })).sort((a, b) => b.calls_24h - a.calls_24h),
   })
 }
 

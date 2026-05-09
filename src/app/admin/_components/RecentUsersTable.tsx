@@ -120,7 +120,7 @@ export default function RecentUsersTable() {
                   {users.length === 0 ? 'no users yet — once people sign up they show here' : 'no users match'}
                 </td>
               </tr>
-            ) : filtered.map((u, idx) => {
+            ) : filtered.map(u => {
               const initial = (u.name || u.email || '·').charAt(0).toLowerCase()
               const tone = AV_BG[hashIndex(u.id, AV_BG.length)]
               return (

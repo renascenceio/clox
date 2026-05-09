@@ -69,10 +69,10 @@ export async function GET(req: Request) {
   return NextResponse.json({
     rows,
     aggregates: {
-      by_day: [...byDay.entries()].map(([day, v]) => ({ day, ...v })).sort((a, b) => a.day.localeCompare(b.day)),
-      by_provider: [...byProvider.entries()].map(([provider, v]) => ({ provider, ...v })).sort((a, b) => b.spend - a.spend),
-      by_model: [...byModel.entries()].map(([model, v]) => ({ model, ...v })).sort((a, b) => b.spend - a.spend),
-      by_chat_type: [...byChatType.entries()].map(([chat_type, v]) => ({ chat_type, ...v })).sort((a, b) => b.spend - a.spend),
+      by_day: Array.from(byDay, ([day, v]) => ({ day, ...v })).sort((a, b) => a.day.localeCompare(b.day)),
+      by_provider: Array.from(byProvider, ([provider, v]) => ({ provider, ...v })).sort((a, b) => b.spend - a.spend),
+      by_model: Array.from(byModel, ([model, v]) => ({ model, ...v })).sort((a, b) => b.spend - a.spend),
+      by_chat_type: Array.from(byChatType, ([chat_type, v]) => ({ chat_type, ...v })).sort((a, b) => b.spend - a.spend),
     },
   })
 }
