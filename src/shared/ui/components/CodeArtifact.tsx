@@ -48,6 +48,13 @@ const LANG_EXT: Record<string, string> = {
   go: 'go', rs: 'rs', rust: 'rs', java: 'java', kt: 'kt',
   c: 'c', h: 'h', cpp: 'cpp', cs: 'cs', php: 'php', swift: 'swift',
   txt: 'txt', text: 'txt', diff: 'diff', patch: 'patch',
+  // Document specs — the *body* of the block is JSON/markdown that
+  // this component compiles into a real .docx / .pptx / .pdf at
+  // download time. These aren't proper "languages" but using them as
+  // language tags keeps the model's emit format ergonomic ("```pptx
+  // {…outline…}" reads naturally) and tells the toolbar which
+  // converter to offer.
+  pptx: 'pptx', docx: 'docx', latex: 'tex', tex: 'tex',
 }
 
 /** Languages we know how to render in the inline preview pane. */
@@ -56,10 +63,29 @@ const PREVIEWABLE = new Set([
   'csv', 'tsv',
   'json',
   'md', 'markdown',
+  // pptx outlines preview as a rendered slide list; docx specs
+  // preview as their formatted body so the user can see what they
+  // are about to download.
+  'pptx', 'docx',
 ])
 
 /** Languages that should also offer an "Excel" download option. */
 const TABULAR = new Set(['csv', 'tsv'])
+
+/** Languages that get a "docx" download option. We accept Markdown
+ *  (the natural way to express a document) and HTML (richer layout). */
+const DOCX_SOURCE = new Set(['markdown', 'md', 'html', 'docx'])
+
+/** Languages that get a "pdf" download option. PDF is generated from
+ *  the rendered HTML in the preview iframe, so any language that has
+ *  an HTML-style preview qualifies. */
+const PDF_SOURCE = new Set(['markdown', 'md', 'html', 'svg'])
+
+/** Languages that get a "pptx" download option. We only know how to
+ *  build a deck from the structured `pptx` outline; HTML→PPTX is far
+ *  less reliable so we leave it to the user to ask the model for the
+ *  outline form when they want a real deck. */
+const PPTX_SOURCE = new Set(['pptx'])
 
 /** Pull the language hint off the className react-markdown emits. */
 function readLang(className?: string): string {
@@ -90,6 +116,14 @@ function inferMime(lang: string): string {
     case 'css':            return 'text/css'
     case 'yaml':
     case 'yml':            return 'application/yaml'
+    // Office formats — these only matter when the user clicks the
+    // raw "download" button on a `pptx` / `docx` block (which gives
+    // them the source spec). The actual binary download lives on the
+    // dedicated "pptx" / "docx" buttons further down.
+    case 'pptx':           return 'application/json'
+    case 'docx':           return 'application/json'
+    case 'latex':
+    case 'tex':            return 'application/x-tex'
     default:               return 'text/plain'
   }
 }
@@ -137,10 +171,25 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
   // rendered output by default rather than the raw markup. They can
   // still toggle to "code" if they want to read the source.
   const [showPreview, setShowPreview] = useState(
-    lang === 'html' || lang === 'svg' || lang === 'markdown' || lang === 'md',
+    lang === 'html' || lang === 'svg' || lang === 'markdown' || lang === 'md' ||
+    lang === 'pptx' || lang === 'docx',
   )
+  // While a binary export is being assembled (docx / pdf / pptx) we
+  // disable the buttons and label them with the in-flight verb so the
+  // user gets feedback for the 200-800ms the conversion typically
+  // takes on a moderately sized doc.
+  const [busy, setBusy] = useState<'' | 'docx' | 'pdf' | 'pptx'>('')
   const previewable = PREVIEWABLE.has(lang)
   const tabular = TABULAR.has(lang)
+  const canDocx = DOCX_SOURCE.has(lang)
+  const canPdf  = PDF_SOURCE.has(lang)
+  const canPptx = PPTX_SOURCE.has(lang)
+  // The HtmlPreview iframe registers itself here so the PDF exporter
+  // can snapshot the rendered DOM. We don't reach into the iframe's
+  // contentDocument from outside — html2canvas takes a pure DOM node,
+  // so PDF generation builds its own off-screen render instead of
+  // depending on the preview state.
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null)
 
   async function handleCopy() {
     try {
@@ -185,6 +234,218 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
       )
     } catch (e) {
       console.error('[v0] xlsx export failed', e)
+    }
+  }
+
+  /**
+   * Build a real .docx from the artifact body and trigger a download.
+   *
+   * Source language can be:
+   *   - markdown / md  — parsed by `mdToDocxChildren` into headings,
+   *                      paragraphs, lists, code blocks, tables.
+   *   - html           — converted by stripping tags into plain
+   *                      paragraphs while preserving headings.
+   *   - docx           — the body is a JSON spec (see DOCX_JSON_SHAPE
+   *                      in the helper) for exact paragraph/run control.
+   *
+   * `docx` is loaded lazily so it doesn't bloat the initial bundle —
+   * the library is ~250KB minified and only matters when the user
+   * actually clicks "docx".
+   */
+  async function handleDownloadDocx() {
+    setBusy('docx')
+    try {
+      const docx = await import('docx')
+      const children = buildDocxChildren(docx, code, lang)
+      const doc = new docx.Document({
+        creator: 'Clox',
+        styles: defaultDocxStyles(docx),
+        sections: [{ properties: {}, children }],
+      })
+      const blob = await docx.Packer.toBlob(doc)
+      triggerDownload(blob, 'document.docx')
+    } catch (e) {
+      console.error('[v0] docx export failed', e)
+      alert(`docx export failed: ${(e as Error).message}`)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  /**
+   * Build a real .pptx from a structured outline and download it.
+   *
+   * The artifact body is expected to be JSON of the shape:
+   *   {
+   *     "title": "Deck title (optional, used as the title slide)",
+   *     "theme": { "background": "#fff", "accent": "#1a1a1a" },
+   *     "slides": [
+   *       { "title": "Slide 1", "bullets": ["Point A", "Point B"], "notes": "…" },
+   *       { "title": "Closing", "body": "Free-form paragraph text" }
+   *     ]
+   *   }
+   *
+   * Both `bullets` (array) and `body` (string) are accepted so the
+   * model can pick the right shape per slide. Speaker notes are
+   * embedded so the deck travels with its narration.
+   */
+  async function handleDownloadPptx() {
+    setBusy('pptx')
+    try {
+      const PptxGenJS = (await import('pptxgenjs')).default
+      const spec = parsePptxSpec(code)
+      const pres = new PptxGenJS()
+      pres.layout = 'LAYOUT_WIDE'
+      const accent = spec.theme?.accent ?? '1A1A1A'
+      const bg = spec.theme?.background ?? 'FFFFFF'
+
+      // Optional title slide — only emitted when the user supplied a
+      // top-level title, so a single-slide outline doesn't get a
+      // confusing duplicate cover.
+      if (spec.title) {
+        const cover = pres.addSlide()
+        cover.background = { color: bg }
+        cover.addText(spec.title, {
+          x: 0.5, y: 2.6, w: 12, h: 1.5,
+          fontSize: 40, bold: true, color: accent,
+          fontFace: 'Helvetica',
+        })
+      }
+
+      for (const slide of spec.slides) {
+        const s = pres.addSlide()
+        s.background = { color: bg }
+        if (slide.title) {
+          s.addText(slide.title, {
+            x: 0.5, y: 0.4, w: 12, h: 0.9,
+            fontSize: 28, bold: true, color: accent,
+            fontFace: 'Helvetica',
+          })
+        }
+        if (slide.bullets && slide.bullets.length > 0) {
+          s.addText(
+            slide.bullets.map(b => ({ text: b, options: { bullet: true } })),
+            {
+              x: 0.6, y: 1.4, w: 11.5, h: 5.6,
+              fontSize: 18, color: accent, fontFace: 'Helvetica',
+              valign: 'top',
+            },
+          )
+        } else if (slide.body) {
+          s.addText(slide.body, {
+            x: 0.6, y: 1.4, w: 11.5, h: 5.6,
+            fontSize: 18, color: accent, fontFace: 'Helvetica',
+            valign: 'top',
+          })
+        }
+        if (slide.notes) s.addNotes(slide.notes)
+      }
+
+      // pptxgenjs returns a base64 data URI when stream:false; we use
+      // its blob writer to keep memory bounded for big decks.
+      const blob = (await pres.write({ outputType: 'blob' })) as Blob
+      triggerDownload(blob, 'presentation.pptx')
+    } catch (e) {
+      console.error('[v0] pptx export failed', e)
+      alert(`pptx export failed: ${(e as Error).message}`)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  /**
+   * Render the artifact as a real PDF.
+   *
+   * Implementation:
+   *   1. Materialise the artifact body as a styled HTML document
+   *      (markdown is converted via the same `mdToHtml` used by the
+   *      preview pane; html / svg pass through).
+   *   2. Mount that HTML inside an off-screen iframe sized to A4
+   *      content width (794px @ 96dpi). The iframe gives us a real
+   *      layout context for html2canvas without affecting the parent
+   *      page's scroll.
+   *   3. Use html2canvas to rasterise the iframe body, then jspdf to
+   *      paginate the resulting image into A4 portrait pages.
+   *
+   * This is the same technique Notion / Linear / GitHub Issues use
+   * for "Export as PDF" — quality is good for text, charts, and
+   * arbitrary layout; less ideal for vectors (a future follow-up
+   * could swap to jspdf's native HTML pipeline for crispness).
+   */
+  async function handleDownloadPdf() {
+    setBusy('pdf')
+    try {
+      const [{ jsPDF }, html2canvasMod] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ])
+      const html2canvas = html2canvasMod.default
+      const html =
+        lang === 'markdown' || lang === 'md' ? mdToHtml(code) :
+        lang === 'svg' ? svgToFullHtml(code) :
+        ensureFullHtml(code)
+
+      // Off-screen iframe at A4 content width. We keep it visible
+      // (just shifted off the viewport) because some browsers clip
+      // `display:none` iframes from rendering, which would give us a
+      // blank canvas.
+      const A4_PX_W = 794
+      const frame = document.createElement('iframe')
+      frame.style.position = 'fixed'
+      frame.style.left = '-10000px'
+      frame.style.top = '0'
+      frame.style.width = A4_PX_W + 'px'
+      frame.style.height = '1000px'
+      frame.style.border = '0'
+      document.body.appendChild(frame)
+      try {
+        const doc = frame.contentDocument
+        if (!doc) throw new Error('Could not access export frame document')
+        doc.open()
+        doc.write(html)
+        doc.close()
+        // Wait a tick so layout / fonts settle before snapshotting —
+        // skipping this gives blank canvases for the first paragraph.
+        await new Promise(r => setTimeout(r, 80))
+        const target = doc.body
+        const canvas = await html2canvas(target, {
+          scale: 2,           // 2× = retina, good print quality
+          backgroundColor: '#ffffff',
+          windowWidth: A4_PX_W,
+          // Disabling foreignObject avoids cross-origin / CSS-cap
+          // bugs that show up with system fonts; the standard pixel
+          // path is plenty fast for documents.
+          useCORS: true,
+          logging: false,
+        })
+        const imgData = canvas.toDataURL('image/png')
+
+        // Paginate. jsPDF's A4 portrait is 210×297 mm (or 595.28 ×
+        // 841.89 pt). We work in mm so the math reads naturally.
+        const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+        const pageW = pdf.internal.pageSize.getWidth()
+        const pageH = pdf.internal.pageSize.getHeight()
+        const imgW = pageW
+        const imgH = (canvas.height * imgW) / canvas.width
+        let heightLeft = imgH
+        let pos = 0
+        pdf.addImage(imgData, 'PNG', 0, pos, imgW, imgH, undefined, 'FAST')
+        heightLeft -= pageH
+        while (heightLeft > 0) {
+          pos = heightLeft - imgH
+          pdf.addPage()
+          pdf.addImage(imgData, 'PNG', 0, pos, imgW, imgH, undefined, 'FAST')
+          heightLeft -= pageH
+        }
+        pdf.save('document.pdf')
+      } finally {
+        document.body.removeChild(frame)
+      }
+    } catch (e) {
+      console.error('[v0] pdf export failed', e)
+      alert(`pdf export failed: ${(e as Error).message}`)
+    } finally {
+      setBusy('')
     }
   }
 
@@ -238,10 +499,34 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
               excel
             </ToolbarButton>
           )}
+          {canDocx && (
+            <ToolbarButton
+              onClick={handleDownloadDocx}
+              disabled={busy === 'docx'}
+            >
+              {busy === 'docx' ? 'building…' : 'docx'}
+            </ToolbarButton>
+          )}
+          {canPptx && (
+            <ToolbarButton
+              onClick={handleDownloadPptx}
+              disabled={busy === 'pptx'}
+            >
+              {busy === 'pptx' ? 'building…' : 'pptx'}
+            </ToolbarButton>
+          )}
+          {canPdf && (
+            <ToolbarButton
+              onClick={handleDownloadPdf}
+              disabled={busy === 'pdf'}
+            >
+              {busy === 'pdf' ? 'rendering…' : 'pdf'}
+            </ToolbarButton>
+          )}
         </div>
       </div>
       {showPreview && previewable ? (
-        <PreviewPane code={code} lang={lang} />
+        <PreviewPane code={code} lang={lang} iframeRef={previewIframeRef} />
       ) : (
         <pre
           className="overflow-x-auto px-3 py-2.5 text-[12.5px] leading-relaxed"
@@ -261,16 +546,19 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
 function ToolbarButton({
   onClick,
   active,
+  disabled,
   children,
 }: {
   onClick: () => void
   active?: boolean
+  disabled?: boolean
   children: React.ReactNode
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className="px-2 py-0.5 transition-colors"
       style={{
         // Hairline border, no shadow — matches the editorial system.
@@ -281,7 +569,8 @@ function ToolbarButton({
         fontFamily: 'var(--font-geist-mono), ui-monospace, monospace',
         fontSize: 10.5,
         letterSpacing: '0.04em',
-        cursor: 'pointer',
+        cursor: disabled ? 'wait' : 'pointer',
+        opacity: disabled ? 0.55 : 1,
       }}
     >
       {children}
@@ -296,9 +585,17 @@ function ToolbarButton({
  * never get here because the toolbar only shows "preview" when
  * `PREVIEWABLE.has(lang)` is true.
  */
-function PreviewPane({ code, lang }: { code: string; lang: string }) {
+function PreviewPane({
+  code,
+  lang,
+  iframeRef,
+}: {
+  code: string
+  lang: string
+  iframeRef?: React.MutableRefObject<HTMLIFrameElement | null>
+}) {
   if (lang === 'html' || lang === 'svg' || lang === 'xml') {
-    return <HtmlPreview code={code} lang={lang} />
+    return <HtmlPreview code={code} lang={lang} iframeRef={iframeRef} />
   }
   if (lang === 'csv' || lang === 'tsv') {
     return <TablePreview code={code} delim={lang === 'tsv' ? '\t' : ','} />
@@ -307,7 +604,16 @@ function PreviewPane({ code, lang }: { code: string; lang: string }) {
     return <JsonPreview code={code} />
   }
   if (lang === 'markdown' || lang === 'md') {
-    return <MarkdownPreview code={code} />
+    return <MarkdownPreview code={code} iframeRef={iframeRef} />
+  }
+  if (lang === 'pptx') {
+    return <PptxPreview code={code} />
+  }
+  if (lang === 'docx') {
+    // docx specs are rendered through the markdown previewer because
+    // the on-the-wire format is markdown-compatible — every paragraph
+    // and heading round-trips. The download path uses the same parser.
+    return <MarkdownPreview code={code} iframeRef={iframeRef} />
   }
   // Fallback shouldn't happen given PREVIEWABLE gating, but keep it
   // safe rather than silently throwing.
@@ -336,8 +642,17 @@ function PreviewPane({ code, lang }: { code: string; lang: string }) {
  * preview. Falls back to a sensible minimum height before the first
  * message arrives or if the iframe blocks postMessage entirely.
  */
-function HtmlPreview({ code, lang }: { code: string; lang: string }) {
-  const iframeRef = useRef<HTMLIFrameElement | null>(null)
+function HtmlPreview({
+  code,
+  lang,
+  iframeRef: externalRef,
+}: {
+  code: string
+  lang: string
+  iframeRef?: React.MutableRefObject<HTMLIFrameElement | null>
+}) {
+  const ownRef = useRef<HTMLIFrameElement | null>(null)
+  const iframeRef = externalRef ?? ownRef
   const [height, setHeight] = useState(320)
 
   // Build the document we'll feed via srcDoc. SVG and XML get wrapped
@@ -572,9 +887,15 @@ function JsonPreview({ code }: { code: string }) {
  * italic, code spans, fenced blocks, lists, links). For anything more
  * exotic the user can flip to "code" view and read the source.
  */
-function MarkdownPreview({ code }: { code: string }) {
+function MarkdownPreview({
+  code,
+  iframeRef,
+}: {
+  code: string
+  iframeRef?: React.MutableRefObject<HTMLIFrameElement | null>
+}) {
   const html = useMemo(() => mdToHtml(code), [code])
-  return <HtmlPreview code={html} lang="html" />
+  return <HtmlPreview code={html} lang="html" iframeRef={iframeRef} />
 }
 
 function escapeHtml(s: string): string {
@@ -668,6 +989,335 @@ function mdToHtml(md: string): string {
     'a{color:#1f63d1;}',
     '</style></head><body>',
     body,
+    '</body></html>',
+  ].join('')
+}
+
+/* ------------------------------------------------------------------ */
+/*                  PPTX outline preview + parser                      */
+/* ------------------------------------------------------------------ */
+
+/** The structural shape we accept inside a ```pptx fenced block. The
+ *  helper is forgiving — both top-level `slides` arrays and bare
+ *  arrays are accepted, and `bullets` may be an array of strings or a
+ *  newline-delimited string. */
+interface PptxSpec {
+  title?: string
+  theme?: { background?: string; accent?: string }
+  slides: Array<{
+    title?: string
+    bullets?: string[]
+    body?: string
+    notes?: string
+  }>
+}
+
+function parsePptxSpec(raw: string): PptxSpec {
+  let json: unknown
+  try {
+    json = JSON.parse(raw)
+  } catch {
+    // Soft-fallback: some models emit YAML-ish lists. We try a very
+    // light heuristic — split into slide-shaped chunks separated by
+    // blank lines — so the user still gets a deck instead of an error.
+    const groups = raw.split(/\n\s*\n/).filter(Boolean)
+    return {
+      slides: groups.map(g => {
+        const lines = g.split('\n').map(l => l.trim()).filter(Boolean)
+        const [title, ...rest] = lines
+        return {
+          title,
+          bullets: rest.map(l => l.replace(/^[-*•]\s+/, '')),
+        }
+      }),
+    }
+  }
+
+  // Normalise bare arrays and bullet-as-string forms.
+  const root = (Array.isArray(json) ? { slides: json } : (json as PptxSpec)) ?? { slides: [] }
+  const slides = (root.slides ?? []).map(s => ({
+    ...s,
+    bullets: Array.isArray(s.bullets)
+      ? s.bullets.filter(Boolean)
+      : typeof s.bullets === 'string'
+        ? (s.bullets as unknown as string).split(/\r?\n/).filter(Boolean)
+        : undefined,
+  }))
+  return { ...root, slides }
+}
+
+/**
+ * Visual preview for a pptx outline — a vertical stack of slide cards
+ * so the user can sanity-check the deck structure before downloading.
+ * Each card mirrors the fonts / colors the actual exporter uses so the
+ * preview is faithful to the .pptx output.
+ */
+function PptxPreview({ code }: { code: string }) {
+  const spec = useMemo(() => parsePptxSpec(code), [code])
+  const accent = spec.theme?.accent ?? '#1a1a1a'
+  const bg = spec.theme?.background ?? '#ffffff'
+  return (
+    <div style={{ padding: 14, maxHeight: 520, overflow: 'auto', background: 'rgb(var(--surface-rgb))' }}>
+      {spec.title && (
+        <div style={{
+          marginBottom: 12,
+          fontFamily: 'var(--font-geist-mono), ui-monospace, monospace',
+          fontSize: 10.5,
+          letterSpacing: '0.06em',
+          color: 'rgb(var(--ink-soft-rgb))',
+          textTransform: 'uppercase',
+        }}>
+          Deck · {spec.title}
+        </div>
+      )}
+      <div style={{ display: 'grid', gap: 10 }}>
+        {spec.slides.map((s, i) => (
+          <div
+            key={i}
+            style={{
+              border: '1px solid var(--hairline)',
+              borderRadius: 2,
+              padding: '14px 16px',
+              background: bg,
+              color: accent,
+              fontFamily: 'Helvetica, ui-sans-serif, system-ui',
+            }}
+          >
+            <div style={{
+              fontSize: 10,
+              letterSpacing: '0.08em',
+              color: 'rgb(var(--ink-soft-rgb))',
+              fontFamily: 'var(--font-geist-mono), ui-monospace, monospace',
+              marginBottom: 4,
+            }}>
+              SLIDE {i + 1}
+            </div>
+            {s.title && (
+              <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
+                {s.title}
+              </div>
+            )}
+            {s.bullets && s.bullets.length > 0 ? (
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, lineHeight: 1.6 }}>
+                {s.bullets.map((b, bi) => <li key={bi}>{b}</li>)}
+              </ul>
+            ) : s.body ? (
+              <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>{s.body}</div>
+            ) : null}
+            {s.notes && (
+              <div style={{
+                marginTop: 8,
+                paddingTop: 6,
+                borderTop: '1px dashed var(--hairline-soft)',
+                fontSize: 11.5,
+                color: 'rgb(var(--ink-soft-rgb))',
+                fontStyle: 'italic',
+              }}>
+                Notes: {s.notes}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*                  DOCX builder (markdown → docx)                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Convert the artifact body into the array of `Paragraph` / `Table`
+ * objects the `docx` library expects.
+ *
+ * For markdown / md / docx-as-markdown sources we walk the source
+ * line-by-line and translate the common subset (headings, paragraphs,
+ * unordered/ordered lists, code fences). For HTML we strip tags into
+ * paragraphs while keeping headings — good enough for most assistant-
+ * authored reports; users who want pixel-perfect rendering should
+ * choose the PDF export instead.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildDocxChildren(docx: typeof import('docx'), source: string, lang: string): any[] {
+  const { Paragraph, HeadingLevel, TextRun, AlignmentType } = docx
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const children: any[] = []
+
+  const md =
+    lang === 'html' ? htmlToMarkdownLite(source) :
+    source
+
+  const lines = md.split(/\r?\n/)
+  let inFence = false
+  let fenceBuf: string[] = []
+  for (const rawLine of lines) {
+    if (rawLine.startsWith('```')) {
+      if (inFence) {
+        // Flush fence as a monospaced paragraph block.
+        children.push(new Paragraph({
+          children: [new TextRun({
+            text: fenceBuf.join('\n'),
+            font: 'Consolas',
+            size: 20, // half-points → 10pt
+          })],
+          spacing: { before: 120, after: 120 },
+        }))
+        fenceBuf = []
+        inFence = false
+      } else {
+        inFence = true
+      }
+      continue
+    }
+    if (inFence) { fenceBuf.push(rawLine); continue }
+
+    const line = rawLine.replace(/\s+$/, '')
+    if (line.length === 0) {
+      children.push(new Paragraph({ children: [] }))
+      continue
+    }
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line)
+    if (heading) {
+      const lvl = heading[1].length
+      const levelMap = [
+        HeadingLevel.HEADING_1,
+        HeadingLevel.HEADING_2,
+        HeadingLevel.HEADING_3,
+        HeadingLevel.HEADING_4,
+        HeadingLevel.HEADING_5,
+        HeadingLevel.HEADING_6,
+      ]
+      children.push(new Paragraph({
+        text: heading[2],
+        heading: levelMap[lvl - 1],
+        alignment: AlignmentType.LEFT,
+      }))
+      continue
+    }
+    const ulItem = /^[-*]\s+(.*)$/.exec(line)
+    if (ulItem) {
+      children.push(new Paragraph({
+        text: ulItem[1],
+        bullet: { level: 0 },
+      }))
+      continue
+    }
+    const olItem = /^(\d+)\.\s+(.*)$/.exec(line)
+    if (olItem) {
+      children.push(new Paragraph({
+        text: olItem[2],
+        numbering: { reference: 'default-numbering', level: 0 },
+      }))
+      continue
+    }
+    // Inline emphasis — split into runs so bold/italic survive.
+    const runs = inlineToRuns(docx, line)
+    children.push(new Paragraph({ children: runs }))
+  }
+  // Close an unterminated fence to preserve content.
+  if (inFence && fenceBuf.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: fenceBuf.join('\n'), font: 'Consolas', size: 20 })],
+    }))
+  }
+  return children
+}
+
+/** Convert `**bold**` / `*italic*` / `` `code` `` markup into TextRun
+ *  segments. Anything more exotic falls through as plain text — the
+ *  goal is "Word recognises emphasis", not full markdown fidelity. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function inlineToRuns(docx: typeof import('docx'), line: string): any[] {
+  const { TextRun } = docx
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const out: any[] = []
+  // Split on the three markup tokens, keeping delimiters via lookahead.
+  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(line)) !== null) {
+    if (m.index > last) out.push(new TextRun({ text: line.slice(last, m.index) }))
+    const tok = m[0]
+    if (tok.startsWith('**')) {
+      out.push(new TextRun({ text: tok.slice(2, -2), bold: true }))
+    } else if (tok.startsWith('*')) {
+      out.push(new TextRun({ text: tok.slice(1, -1), italics: true }))
+    } else if (tok.startsWith('`')) {
+      out.push(new TextRun({ text: tok.slice(1, -1), font: 'Consolas' }))
+    }
+    last = m.index + tok.length
+  }
+  if (last < line.length) out.push(new TextRun({ text: line.slice(last) }))
+  if (out.length === 0) out.push(new TextRun({ text: line }))
+  return out
+}
+
+/** Default styling so the .docx looks like a real Word doc rather than
+ *  default Calibri-12. We keep the configuration tiny — Word users
+ *  routinely retheme — but ship sane line height + heading sizes. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function defaultDocxStyles(docx: typeof import('docx')): any {
+  return {
+    default: {
+      document: {
+        run: { font: 'Calibri', size: 22 }, // 11pt
+        paragraph: { spacing: { line: 320 } }, // 1.33 line height
+      },
+    },
+  }
+}
+
+/** Very small HTML→Markdown bridge for the docx exporter — only a
+ *  handful of tags survive. Anything else degrades to plain text. */
+function htmlToMarkdownLite(html: string): string {
+  return html
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\s*h1[^>]*>(.*?)<\s*\/\s*h1\s*>/gi, '# $1\n')
+    .replace(/<\s*h2[^>]*>(.*?)<\s*\/\s*h2\s*>/gi, '## $1\n')
+    .replace(/<\s*h3[^>]*>(.*?)<\s*\/\s*h3\s*>/gi, '### $1\n')
+    .replace(/<\s*h4[^>]*>(.*?)<\s*\/\s*h4\s*>/gi, '#### $1\n')
+    .replace(/<\s*p[^>]*>(.*?)<\s*\/\s*p\s*>/gi, '$1\n\n')
+    .replace(/<\s*strong[^>]*>(.*?)<\s*\/\s*strong\s*>/gi, '**$1**')
+    .replace(/<\s*b[^>]*>(.*?)<\s*\/\s*b\s*>/gi, '**$1**')
+    .replace(/<\s*em[^>]*>(.*?)<\s*\/\s*em\s*>/gi, '*$1*')
+    .replace(/<\s*i[^>]*>(.*?)<\s*\/\s*i\s*>/gi, '*$1*')
+    .replace(/<\s*li[^>]*>(.*?)<\s*\/\s*li\s*>/gi, '- $1\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+}
+
+/** If the model emitted an HTML fragment (no <html> wrapper), wrap it
+ *  in a minimal styled doc so html2canvas / preview render readably. */
+function ensureFullHtml(html: string): string {
+  if (/<html[\s>]/i.test(html)) return html
+  return [
+    '<!doctype html><html><head><meta charset="utf-8"><style>',
+    'body{font:14px/1.6 ui-sans-serif,system-ui;color:#1a1a1a;margin:0;padding:24px;background:#fff;}',
+    'h1,h2,h3{margin:1em 0 0.4em;line-height:1.25;}',
+    'p{margin:0.6em 0;}',
+    'ul,ol{margin:0.6em 0 0.6em 1.4em;padding:0;}',
+    'pre{background:#f5f5f5;padding:10px 12px;overflow:auto;border:1px solid #eee;}',
+    'code{font:12.5px ui-monospace,Menlo,monospace;}',
+    'table{border-collapse:collapse;width:100%;margin:0.8em 0;}',
+    'th,td{border:1px solid #e3e3e3;padding:6px 10px;text-align:left;}',
+    '</style></head><body>',
+    html,
+    '</body></html>',
+  ].join('')
+}
+
+/** Wrap a raw <svg>…</svg> for the PDF exporter. */
+function svgToFullHtml(svg: string): string {
+  return [
+    '<!doctype html><html><head><meta charset="utf-8"><style>',
+    'body{margin:0;display:grid;place-items:center;background:#fff;padding:24px;}',
+    'svg{max-width:100%;height:auto;}',
+    '</style></head><body>',
+    svg,
     '</body></html>',
   ].join('')
 }
