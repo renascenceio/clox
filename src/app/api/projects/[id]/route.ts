@@ -13,9 +13,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params
     const ctx = await getProjectForViewer(id)
+
+    // Member count for the header. Use a lightweight count query.
+    const { count: memberCount } = await ctx.supabase
+      .from('project_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', id)
+
+    const my_role = ctx.member?.role ?? (ctx.project.owner_id === ctx.user.id ? 'owner' : 'member')
+
     return NextResponse.json({
-      project: ctx.project,
-      my_role: ctx.member?.role ?? (ctx.project.owner_id === ctx.user.id ? 'owner' : null),
+      project: {
+        ...ctx.project,
+        my_role,
+        member_count: memberCount ?? 0,
+      },
+      // Legacy shape for any older callers — keep returning these top-level too.
+      my_role,
       my_credit_limit_usd: ctx.member?.credit_limit_usd ?? null,
       my_credit_spent_usd: ctx.member?.credit_spent_usd ?? 0,
     })
@@ -56,12 +70,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         allowed.budget_resets_at = null
       }
     }
-    if (body.archived !== undefined) {
+    if (body.archived !== undefined || body.archived_at !== undefined) {
       // Archive/unarchive — owner only.
       if (ctx.project.owner_id !== ctx.user.id) {
         return NextResponse.json({ error: 'Only the owner can archive this project.' }, { status: 403 })
       }
-      allowed.archived_at = body.archived ? new Date().toISOString() : null
+      if (body.archived_at !== undefined) {
+        allowed.archived_at = body.archived_at ? String(body.archived_at) : null
+      } else {
+        allowed.archived_at = body.archived ? new Date().toISOString() : null
+      }
     }
 
     if (!Object.keys(allowed).length) {
