@@ -126,6 +126,54 @@ function inflateAttachments(raw: unknown): unknown {
   return { ...m, content: parts }
 }
 
+/**
+ * Baseline capabilities preamble injected ahead of the user's system
+ * prompt on every chat request.
+ *
+ * Why this exists:
+ *   Out of the box most models (Claude in particular) refuse to produce
+ *   files, claiming they're "text-only" — which is technically true but
+ *   useless to the user. In Clox the renderer turns every fenced code
+ *   block into a downloadable artifact (Copy / Download / Preview),
+ *   but the model has no way to know that. This preamble tells it
+ *   exactly what the surface offers so it stops refusing and starts
+ *   emitting structured output.
+ *
+ *   We deliberately keep this short, factual, and free of personality —
+ *   model identity / tone is the user's system prompt's job.
+ */
+const CLOX_CAPABILITIES_PREAMBLE = [
+  'You are running inside Clox, a workspace that renders every fenced',
+  'code block in your reply as a downloadable, previewable artifact.',
+  'You can therefore "produce files" by emitting them as fenced code',
+  'blocks with the right language tag — the user will get Copy /',
+  'Download / Preview controls on each block automatically.',
+  '',
+  'Supported artifact types:',
+  '  • ```html / ```svg — rendered live in a sandboxed preview iframe',
+  '  • ```csv          — downloadable as CSV or Excel (.xlsx)',
+  '  • ```json         — pretty-printed, downloadable as .json',
+  '  • ```markdown     — rendered as formatted text, downloadable as .md',
+  '  • ```javascript / ```typescript / ```python / ```sql / ```bash …',
+  '    any source-code language is downloadable with the right extension',
+  '',
+  'When the user asks for "an Excel sheet", "a spreadsheet", "a CSV",',
+  '"a report", or "a document": emit the data as a fenced ```csv (or',
+  '```html for richly formatted reports) block — DO NOT refuse on the',
+  'grounds that you are text-based. The user will download it from',
+  'the artifact toolbar. For multi-sheet workbooks, emit one ```csv',
+  'block per sheet, each preceded by a heading naming the sheet.',
+  '',
+  'When the user uploads a file, its contents are inlined inside a',
+  'fenced block earlier in the conversation under "Attached file: …".',
+  'Read it, analyse it, and answer accordingly — including writing',
+  'analysis scripts (Python / JavaScript / SQL) as artifacts the user',
+  'can download and run locally.',
+  '',
+  'Default to producing the actual artifact the user asked for rather',
+  'than describing how they could build it themselves.',
+].join('\n')
+
 export async function POST(req: Request) {
   let requestData
   try {
@@ -195,15 +243,26 @@ export async function POST(req: Request) {
 
     const caller = await getCallerForLogging()
 
+    // Always lead with the Clox capabilities preamble; the user's
+    // own system prompt (if any) goes after it under the same role
+    // so model-specific instruction-following treats them as one
+    // continuous block. Concatenating into a single system message
+    // is more reliable than two consecutive system entries — some
+    // providers collapse / reject duplicates.
+    const composedSystem = systemPrompt
+      ? `${CLOX_CAPABILITIES_PREAMBLE}\n\n---\n\n${systemPrompt}`
+      : CLOX_CAPABILITIES_PREAMBLE
+
     const result = streamText({
       // `resolved` is always a LanguageModelV1 instance now (gateway strings
       // were removed). The cast satisfies the streamText prop type without
       // pulling the full v1 union into this file.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       model: resolved as any,
-      messages: systemPrompt
-        ? [{ role: 'system', content: systemPrompt }, ...(inflatedMessages as never[])]
-        : (inflatedMessages as never[]),
+      messages: [
+        { role: 'system', content: composedSystem },
+        ...(inflatedMessages as never[]),
+      ],
       temperature,
       maxTokens,
       onFinish: async ({ usage }) => {

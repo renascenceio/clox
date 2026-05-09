@@ -7,21 +7,23 @@
  *   - OpenAI Sora 2 / Sora 2 Pro — OPENAI_API_KEY
  *   - Luma Dream Machine          — LUMAAI_API_KEY
  *   - Runway (Gen-3 / Gen-4)      — RUNWAYML_API_SECRET
+ *   - Kling (Kuaishou)            — KLING_API_KEY + KLING_SECRET_KEY
  *
- * Pika / Haiper / Vidu / PixVerse / Kling / CogVideo / HeyGen /
- * Synthesia / D-ID need their own adapter wired below — they all return
- * a clean "missing key" error pointing at the right env var until then.
+ * Pika / Haiper / Vidu / PixVerse / CogVideo / HeyGen / Synthesia / D-ID
+ * need their own adapter wired below — they all return a clean
+ * "missing key" error pointing at the right env var until then.
  *
  * NOTE: video jobs typically take 30-180s. We extend the route's
  * `maxDuration` to 300s and poll inside the handler.
  */
 
+import { createHmac } from 'node:crypto'
 import { assertBudget } from '@/lib/projects/server'
 import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
 
 export const maxDuration = 300
 
-type VideoProvider = 'sora' | 'luma' | 'runway'
+type VideoProvider = 'sora' | 'luma' | 'runway' | 'kling'
 
 interface VideoMapEntry {
   provider: VideoProvider
@@ -43,6 +45,13 @@ const VIDEO_MODEL_MAP: Record<string, VideoMapEntry> = {
   // Runway
   'runway-gen-3-alpha':   { provider: 'runway', modelId: 'gen3a_turbo' },
   'runway-gen-4-turbo':   { provider: 'runway', modelId: 'gen4_turbo' },
+
+  // Kling (Kuaishou). Picker IDs map to the model_name strings the
+  // public API accepts. `kling-v1-5` is the 1.5 generation; the
+  // current 2.0 generation is published as `kling-v2-master` (the
+  // marketing version in our picker is "2.0").
+  'kling-2.0': { provider: 'kling', modelId: 'kling-v2-master' },
+  'kling-1.5': { provider: 'kling', modelId: 'kling-v1-5' },
 }
 
 /** For providers that aren't wired we still surface the right env var so
@@ -55,8 +64,6 @@ const UNWIRED_HINT: Record<
   'pika-1.5':           { provider: 'Pika',         envKey: 'PIKA_API_KEY',     docsUrl: 'https://pika.art' },
   'haiper-2.0':         { provider: 'Haiper',       envKey: 'HAIPER_API_KEY',   docsUrl: 'https://haiper.ai' },
   'stability-video':    { provider: 'Stability AI', envKey: 'STABILITY_API_KEY', docsUrl: 'https://platform.stability.ai' },
-  'kling-2.0':          { provider: 'Kling',        envKey: 'KLING_API_KEY + KLING_SECRET_KEY', docsUrl: 'https://app.klingai.com' },
-  'kling-1.5':          { provider: 'Kling',        envKey: 'KLING_API_KEY + KLING_SECRET_KEY', docsUrl: 'https://app.klingai.com' },
   'cogvideo-x':         { provider: 'Zhipu CogVideo', envKey: 'ZHIPUAI_API_KEY', docsUrl: 'https://open.bigmodel.cn' },
   'pixverse-v3':        { provider: 'PixVerse',     envKey: 'PIXVERSE_API_KEY', docsUrl: 'https://app.pixverse.ai' },
   'vidu-1.5':           { provider: 'Vidu',         envKey: 'VIDU_API_KEY',     docsUrl: 'https://www.vidu.studio' },
@@ -316,6 +323,134 @@ async function generateWithRunway(
 }
 
 /* ------------------------------------------------------------------ */
+/*                          Kling (Kuaishou)                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Kling auth uses a short-lived JWT signed with the user's secret key
+ * (HS256). Unlike most providers there's no static bearer — every
+ * request needs a freshly minted token. We mint one per `generateOne`
+ * call below; thirty-minute expiry is the documented maximum so a
+ * single request never outlives its token even when polling drags on.
+ *
+ * The exact JWT shape (`alg: HS256`, `iss: <AK>`, `exp`, `nbf`) is
+ * documented at https://docs.qingque.cn/d/home/eZQDkqUCcRNoZ-rb8sIm04UFp.
+ */
+function base64UrlEncode(buf: Buffer): string {
+  return buf.toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
+}
+
+function buildKlingJwt(accessKey: string, secretKey: string): string {
+  const header = { alg: 'HS256', typ: 'JWT' }
+  const now = Math.floor(Date.now() / 1000)
+  const payload = {
+    iss: accessKey,
+    exp: now + 1800,  // 30 minutes from now — Kling's documented ceiling.
+    nbf: now - 5,     // small leeway for clock skew on the gateway side.
+  }
+  const encH = base64UrlEncode(Buffer.from(JSON.stringify(header)))
+  const encP = base64UrlEncode(Buffer.from(JSON.stringify(payload)))
+  const sig  = base64UrlEncode(
+    createHmac('sha256', secretKey).update(`${encH}.${encP}`).digest(),
+  )
+  return `${encH}.${encP}.${sig}`
+}
+
+/** Kling accepts only `5` or `10` second clips today. We snap whatever
+ *  the slider value is to the nearest of those two. */
+function clampKlingDuration(requested: number): '5' | '10' {
+  return Math.abs(requested - 10) < Math.abs(requested - 5) ? '10' : '5'
+}
+
+const KLING_RATIO_MAP: Record<string, '16:9' | '9:16' | '1:1'> = {
+  '16:9': '16:9',
+  '9:16': '9:16',
+  '1:1':  '1:1',
+  // Anything else — 4:3, 3:4, 21:9 — Kling doesn't currently expose,
+  // so we fall back to landscape so the request doesn't 400.
+}
+
+async function generateWithKling(
+  modelId: string,
+  prompt: string,
+  ratio: string,
+  duration: number,
+  accessKey: string,
+  secretKey: string,
+): Promise<{ dataUrl: string; durationSec: number }> {
+  const jwt = buildKlingJwt(accessKey, secretKey)
+  const seconds = clampKlingDuration(duration)
+  const aspect = KLING_RATIO_MAP[ratio] ?? '16:9'
+
+  // Step 1: create the job. `mode: 'std'` is the cheaper / faster tier;
+  // we expose that and let the user pick `pro` later via params if we
+  // ever add a quality slider for video.
+  const startRes = await fetch('https://api.klingai.com/v1/videos/text2video', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model_name: modelId,
+      prompt,
+      duration: seconds,
+      aspect_ratio: aspect,
+      mode: 'std',
+    }),
+  })
+  if (!startRes.ok) {
+    const errText = await startRes.text()
+    if (startRes.status === 401 || startRes.status === 403) {
+      throw new Error('Kling rejected your credentials. Double-check that KLING_API_KEY (Access Key) and KLING_SECRET_KEY (Secret Key) match the pair shown at app.klingai.com → API Keys.')
+    }
+    throw new Error(`Kling start ${startRes.status}: ${errText}`)
+  }
+  const startJson = await startRes.json()
+  // Kling wraps everything in `{code, message, data}`; non-zero `code`
+  // is an application error even when the HTTP status is 200.
+  if (startJson?.code !== 0) {
+    throw new Error(`Kling rejected the request: ${startJson?.message ?? 'unknown'}`)
+  }
+  const taskId: string | undefined = startJson?.data?.task_id
+  if (!taskId) throw new Error('Kling did not return a task id.')
+
+  // Step 2: poll. Kling jobs typically take 90-180s for 5s std clips,
+  // longer for 10s. We honour the route's 300s `maxDuration` budget by
+  // polling for up to 270s, leaving headroom for the download.
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < 270_000) {
+    await new Promise(r => setTimeout(r, 5_000))
+    const pollRes = await fetch(`https://api.klingai.com/v1/videos/text2video/${taskId}`, {
+      headers: { Authorization: `Bearer ${jwt}` },
+    })
+    if (!pollRes.ok) continue
+    const pollJson = await pollRes.json()
+    if (pollJson?.code !== 0) continue
+    const status = pollJson?.data?.task_status
+    if (status === 'succeed') {
+      const videoUrl: string | undefined = pollJson?.data?.task_result?.videos?.[0]?.url
+      if (!videoUrl) throw new Error('Kling reported success but returned no video URL.')
+      // Kling returns a CDN URL; download the bytes so we can hand the
+      // composer a self-contained data URL (consistent with every other
+      // adapter in this route).
+      const vidRes = await fetch(videoUrl)
+      if (!vidRes.ok) throw new Error(`Kling video fetch ${vidRes.status}`)
+      const buf = Buffer.from(await vidRes.arrayBuffer())
+      return {
+        dataUrl: `data:video/mp4;base64,${buf.toString('base64')}`,
+        durationSec: Number(seconds),
+      }
+    }
+    if (status === 'failed') {
+      const reason = pollJson?.data?.task_status_msg ?? 'unknown'
+      throw new Error(`Kling job failed: ${reason}`)
+    }
+  }
+  throw new Error('Kling job timed out (270s).')
+}
+
+/* ------------------------------------------------------------------ */
 /*                              Handler                               */
 /* ------------------------------------------------------------------ */
 
@@ -326,6 +461,10 @@ export async function POST(request: Request) {
     aspectRatio?: string
     duration?: number
     apiKey?: string
+    /** Second credential for providers like Kling that require a key
+     *  + secret pair. Unused for single-credential providers, so the
+     *  field is optional and existing callers don't need to change. */
+    apiSecret?: string
     projectId?: string | null
     chatId?: string | null
   }
@@ -341,6 +480,7 @@ export async function POST(request: Request) {
     aspectRatio = '16:9',
     duration = 5,
     apiKey: clientApiKey,
+    apiSecret: clientApiSecret,
     projectId,
     chatId,
   } = body
@@ -425,6 +565,27 @@ export async function POST(request: Request) {
         )
       }
       result = await generateWithRunway(mapped.modelId, prompt, aspectRatio, duration, key)
+    } else if (mapped.provider === 'kling') {
+      // Kling needs a *pair* — the Access Key (AK) and Secret Key (SK).
+      // Either side can come from the env vars or from Super Admin →
+      // API Keys (where they're stored as `apiKey` + `apiSecret` on the
+      // `kuaishou` provider entry). We fall back to env independently
+      // for each half so a partial admin entry doesn't silently override
+      // the other half from the env.
+      const accessKey = clientApiKey?.trim() || process.env.KLING_API_KEY
+      const secretKey = clientApiSecret?.trim() || process.env.KLING_SECRET_KEY
+      if (!accessKey || !secretKey) {
+        return Response.json(
+          {
+            success: false,
+            error: 'Kling needs both an Access Key (KLING_API_KEY) and a Secret Key (KLING_SECRET_KEY). Add both halves in your Vercel env vars, or save them in Super Admin → API Keys → Kuaishou Kling. Get the pair at app.klingai.com → API Management.',
+          },
+          { status: 400 },
+        )
+      }
+      result = await generateWithKling(
+        mapped.modelId, prompt, aspectRatio, duration, accessKey, secretKey,
+      )
     }
 
     if (!result) {
