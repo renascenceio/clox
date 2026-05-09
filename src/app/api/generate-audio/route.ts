@@ -1,15 +1,16 @@
 /**
  * Real audio generation.
  *
- * Currently wired up:
- *   - Google Gemini 2.5 Flash Preview TTS (text-to-speech) via REST — works
- *     with the same GOOGLE_GENERATIVE_AI_API_KEY the chat uses. This is the
- *     only live backend at the moment.
+ * Live providers (each opt-in via the matching API key, env var or
+ * Super Admin → API Keys):
  *
- * All other audio providers (ElevenLabs, Suno, Udio, Azure, Play.ht, Stable
- * Audio, Fish Speech, ChatGLM Audio) return a clear "missing key" error
- * instead of silently falling back to a sample file — that's what produced
- * the fake 7-minute melody you saw.
+ *   - Google Gemini TTS  — GOOGLE_GENERATIVE_AI_API_KEY
+ *   - OpenAI TTS         — OPENAI_API_KEY
+ *   - ElevenLabs         — ELEVENLABS_API_KEY
+ *
+ * Other providers (Suno, Udio, Stable Audio, Play.ht, Azure, Fish, ChatGLM)
+ * return a clear "missing key" error pointing at the right env var rather
+ * than playing a fake sample file.
  */
 
 import { assertBudget } from '@/lib/projects/server'
@@ -17,29 +18,37 @@ import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
 
 export const maxDuration = 60
 
+type AudioProvider = 'google' | 'openai' | 'elevenlabs'
+
 interface AudioMapEntry {
-  provider: string
-  /** The exact REST model id to call. */
+  provider: AudioProvider
+  /** The exact provider model id to call. */
   modelId: string
-  /** Default voice name for Gemini TTS (has a palette of prebuilt voices). */
-  voice?: string
+  /** Default voice for providers that need one. */
+  defaultVoice?: string
 }
 
 const AUDIO_MODEL_MAP: Record<string, AudioMapEntry> = {
-  // Gemini TTS. The same key powers chat and TTS on this model family.
-  // "Kore" is a neutral default; users can pick a different voice from the
-  // settings panel once we expose it in the UI.
-  'gemini-tts': {
-    provider: 'google',
-    modelId: 'gemini-2.5-flash-preview-tts',
-    voice: 'Kore',
-  },
-  'gemini-tts-3.1': {
-    provider: 'google',
-    modelId: 'gemini-3.1-flash-tts-preview',
-    voice: 'Kore',
-  },
+  // Google
+  'gemini-tts':     { provider: 'google', modelId: 'gemini-2.5-flash-preview-tts',  defaultVoice: 'Kore' },
+  'gemini-tts-3.1': { provider: 'google', modelId: 'gemini-3.1-flash-tts-preview',  defaultVoice: 'Kore' },
+
+  // OpenAI — three TTS models. `tts-1` is the cheap & fast one, `tts-1-hd`
+  // is higher fidelity, `gpt-4o-mini-tts` is the newest steerable model.
+  'openai-tts-1':       { provider: 'openai', modelId: 'tts-1',          defaultVoice: 'alloy' },
+  'openai-tts-1-hd':    { provider: 'openai', modelId: 'tts-1-hd',       defaultVoice: 'alloy' },
+  'openai-gpt-4o-tts':  { provider: 'openai', modelId: 'gpt-4o-mini-tts', defaultVoice: 'alloy' },
+
+  // ElevenLabs — these are model ids accepted by api.elevenlabs.io. The
+  // voice id is a per-account thing; without one we use ElevenLabs'
+  // public "Rachel" voice (21m00Tcm4TlvDq8ikWAM) which is always available.
+  'elevenlabs-turbo-v2.5':       { provider: 'elevenlabs', modelId: 'eleven_turbo_v2_5',     defaultVoice: '21m00Tcm4TlvDq8ikWAM' },
+  'elevenlabs-multilingual-v2':  { provider: 'elevenlabs', modelId: 'eleven_multilingual_v2', defaultVoice: '21m00Tcm4TlvDq8ikWAM' },
 }
+
+/* ------------------------------------------------------------------ */
+/*                          Provider adapters                          */
+/* ------------------------------------------------------------------ */
 
 function googleApiKey(clientApiKey?: string) {
   return (
@@ -52,7 +61,6 @@ function googleApiKey(clientApiKey?: string) {
 /**
  * Gemini TTS returns raw PCM (signed 16-bit little-endian, 24 kHz, mono).
  * Browsers can't play that directly, so we prepend a standard RIFF/WAV header.
- * This is a purely mechanical wrap — no resampling.
  */
 function pcm16ToWav(pcmBytes: Uint8Array, sampleRate: number): Uint8Array {
   const numChannels = 1
@@ -71,8 +79,8 @@ function pcm16ToWav(pcmBytes: Uint8Array, sampleRate: number): Uint8Array {
   view.setUint32(4, 36 + dataSize, true)
   writeString(8, 'WAVE')
   writeString(12, 'fmt ')
-  view.setUint32(16, 16, true) // PCM chunk size
-  view.setUint16(20, 1, true) // PCM format
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
   view.setUint16(22, numChannels, true)
   view.setUint32(24, sampleRate, true)
   view.setUint32(28, byteRate, true)
@@ -86,7 +94,6 @@ function pcm16ToWav(pcmBytes: Uint8Array, sampleRate: number): Uint8Array {
   return out
 }
 
-/** Parse a mimeType like "audio/L16;rate=24000" → 24000 (default 24000). */
 function extractSampleRate(mimeType: string | undefined): number {
   if (!mimeType) return 24000
   const match = /rate=(\d+)/i.exec(mimeType)
@@ -128,16 +135,98 @@ async function generateWithGeminiTts(
   const sampleRate = extractSampleRate(mimeType)
   const pcm = Uint8Array.from(atob(audioPart.inlineData.data), c => c.charCodeAt(0))
   const wav = pcm16ToWav(pcm, sampleRate)
-
-  // Compute duration from PCM size (2 bytes per sample, mono).
   const durationSec = pcm.length / 2 / sampleRate
-
   const wavBase64 = Buffer.from(wav).toString('base64')
   return {
     dataUrl: `data:audio/wav;base64,${wavBase64}`,
     durationSec: Math.round(durationSec * 10) / 10,
   }
 }
+
+/**
+ * OpenAI TTS — POST `/v1/audio/speech` returns the raw audio body in the
+ * requested format. We use mp3 because it's the smallest and every browser
+ * plays it natively; the spec says default is mp3 but we set it explicitly
+ * to be safe.
+ */
+async function generateWithOpenAiTts(
+  modelId: string,
+  prompt: string,
+  voice: string,
+  apiKey: string,
+): Promise<{ dataUrl: string; durationSec: number }> {
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: modelId,
+      input: prompt,
+      voice,
+      response_format: 'mp3',
+    }),
+  })
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`OpenAI TTS ${res.status}: ${errText}`)
+  }
+  const arrayBuf = await res.arrayBuffer()
+  const base64 = Buffer.from(arrayBuf).toString('base64')
+  // We can't know the exact duration without decoding, so estimate at the
+  // OpenAI TTS average rate of ~150 wpm (2.5 wps). It's a hint for the UI;
+  // exact length is reflected by the audio element on playback.
+  const wordCount = prompt.trim().split(/\s+/).length
+  const durationSec = Math.max(1, Math.round((wordCount / 2.5) * 10) / 10)
+  return {
+    dataUrl: `data:audio/mpeg;base64,${base64}`,
+    durationSec,
+  }
+}
+
+/**
+ * ElevenLabs TTS — POST `/v1/text-to-speech/{voice_id}`. Headers carry the
+ * API key (`xi-api-key`) and the response body is the audio. Default
+ * output format is mp3_44100_128 which we keep.
+ */
+async function generateWithElevenLabs(
+  modelId: string,
+  prompt: string,
+  voice: string,
+  apiKey: string,
+): Promise<{ dataUrl: string; durationSec: number }> {
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'xi-api-key': apiKey,
+      'Content-Type': 'application/json',
+      Accept: 'audio/mpeg',
+    },
+    body: JSON.stringify({
+      text: prompt,
+      model_id: modelId,
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+    }),
+  })
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`ElevenLabs ${res.status}: ${errText}`)
+  }
+  const arrayBuf = await res.arrayBuffer()
+  const base64 = Buffer.from(arrayBuf).toString('base64')
+  const wordCount = prompt.trim().split(/\s+/).length
+  const durationSec = Math.max(1, Math.round((wordCount / 2.5) * 10) / 10)
+  return {
+    dataUrl: `data:audio/mpeg;base64,${base64}`,
+    durationSec,
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*                              Handler                                */
+/* ------------------------------------------------------------------ */
 
 export async function POST(request: Request) {
   let body: {
@@ -174,8 +263,8 @@ export async function POST(request: Request) {
       {
         success: false,
         error:
-          `${requestedModelId} isn't wired to a live audio provider yet. ` +
-          `Pick "Gemini TTS" (Google) to generate real audio, or add an API key for this provider.`,
+          `${requestedModelId} isn't connected to a live audio provider yet. ` +
+          `Pick a Gemini TTS, OpenAI TTS, or ElevenLabs model — or add an API key for this provider in Vercel env vars / Super Admin → API Keys.`,
       },
       { status: 400 },
     )
@@ -188,51 +277,77 @@ export async function POST(request: Request) {
       modelId: mapped.modelId,
     })
 
+    let dataUrl = ''
+    let durationSec = 0
+
     if (mapped.provider === 'google') {
       const key = googleApiKey(clientApiKey)
       if (!key) {
         return Response.json(
           {
             success: false,
-            error:
-              'Gemini TTS needs GOOGLE_GENERATIVE_AI_API_KEY in Vercel env vars or a key in Super Admin → API Keys.',
+            error: 'Gemini TTS needs GOOGLE_GENERATIVE_AI_API_KEY in Vercel env vars or a key in Super Admin → API Keys.',
           },
           { status: 400 },
         )
       }
-
-      const { dataUrl, durationSec } = await generateWithGeminiTts(
-        mapped.modelId,
-        prompt,
-        voice || mapped.voice || 'Kore',
+      const r = await generateWithGeminiTts(mapped.modelId, prompt, voice || mapped.defaultVoice || 'Kore', key)
+      dataUrl = r.dataUrl
+      durationSec = r.durationSec
+    } else if (mapped.provider === 'openai') {
+      const key = clientApiKey?.trim() || process.env.OPENAI_API_KEY
+      if (!key) {
+        return Response.json(
+          {
+            success: false,
+            error: 'OpenAI TTS needs OPENAI_API_KEY in Vercel env vars or a key in Super Admin → API Keys.',
+          },
+          { status: 400 },
+        )
+      }
+      const r = await generateWithOpenAiTts(mapped.modelId, prompt, voice || mapped.defaultVoice || 'alloy', key)
+      dataUrl = r.dataUrl
+      durationSec = r.durationSec
+    } else if (mapped.provider === 'elevenlabs') {
+      const key = clientApiKey?.trim() || process.env.ELEVENLABS_API_KEY
+      if (!key) {
+        return Response.json(
+          {
+            success: false,
+            error: 'ElevenLabs needs ELEVENLABS_API_KEY in Vercel env vars or a key in Super Admin → API Keys.',
+          },
+          { status: 400 },
+        )
+      }
+      const r = await generateWithElevenLabs(
+        mapped.modelId, prompt,
+        voice || mapped.defaultVoice || '21m00Tcm4TlvDq8ikWAM',
         key,
       )
-      if (caller) {
-        void recordUsage({
-          userId: caller.userId,
-          domain: caller.domain,
-          provider: 'google',
-          model: requestedModelId,
-          modality: 'audio',
-          chatType: 'audio',
-          durationSec,
-          projectId: projectId ?? null,
-          chatId: chatId ?? null,
-        })
-      }
-      return Response.json({
-        success: true,
-        url: dataUrl,
-        prompt,
-        model: mapped.modelId,
-        durationSec,
-      })
+      dataUrl = r.dataUrl
+      durationSec = r.durationSec
     }
 
-    return Response.json(
-      { success: false, error: `Unsupported audio provider: ${mapped.provider}` },
-      { status: 400 },
-    )
+    if (caller) {
+      void recordUsage({
+        userId: caller.userId,
+        domain: caller.domain,
+        provider: mapped.provider,
+        model: requestedModelId,
+        modality: 'audio',
+        chatType: 'audio',
+        durationSec,
+        projectId: projectId ?? null,
+        chatId: chatId ?? null,
+      })
+    }
+    return Response.json({
+      success: true,
+      url: dataUrl,
+      prompt,
+      model: mapped.modelId,
+      durationSec,
+    })
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : 'Audio generation failed'
