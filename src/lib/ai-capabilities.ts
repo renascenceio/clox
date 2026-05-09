@@ -1,1536 +1,1258 @@
 /**
  * Per-model capability registry.
  *
- * The configuration pane (`ConfigDrawer` in `ChatWorkspace`) is driven by this
- * file. For every model we ship in the four `*_MODELS` registries we publish
- * the knobs that model's API actually exposes — temperature range, top-p
- * range, max tokens cap, structured-output flag, vision/document support,
- * accepted MIME types and so on.
+ * Drives the configuration pane (`ConfigDrawer` in `ChatWorkspace`). For
+ * every model we ship in the four `*_MODELS` registries we publish the knobs
+ * that model's API actually exposes — temperature range, max tokens cap,
+ * accepted file types, voice list, etc. The pane *only* renders fields that
+ * the underlying API will honour, so users can never set a knob the wire
+ * doesn't accept.
  *
- * The goal is for the config pane to *only* expose controls that are real on
- * the wire. No more "temperature: 0–2" slider for a Gemini Image model that
- * doesn't take a temperature, no more attaching a PDF to a text-only model.
+ * The shape is intentionally generic (a flat `fields` map keyed by name)
+ * rather than a typed sub-interface per modality. The drawer iterates the
+ * map, so adding a new knob is one edit here — no UI changes required.
  *
- * Add a model? Add a capability entry with the same `id` you used in the
- * matching `*_MODELS` table. Missing entries fall back to a conservative
- * default that hides everything risky.
- *
- * NOTE: numbers are pulled from each provider's public API documentation as
- * of 2026-Q2. Where a provider supports more than one ceiling (e.g. Claude
- * Sonnet's 200k context vs 8k completion), we encode the *output* cap that
- * actually controls the slider — context is shown as a read-only display.
+ * Numbers are pulled from each provider's public API documentation as of
+ * 2026-Q2. Where a provider supports more than one ceiling, we encode the
+ * one that controls the slider; context window is shown as a read-only
+ * display in the pane header.
  */
 
 // ---------------------------------------------------------------------------
-// Shared types
+// Field types — one per primitive UI control. Adding a new control type
+// means: extend this union, render it in the drawer.
 // ---------------------------------------------------------------------------
 
 export type ModalityKind = 'text' | 'image' | 'video' | 'audio'
 
-/** A single tunable parameter (slider / dropdown / numeric input). */
-export interface ParamSpec<T = number> {
-  /** Inclusive minimum. */
+export interface RangeField {
+  type: 'range'
+  label: string
   min: number
-  /** Inclusive maximum. */
   max: number
-  /** Snap step for sliders / numeric inputs. */
   step: number
-  /** Default value when nothing is persisted. */
-  default: T
-  /** Optional human-readable label override. */
-  label?: string
-  /** Optional short tooltip. */
+  default: number
+  /** e.g. "s", "x", "%". Rendered after the numeric readout. */
+  suffix?: string
   hint?: string
 }
 
-/** A categorical choice (dropdown). */
-export interface ChoiceSpec {
+export interface IntegerField {
+  type: 'integer'
+  label: string
+  min: number
+  max: number
+  step?: number
+  default: number
+  suffix?: string
+  hint?: string
+}
+
+export interface SelectField {
+  type: 'select'
+  label: string
+  options: Array<{ value: string; label: string }>
   default: string
-  options: { value: string; label: string }[]
-  label?: string
   hint?: string
 }
 
-/** A toggle (checkbox-style). */
-export interface FlagSpec {
+export interface ToggleField {
+  type: 'toggle'
+  label: string
   default: boolean
-  label?: string
   hint?: string
 }
 
-/**
- * Text-completion knobs. Anything left undefined is hidden in the UI — that's
- * the whole point: "don't show controls the API doesn't honour".
- */
-export interface TextCapability {
-  kind: 'text'
-  /** Provider id (e.g. `openai`) — used for badging in the pane. */
+export interface TextField {
+  type: 'text'
+  label: string
+  default?: string
+  placeholder?: string
+  hint?: string
+}
+
+export type Field = RangeField | IntegerField | SelectField | ToggleField | TextField
+
+// ---------------------------------------------------------------------------
+// Accepted-files descriptor — drives both the document upload section's
+// `accept=` attribute and the human-readable "Accepts: …" line.
+// ---------------------------------------------------------------------------
+
+export interface AcceptedFiles {
+  /** Concrete MIME types and extensions, used as-is in the file picker
+   *  `accept` attribute (e.g. `image/png,image/jpeg,.pdf`). */
+  mimeTypes: string[]
+  /** Plain-English summary shown under the upload button. */
+  humanLabel: string
+  /** Optional cap; absent means "as many as fit in the request body". */
+  maxFiles?: number
+  /** Optional per-file byte cap; the page enforces this on upload. */
+  maxBytesEach?: number
+}
+
+// ---------------------------------------------------------------------------
+// Capability — one per model. The drawer reads the `fields` map and renders
+// each entry with the matching field-type renderer.
+// ---------------------------------------------------------------------------
+
+export interface Capability {
+  /** Matches the `id` in the corresponding `*_MODELS` registry. */
+  id: string
+  kind: ModalityKind
+  /** Provider id (e.g. `openai`, `google`) — used for badging. */
   provider: string
-  /** Display brand (e.g. `ChatGPT`). */
-  brandName: string
-  /** Sliders / numeric controls. */
-  temperature?: ParamSpec
-  topP?: ParamSpec
-  topK?: ParamSpec
-  maxTokens?: ParamSpec
-  presencePenalty?: ParamSpec
-  frequencyPenalty?: ParamSpec
-  /** Reasoning effort (Anthropic extended thinking, OpenAI reasoning_effort). */
-  reasoningEffort?: ChoiceSpec
-  /** JSON / structured output mode. */
-  jsonMode?: FlagSpec
-  /** Tool calling / function calling. */
-  toolUse?: FlagSpec
-  /** Stop sequences (free text, comma-separated). */
-  stopSequences?: { default: string; label?: string; hint?: string }
-  /** Safety / moderation modes the API exposes. */
-  safety?: ChoiceSpec
-  /** Read-only context window display, in tokens. */
+  /** Display string shown in the pane header (e.g. "ChatGPT GPT-4o"). */
+  label: string
+  /** One-liner summary of what this model is good at. */
+  description?: string
+  /** Read-only context window display, in tokens (text models). */
   contextWindow?: number
-  /** Vision (image input) accepted? */
-  vision?: boolean
-  /** Document input accepted (PDFs, text)? */
-  documents?: boolean
-  /** Audio input accepted? */
-  audioInput?: boolean
-  /** Video input accepted? */
-  videoInput?: boolean
-  /** Built-in web browsing (Perplexity, Sonar, Grok web). */
-  webBrowsing?: boolean
-  /** Built-in code execution sandbox (Claude code-execution skill, etc.). */
-  codeExecution?: boolean
-  /** Friendly summary of accepted MIME types, shown in the docs strip. */
-  acceptedFiles: string[]
-  /** Free-text mention of any quirks worth surfacing in the pane. */
-  notes?: string
-}
-
-/** Image-generation knobs. */
-export interface ImageCapability {
-  kind: 'image'
-  provider: string
-  brandName: string
-  aspectRatios?: { default: string; options: string[] }
-  resolutions?: { default: string; options: string[] }
-  qualityLevels?: { default: string; options: string[] }
-  styles?: { default: string; options: { value: string; label: string }[] }
-  /** Number of images per request. */
-  count?: ParamSpec
-  seed?: { default?: number; allowRandom: boolean }
-  negativePrompt?: FlagSpec
-  /** Stable-Diffusion / FLUX style guidance scale. */
-  guidanceScale?: ParamSpec
-  /** Steps (Stability / FLUX dev). */
-  steps?: ParamSpec
-  /** Reference / source image (image-to-image). */
-  referenceImage?: FlagSpec
-  /** Mask / inpainting. */
-  inpainting?: FlagSpec
-  /** Generates legible text inside the image (Ideogram, Imagen, FLUX). */
-  textInImage?: boolean
-  /** Multi-image composition / character consistency. */
-  characterConsistency?: boolean
-  acceptedFiles: string[]
-  notes?: string
-}
-
-/** Video-generation knobs. */
-export interface VideoCapability {
-  kind: 'video'
-  provider: string
-  brandName: string
-  durations?: { default: number; options: number[] }
-  /** seconds, soft-max for the slider when there's no fixed list. */
-  maxDurationSec?: number
-  resolutions?: { default: string; options: string[] }
-  aspectRatios?: { default: string; options: string[] }
-  fps?: { default: number; options: number[] }
-  styles?: { default: string; options: { value: string; label: string }[] }
-  /** Image-to-video (start frame). */
-  imageToVideo?: FlagSpec
-  /** Last-frame conditioning. */
-  endFrame?: FlagSpec
-  /** Audio track included in the output. */
-  builtInAudio?: boolean
-  /** Camera motion controls (Runway, Pika). */
-  motionControl?: FlagSpec
-  /** Avatar / lipsync (HeyGen, Synthesia, D-ID). */
-  avatar?: boolean
-  acceptedFiles: string[]
-  notes?: string
-}
-
-/** Audio-generation knobs (TTS + music). */
-export interface AudioCapability {
-  kind: 'audio'
-  provider: string
-  brandName: string
-  /** TTS / music switch — shapes the rest of the pane. */
-  audioKind: 'voice' | 'music' | 'sfx'
-  voices?: { default: string; options: { value: string; label: string }[] }
-  /** Speaker style (`natural`, `professional`, etc.). */
-  styles?: { default: string; options: { value: string; label: string }[] }
-  /** Music genres (Suno / Udio). */
-  genres?: { default: string; options: { value: string; label: string }[] }
-  /** Voice stability / similarity (ElevenLabs). */
-  stability?: ParamSpec
-  similarity?: ParamSpec
-  speakerBoost?: FlagSpec
-  /** Speed multiplier (OpenAI TTS, Gemini TTS). */
-  speed?: ParamSpec
-  /** Pitch (Azure, Play.ht). */
-  pitch?: ParamSpec
-  /** Output sample rate / format. */
-  format?: { default: string; options: string[] }
-  /** Music duration. */
-  durations?: { default: number; options: number[] }
-  /** Lyrics input (Suno / Udio). */
-  lyrics?: FlagSpec
-  /** Reference audio (voice cloning). */
-  voiceCloning?: FlagSpec
-  acceptedFiles: string[]
-  notes?: string
-}
-
-export type Capability =
-  | TextCapability
-  | ImageCapability
-  | VideoCapability
-  | AudioCapability
-
-// ---------------------------------------------------------------------------
-// Text models
-// ---------------------------------------------------------------------------
-
-const T_VISION_FILES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-const T_DOC_FILES = ['application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'application/json']
-const T_AUDIO_FILES = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm']
-const T_VIDEO_FILES = ['video/mp4', 'video/webm', 'video/quicktime']
-
-const TEXT_CAPS: Record<string, TextCapability> = {
-  // ---------------- OpenAI ----------------
-  'gpt-4o': {
-    kind: 'text',
-    provider: 'openai',
-    brandName: 'ChatGPT',
-    temperature: { min: 0, max: 2, step: 0.05, default: 0.7 },
-    topP: { min: 0, max: 1, step: 0.01, default: 1 },
-    maxTokens: { min: 256, max: 16_384, step: 256, default: 4_096 },
-    presencePenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    frequencyPenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    jsonMode: { default: false, hint: 'Force valid JSON output.' },
-    toolUse: { default: true },
-    contextWindow: 128_000,
-    vision: true,
-    documents: true,
-    audioInput: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES, ...T_AUDIO_FILES],
-    notes: 'Multimodal: text, vision, and audio in. PDFs are uploaded via the Files API.',
-  },
-  'gpt-4o-mini': {
-    kind: 'text',
-    provider: 'openai',
-    brandName: 'ChatGPT',
-    temperature: { min: 0, max: 2, step: 0.05, default: 0.7 },
-    topP: { min: 0, max: 1, step: 0.01, default: 1 },
-    maxTokens: { min: 256, max: 16_384, step: 256, default: 4_096 },
-    presencePenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    frequencyPenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    jsonMode: { default: false },
-    toolUse: { default: true },
-    contextWindow: 128_000,
-    vision: true,
-    documents: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES],
-  },
-
-  // ---------------- Anthropic ----------------
-  'claude-opus-4.6': {
-    kind: 'text',
-    provider: 'anthropic',
-    brandName: 'Claude',
-    temperature: { min: 0, max: 1, step: 0.05, default: 1 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.999 },
-    topK: { min: 0, max: 500, step: 1, default: 0, hint: '0 disables top-k.' },
-    maxTokens: { min: 1_024, max: 32_000, step: 1_024, default: 8_192 },
-    reasoningEffort: {
-      default: 'standard',
-      label: 'Extended thinking',
-      hint: 'Anthropic extended thinking budget.',
-      options: [
-        { value: 'off', label: 'Off' },
-        { value: 'standard', label: 'Standard' },
-        { value: 'extended', label: 'Extended' },
-        { value: 'maximum', label: 'Maximum' },
-      ],
-    },
-    toolUse: { default: true },
-    codeExecution: true,
-    contextWindow: 200_000,
-    vision: true,
-    documents: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES],
-    notes: 'Best for reasoning. Anthropic does not expose presence/frequency penalty.',
-  },
-  'claude-sonnet-4.6': {
-    kind: 'text',
-    provider: 'anthropic',
-    brandName: 'Claude',
-    temperature: { min: 0, max: 1, step: 0.05, default: 1 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.999 },
-    topK: { min: 0, max: 500, step: 1, default: 0 },
-    maxTokens: { min: 1_024, max: 16_384, step: 1_024, default: 8_192 },
-    reasoningEffort: {
-      default: 'standard',
-      label: 'Extended thinking',
-      options: [
-        { value: 'off', label: 'Off' },
-        { value: 'standard', label: 'Standard' },
-        { value: 'extended', label: 'Extended' },
-      ],
-    },
-    toolUse: { default: true },
-    codeExecution: true,
-    contextWindow: 200_000,
-    vision: true,
-    documents: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES],
-  },
-  'claude-haiku-4.5': {
-    kind: 'text',
-    provider: 'anthropic',
-    brandName: 'Claude',
-    temperature: { min: 0, max: 1, step: 0.05, default: 1 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.999 },
-    maxTokens: { min: 1_024, max: 8_192, step: 512, default: 4_096 },
-    toolUse: { default: true },
-    contextWindow: 200_000,
-    vision: true,
-    documents: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES],
-  },
-
-  // ---------------- Google ----------------
-  'gemini-2.5-flash': {
-    kind: 'text',
-    provider: 'google',
-    brandName: 'Gemini',
-    temperature: { min: 0, max: 2, step: 0.05, default: 1 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.95 },
-    topK: { min: 1, max: 100, step: 1, default: 40 },
-    maxTokens: { min: 256, max: 65_536, step: 256, default: 8_192 },
-    jsonMode: { default: false, hint: 'Use response_mime_type: application/json.' },
-    toolUse: { default: true },
-    safety: {
-      default: 'standard',
-      options: [
-        { value: 'standard', label: 'Standard' },
-        { value: 'low', label: 'Low' },
-        { value: 'block_none', label: 'Block none' },
-      ],
-    },
-    contextWindow: 1_000_000,
-    vision: true,
-    documents: true,
-    audioInput: true,
-    videoInput: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES, ...T_AUDIO_FILES, ...T_VIDEO_FILES],
-    notes: '1M context window. Native multimodal: text, vision, audio, and video frames in.',
-  },
-  'gemini-2.0-flash': {
-    kind: 'text',
-    provider: 'google',
-    brandName: 'Gemini',
-    temperature: { min: 0, max: 2, step: 0.05, default: 1 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.95 },
-    topK: { min: 1, max: 100, step: 1, default: 40 },
-    maxTokens: { min: 256, max: 8_192, step: 256, default: 8_192 },
-    jsonMode: { default: false },
-    toolUse: { default: true },
-    contextWindow: 1_000_000,
-    vision: true,
-    documents: true,
-    audioInput: true,
-    videoInput: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES, ...T_AUDIO_FILES, ...T_VIDEO_FILES],
-  },
-  'gemini-1.5-pro': {
-    kind: 'text',
-    provider: 'google',
-    brandName: 'Gemini',
-    temperature: { min: 0, max: 2, step: 0.05, default: 1 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.95 },
-    topK: { min: 1, max: 100, step: 1, default: 40 },
-    maxTokens: { min: 256, max: 8_192, step: 256, default: 8_192 },
-    jsonMode: { default: false },
-    toolUse: { default: true },
-    contextWindow: 2_000_000,
-    vision: true,
-    documents: true,
-    audioInput: true,
-    videoInput: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES, ...T_AUDIO_FILES, ...T_VIDEO_FILES],
-  },
-
-  // ---------------- Mistral ----------------
-  'mistral-large-latest': {
-    kind: 'text',
-    provider: 'mistral',
-    brandName: 'Mistral AI',
-    temperature: { min: 0, max: 1, step: 0.05, default: 0.7 },
-    topP: { min: 0, max: 1, step: 0.01, default: 1 },
-    maxTokens: { min: 256, max: 32_000, step: 256, default: 4_096 },
-    jsonMode: { default: false },
-    toolUse: { default: true },
-    contextWindow: 128_000,
-    documents: true,
-    acceptedFiles: T_DOC_FILES,
-    notes: 'Mistral exposes temperature, top_p and tool calling but not vision.',
-  },
-  'mistral-small-latest': {
-    kind: 'text',
-    provider: 'mistral',
-    brandName: 'Mistral AI',
-    temperature: { min: 0, max: 1, step: 0.05, default: 0.7 },
-    topP: { min: 0, max: 1, step: 0.01, default: 1 },
-    maxTokens: { min: 256, max: 32_000, step: 256, default: 4_096 },
-    toolUse: { default: true },
-    contextWindow: 128_000,
-    documents: true,
-    acceptedFiles: T_DOC_FILES,
-  },
-
-  // ---------------- xAI ----------------
-  'grok-4': {
-    kind: 'text',
-    provider: 'xai',
-    brandName: 'Grok',
-    temperature: { min: 0, max: 2, step: 0.05, default: 1 },
-    topP: { min: 0, max: 1, step: 0.01, default: 1 },
-    maxTokens: { min: 256, max: 32_768, step: 256, default: 8_192 },
-    presencePenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    frequencyPenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    reasoningEffort: {
-      default: 'medium',
-      options: [
-        { value: 'low', label: 'Low' },
-        { value: 'medium', label: 'Medium' },
-        { value: 'high', label: 'High' },
-      ],
-    },
-    jsonMode: { default: false },
-    toolUse: { default: true },
-    webBrowsing: true,
-    contextWindow: 256_000,
-    vision: true,
-    documents: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES],
-  },
-  'grok-3': {
-    kind: 'text',
-    provider: 'xai',
-    brandName: 'Grok',
-    temperature: { min: 0, max: 2, step: 0.05, default: 1 },
-    topP: { min: 0, max: 1, step: 0.01, default: 1 },
-    maxTokens: { min: 256, max: 16_384, step: 256, default: 4_096 },
-    presencePenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    frequencyPenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    toolUse: { default: true },
-    webBrowsing: true,
-    contextWindow: 128_000,
-    vision: true,
-    acceptedFiles: T_VISION_FILES,
-  },
-
-  // ---------------- DeepSeek ----------------
-  'deepseek-chat': {
-    kind: 'text',
-    provider: 'deepseek',
-    brandName: 'DeepSeek',
-    temperature: { min: 0, max: 2, step: 0.05, default: 1 },
-    topP: { min: 0, max: 1, step: 0.01, default: 1 },
-    maxTokens: { min: 256, max: 8_192, step: 256, default: 4_096 },
-    presencePenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    frequencyPenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    jsonMode: { default: false },
-    toolUse: { default: true },
-    contextWindow: 64_000,
-    documents: true,
-    acceptedFiles: T_DOC_FILES,
-  },
-  'deepseek-reasoner': {
-    kind: 'text',
-    provider: 'deepseek',
-    brandName: 'DeepSeek',
-    // DeepSeek's reasoner ignores temperature / top_p — explicitly omitted so
-    // the pane doesn't render dead controls.
-    maxTokens: { min: 256, max: 8_192, step: 256, default: 4_096 },
-    contextWindow: 64_000,
-    documents: true,
-    acceptedFiles: T_DOC_FILES,
-    notes: 'R1 ignores temperature, top-p, and penalty knobs by design.',
-  },
-
-  // ---------------- Moonshot Kimi ----------------
-  'kimi-k2': {
-    kind: 'text',
-    provider: 'moonshot',
-    brandName: 'Kimi',
-    temperature: { min: 0, max: 1, step: 0.05, default: 0.6 },
-    topP: { min: 0, max: 1, step: 0.01, default: 1 },
-    maxTokens: { min: 256, max: 8_192, step: 256, default: 4_096 },
-    contextWindow: 200_000,
-    vision: true,
-    documents: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES],
-  },
-  'moonshot-v1-128k': {
-    kind: 'text',
-    provider: 'moonshot',
-    brandName: 'Kimi',
-    temperature: { min: 0, max: 1, step: 0.05, default: 0.6 },
-    topP: { min: 0, max: 1, step: 0.01, default: 1 },
-    maxTokens: { min: 256, max: 8_192, step: 256, default: 4_096 },
-    contextWindow: 128_000,
-    documents: true,
-    acceptedFiles: T_DOC_FILES,
-  },
-
-  // ---------------- Alibaba Qwen ----------------
-  'qwen-max': {
-    kind: 'text',
-    provider: 'alibaba',
-    brandName: 'Qwen',
-    temperature: { min: 0, max: 2, step: 0.05, default: 0.85 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.8 },
-    topK: { min: 0, max: 100, step: 1, default: 0 },
-    maxTokens: { min: 256, max: 8_192, step: 256, default: 4_096 },
-    toolUse: { default: true },
-    contextWindow: 32_000,
-    vision: true,
-    documents: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES],
-  },
-  'qwen-plus': {
-    kind: 'text',
-    provider: 'alibaba',
-    brandName: 'Qwen',
-    temperature: { min: 0, max: 2, step: 0.05, default: 0.85 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.8 },
-    maxTokens: { min: 256, max: 8_192, step: 256, default: 4_096 },
-    contextWindow: 131_072,
-    documents: true,
-    acceptedFiles: T_DOC_FILES,
-  },
-
-  // ---------------- Cohere ----------------
-  'command-r-plus': {
-    kind: 'text',
-    provider: 'cohere',
-    brandName: 'Cohere',
-    temperature: { min: 0, max: 1, step: 0.05, default: 0.3 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.75 },
-    topK: { min: 0, max: 500, step: 1, default: 0 },
-    maxTokens: { min: 256, max: 4_000, step: 256, default: 4_000 },
-    presencePenalty: { min: 0, max: 1, step: 0.05, default: 0 },
-    frequencyPenalty: { min: 0, max: 1, step: 0.05, default: 0 },
-    toolUse: { default: true },
-    webBrowsing: true,
-    contextWindow: 128_000,
-    documents: true,
-    acceptedFiles: T_DOC_FILES,
-    notes: 'Cohere clamps temperature at 1.0 and uses positive-only penalties.',
-  },
-  'command-r': {
-    kind: 'text',
-    provider: 'cohere',
-    brandName: 'Cohere',
-    temperature: { min: 0, max: 1, step: 0.05, default: 0.3 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.75 },
-    maxTokens: { min: 256, max: 4_000, step: 256, default: 4_000 },
-    toolUse: { default: true },
-    contextWindow: 128_000,
-    acceptedFiles: [],
-  },
-
-  // ---------------- Perplexity ----------------
-  'sonar-large': {
-    kind: 'text',
-    provider: 'perplexity',
-    brandName: 'Perplexity',
-    temperature: { min: 0, max: 2, step: 0.05, default: 0.2 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.9 },
-    maxTokens: { min: 256, max: 4_096, step: 256, default: 1_024 },
-    presencePenalty: { min: -2, max: 2, step: 0.1, default: 0 },
-    frequencyPenalty: { min: -2, max: 2, step: 0.1, default: 1 },
-    webBrowsing: true,
-    contextWindow: 128_000,
-    acceptedFiles: [],
-    notes: 'Online: every reply is grounded with live web citations.',
-  },
-  'sonar-small': {
-    kind: 'text',
-    provider: 'perplexity',
-    brandName: 'Perplexity',
-    temperature: { min: 0, max: 2, step: 0.05, default: 0.2 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.9 },
-    maxTokens: { min: 256, max: 4_096, step: 256, default: 1_024 },
-    webBrowsing: true,
-    contextWindow: 128_000,
-    acceptedFiles: [],
-  },
-
-  // ---------------- Zhipu ChatGLM ----------------
-  'glm-4.5': {
-    kind: 'text',
-    provider: 'zhipu',
-    brandName: 'ChatGLM',
-    temperature: { min: 0, max: 1, step: 0.05, default: 0.95 },
-    topP: { min: 0, max: 1, step: 0.01, default: 0.7 },
-    maxTokens: { min: 256, max: 8_192, step: 256, default: 4_096 },
-    toolUse: { default: true },
-    contextWindow: 128_000,
-    vision: true,
-    documents: true,
-    acceptedFiles: [...T_VISION_FILES, ...T_DOC_FILES],
-  },
+  /** Files this model accepts. Omit for models that take prompts only. */
+  attachments?: AcceptedFiles
+  /** Tunable parameters the API exposes. Empty map ⇒ no user-tunable knobs. */
+  fields: Record<string, Field>
 }
 
 // ---------------------------------------------------------------------------
-// Image models
+// Reusable building blocks. Most providers cluster around the same numeric
+// ranges so we share definitions where it's accurate.
 // ---------------------------------------------------------------------------
 
-const IMG_REF_FILES = ['image/png', 'image/jpeg', 'image/webp']
+const TEMPERATURE_0_2: RangeField = {
+  type: 'range', label: 'Temperature', min: 0, max: 2, step: 0.05, default: 0.7,
+  hint: 'Higher = more creative, lower = more deterministic',
+}
+// Anthropic caps temperature at 1.0.
+const TEMPERATURE_0_1: RangeField = { ...TEMPERATURE_0_2, max: 1, default: 0.7 }
 
-const IMAGE_CAPS: Record<string, ImageCapability> = {
-  // ---- Google Nano Banana / Imagen ----
-  'nano-banana-2': {
-    kind: 'image',
-    provider: 'google',
-    brandName: 'Nano Banana',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16', '21:9'] },
-    qualityLevels: { default: 'hd', options: ['standard', 'hd', 'ultra'] },
-    referenceImage: { default: false, hint: 'Edit or remix an existing image.' },
-    textInImage: true,
-    characterConsistency: true,
-    acceptedFiles: IMG_REF_FILES,
-    notes: 'Excellent text rendering and multi-image character consistency.',
-  },
-  'nano-banana-pro': {
-    kind: 'image',
-    provider: 'google',
-    brandName: 'Nano Banana',
-    aspectRatios: { default: '16:9', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    resolutions: { default: '2k', options: ['1k', '2k', '4k'] },
-    referenceImage: { default: false },
-    textInImage: true,
-    characterConsistency: true,
-    acceptedFiles: IMG_REF_FILES,
-  },
-  'nano-banana': {
-    kind: 'image',
-    provider: 'google',
-    brandName: 'Nano Banana',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    referenceImage: { default: false },
-    textInImage: true,
-    acceptedFiles: IMG_REF_FILES,
-  },
-  'imagen-4': {
-    kind: 'image',
-    provider: 'google',
-    brandName: 'Imagen',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    count: { min: 1, max: 4, step: 1, default: 1 },
-    seed: { allowRandom: true },
-    textInImage: true,
-    acceptedFiles: [],
-    notes: 'Photorealism focus. No reference image input on the public API yet.',
-  },
-  'imagen-3': {
-    kind: 'image',
-    provider: 'google',
-    brandName: 'Imagen',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    count: { min: 1, max: 4, step: 1, default: 1 },
-    seed: { allowRandom: true },
-    acceptedFiles: [],
-  },
+const TOP_P: RangeField = {
+  type: 'range', label: 'Top-p', min: 0.01, max: 1, step: 0.01, default: 0.95,
+  hint: 'Nucleus sampling cutoff',
+}
 
-  // ---- OpenAI DALL-E ----
-  'dall-e-4': {
-    kind: 'image',
-    provider: 'openai',
-    brandName: 'DALL-E',
-    resolutions: { default: '1024x1024', options: ['1024x1024', '1024x1792', '1792x1024'] },
-    qualityLevels: { default: 'hd', options: ['standard', 'hd'] },
-    styles: {
-      default: 'vivid',
-      options: [
-        { value: 'vivid', label: 'Vivid' },
-        { value: 'natural', label: 'Natural' },
-      ],
-    },
-    count: { min: 1, max: 1, step: 1, default: 1 },
-    acceptedFiles: [],
-    notes: 'DALL-E does not accept seed, negative prompt, or reference images.',
-  },
-  'dall-e-3': {
-    kind: 'image',
-    provider: 'openai',
-    brandName: 'DALL-E',
-    resolutions: { default: '1024x1024', options: ['1024x1024', '1024x1792', '1792x1024'] },
-    qualityLevels: { default: 'hd', options: ['standard', 'hd'] },
-    styles: {
-      default: 'vivid',
-      options: [
-        { value: 'vivid', label: 'Vivid' },
-        { value: 'natural', label: 'Natural' },
-      ],
-    },
-    count: { min: 1, max: 1, step: 1, default: 1 },
-    acceptedFiles: [],
-  },
+const TOP_K: IntegerField = {
+  type: 'integer', label: 'Top-k', min: 1, max: 100, step: 1, default: 40,
+  hint: 'Limit candidate tokens at each step',
+}
 
-  // ---- Midjourney ----
-  'midjourney-v7': {
-    kind: 'image',
-    provider: 'midjourney',
-    brandName: 'Midjourney',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16', '21:9'] },
-    qualityLevels: { default: 'standard', options: ['draft', 'standard', 'hd'] },
-    styles: {
-      default: 'default',
-      options: [
-        { value: 'default', label: 'Default' },
-        { value: 'raw', label: 'Raw (--style raw)' },
-      ],
-    },
-    count: { min: 1, max: 4, step: 1, default: 4, label: 'Variations' },
-    seed: { allowRandom: true },
-    referenceImage: { default: false, hint: 'Used as --cref or --sref.' },
-    characterConsistency: true,
-    acceptedFiles: IMG_REF_FILES,
-    notes: 'Numeric controls map to --stylize, --chaos, and --weird in the prompt.',
-  },
-  'midjourney-v6.1': {
-    kind: 'image',
-    provider: 'midjourney',
-    brandName: 'Midjourney',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    count: { min: 1, max: 4, step: 1, default: 4 },
-    seed: { allowRandom: true },
-    referenceImage: { default: false },
-    acceptedFiles: IMG_REF_FILES,
-  },
+const PRESENCE_PENALTY: RangeField = {
+  type: 'range', label: 'Presence penalty', min: -2, max: 2, step: 0.1, default: 0,
+}
+const FREQUENCY_PENALTY: RangeField = {
+  type: 'range', label: 'Frequency penalty', min: -2, max: 2, step: 0.1, default: 0,
+}
 
-  // ---- Stable Diffusion ----
-  'stable-diffusion-3.5': {
-    kind: 'image',
-    provider: 'stability',
-    brandName: 'Stable Diffusion',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16', '21:9'] },
-    count: { min: 1, max: 4, step: 1, default: 1 },
-    seed: { allowRandom: true },
-    negativePrompt: { default: false },
-    guidanceScale: { min: 1, max: 30, step: 0.5, default: 7, hint: 'CFG scale.' },
-    steps: { min: 10, max: 100, step: 1, default: 30 },
-    referenceImage: { default: false },
-    inpainting: { default: false },
-    acceptedFiles: IMG_REF_FILES,
-  },
-  'stable-diffusion-xl': {
-    kind: 'image',
-    provider: 'stability',
-    brandName: 'Stable Diffusion',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    count: { min: 1, max: 4, step: 1, default: 1 },
-    seed: { allowRandom: true },
-    negativePrompt: { default: false },
-    guidanceScale: { min: 1, max: 30, step: 0.5, default: 7 },
-    steps: { min: 10, max: 80, step: 1, default: 30 },
-    referenceImage: { default: false },
-    acceptedFiles: IMG_REF_FILES,
-  },
+const REASONING_EFFORT: SelectField = {
+  type: 'select', label: 'Reasoning effort', default: 'medium',
+  options: [
+    { value: 'low',    label: 'Low' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high',   label: 'High' },
+  ],
+}
 
-  // ---- FLUX ----
-  'flux-1.1-pro-ultra': {
-    kind: 'image',
-    provider: 'black-forest-labs',
-    brandName: 'FLUX',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16', '21:9'] },
-    qualityLevels: { default: 'ultra', options: ['raw', 'ultra'] },
-    seed: { allowRandom: true },
-    textInImage: true,
-    acceptedFiles: [],
-  },
-  'flux-1-pro': {
-    kind: 'image',
-    provider: 'black-forest-labs',
-    brandName: 'FLUX',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    seed: { allowRandom: true },
-    textInImage: true,
-    acceptedFiles: [],
-  },
-  'flux-1-dev': {
-    kind: 'image',
-    provider: 'black-forest-labs',
-    brandName: 'FLUX',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    guidanceScale: { min: 1, max: 10, step: 0.5, default: 3.5 },
-    steps: { min: 10, max: 50, step: 1, default: 28 },
-    seed: { allowRandom: true },
-    textInImage: true,
-    acceptedFiles: [],
-  },
+const JSON_MODE: ToggleField = { type: 'toggle', label: 'JSON output mode', default: false }
+const TOOL_USE: ToggleField  = { type: 'toggle', label: 'Tool / function calling', default: true }
 
-  // ---- Ideogram ----
-  'ideogram-3.0': {
-    kind: 'image',
-    provider: 'ideogram',
-    brandName: 'Ideogram',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    qualityLevels: { default: 'high', options: ['standard', 'high', 'turbo'] },
-    styles: {
-      default: 'general',
-      options: [
-        { value: 'general', label: 'General' },
-        { value: 'realistic', label: 'Realistic' },
-        { value: 'design', label: 'Design' },
-        { value: 'render-3d', label: '3D render' },
-        { value: 'anime', label: 'Anime' },
-      ],
-    },
-    seed: { allowRandom: true },
-    negativePrompt: { default: false },
-    textInImage: true,
-    acceptedFiles: [],
-    notes: 'Best-in-class text rendering inside images.',
-  },
-  'ideogram-2.0-turbo': {
-    kind: 'image',
-    provider: 'ideogram',
-    brandName: 'Ideogram',
-    aspectRatios: { default: '1:1', options: ['1:1', '16:9', '9:16'] },
-    seed: { allowRandom: true },
-    textInImage: true,
-    acceptedFiles: [],
-  },
+const STOP_SEQUENCES: TextField = {
+  type: 'text', label: 'Stop sequences', placeholder: 'e.g. "###, END"', default: '',
+}
 
-  // ---- Recraft ----
-  'recraft-v3': {
-    kind: 'image',
-    provider: 'recraft',
-    brandName: 'Recraft',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    styles: {
-      default: 'realistic_image',
-      options: [
-        { value: 'realistic_image', label: 'Photo' },
-        { value: 'digital_illustration', label: 'Illustration' },
-        { value: 'vector_illustration', label: 'Vector' },
-        { value: 'icon', label: 'Icon' },
-      ],
-    },
-    textInImage: true,
-    acceptedFiles: [],
-  },
+// File-type bundles ---------------------------------------------------------
 
-  // ---- Playground ----
-  'playground-v3': {
-    kind: 'image',
-    provider: 'playground',
-    brandName: 'Playground',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    seed: { allowRandom: true },
-    guidanceScale: { min: 1, max: 30, step: 0.5, default: 7 },
-    acceptedFiles: [],
-  },
+const ACCEPT_IMAGES: AcceptedFiles = {
+  mimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
+  humanLabel: 'PNG, JPEG, WebP, GIF — up to 8 MB each',
+  maxFiles: 10,
+  maxBytesEach: 8 * 1024 * 1024,
+}
 
-  // ---- CogView (Zhipu) ----
-  'cogview-3-plus': {
-    kind: 'image',
-    provider: 'zhipu',
-    brandName: 'CogView',
-    aspectRatios: { default: '1:1', options: ['1:1', '16:9', '9:16'] },
-    acceptedFiles: [],
-  },
+const ACCEPT_DOCUMENTS: AcceptedFiles = {
+  mimeTypes: ['application/pdf', 'text/plain', 'text/markdown', 'text/csv'],
+  humanLabel: 'PDF, plain text, Markdown, CSV — up to 8 MB each',
+  maxFiles: 5,
+  maxBytesEach: 8 * 1024 * 1024,
+}
 
-  // ---- Wanxiang (Alibaba) ----
-  'wanxiang-2.1': {
-    kind: 'image',
-    provider: 'alibaba',
-    brandName: 'Wanxiang',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    referenceImage: { default: false },
-    acceptedFiles: IMG_REF_FILES,
-  },
-  'tongyi-wanxiang': {
-    kind: 'image',
-    provider: 'alibaba',
-    brandName: 'Wanxiang',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4', '16:9', '9:16'] },
-    acceptedFiles: [],
-  },
+const ACCEPT_IMAGES_AND_DOCS: AcceptedFiles = {
+  mimeTypes: [
+    ...ACCEPT_IMAGES.mimeTypes,
+    ...ACCEPT_DOCUMENTS.mimeTypes,
+  ],
+  humanLabel: 'Images (PNG/JPEG/WebP/GIF) and documents (PDF, text, Markdown, CSV) — up to 8 MB each',
+  maxFiles: 10,
+  maxBytesEach: 8 * 1024 * 1024,
+}
 
-  // ---- Baidu ERNIE-ViLG ----
-  'ernie-vilg-2.0': {
-    kind: 'image',
-    provider: 'baidu',
-    brandName: 'ERNIE-ViLG',
-    aspectRatios: { default: '1:1', options: ['1:1', '16:9', '9:16'] },
-    acceptedFiles: [],
-  },
-  'wenxin-yige': {
-    kind: 'image',
-    provider: 'baidu',
-    brandName: 'Wenxin',
-    aspectRatios: { default: '1:1', options: ['1:1', '4:3', '3:4'] },
-    acceptedFiles: [],
-  },
+const ACCEPT_GEMINI_MULTIMODAL: AcceptedFiles = {
+  // Gemini accepts images, PDFs, audio (mp3/wav/aiff/aac/ogg/flac), video
+  // (mp4/mpeg/mov/avi/x-flv/mpg/webm/wmv/3gp), text, and code files.
+  mimeTypes: [
+    'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
+    'application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'text/html',
+    'audio/mpeg', 'audio/wav', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
+    'video/mp4', 'video/mpeg', 'video/quicktime', 'video/webm',
+  ],
+  humanLabel: 'Images, PDFs, plain text, Markdown, audio (MP3/WAV/OGG/FLAC), and video (MP4/WebM/MOV) — up to 20 MB each',
+  maxFiles: 16,
+  maxBytesEach: 20 * 1024 * 1024,
+}
 
-  // ---- Kolors (Kuaishou) ----
-  'kolors': {
-    kind: 'image',
-    provider: 'kuaishou',
-    brandName: 'Kolors',
-    aspectRatios: { default: '1:1', options: ['1:1', '16:9', '9:16'] },
-    referenceImage: { default: false },
-    acceptedFiles: IMG_REF_FILES,
-  },
+const ACCEPT_REFERENCE_IMAGE: AcceptedFiles = {
+  mimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
+  humanLabel: 'A reference image (PNG/JPEG/WebP) — up to 8 MB',
+  maxFiles: 1,
+  maxBytesEach: 8 * 1024 * 1024,
+}
+
+const ACCEPT_VIDEO_START_FRAME: AcceptedFiles = {
+  mimeTypes: ['image/png', 'image/jpeg', 'image/webp'],
+  humanLabel: 'A start-frame image (PNG/JPEG/WebP) — up to 8 MB',
+  maxFiles: 1,
+  maxBytesEach: 8 * 1024 * 1024,
+}
+
+const ACCEPT_VOICE_CLONE_AUDIO: AcceptedFiles = {
+  mimeTypes: ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/x-m4a', 'audio/flac'],
+  humanLabel: 'A short voice sample (MP3/WAV/M4A/FLAC) — up to 25 MB',
+  maxFiles: 1,
+  maxBytesEach: 25 * 1024 * 1024,
 }
 
 // ---------------------------------------------------------------------------
-// Video models
+// Helpers
 // ---------------------------------------------------------------------------
 
-const VID_REF_FILES = ['image/png', 'image/jpeg', 'image/webp']
+/** Build the `accept` attribute string for a file input. */
+export function buildAcceptAttribute(f: AcceptedFiles): string {
+  return f.mimeTypes.join(',')
+}
 
-const VIDEO_CAPS: Record<string, VideoCapability> = {
-  // ---- Sora ----
-  'sora-turbo': {
-    kind: 'video',
-    provider: 'openai',
-    brandName: 'Sora',
-    durations: { default: 10, options: [5, 10, 20, 30, 60] },
-    maxDurationSec: 60,
-    resolutions: { default: '1080p', options: ['480p', '720p', '1080p'] },
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16', '1:1'] },
-    imageToVideo: { default: false },
-    builtInAudio: false,
-    acceptedFiles: VID_REF_FILES,
-  },
-  'sora': {
-    kind: 'video',
-    provider: 'openai',
-    brandName: 'Sora',
-    durations: { default: 5, options: [5, 10, 20] },
-    maxDurationSec: 20,
-    resolutions: { default: '1080p', options: ['720p', '1080p'] },
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16', '1:1'] },
-    imageToVideo: { default: false },
-    acceptedFiles: VID_REF_FILES,
-  },
-
-  // ---- Runway ----
-  'runway-gen-4-turbo': {
-    kind: 'video',
-    provider: 'runway',
-    brandName: 'Runway',
-    durations: { default: 5, options: [5, 10] },
-    maxDurationSec: 10,
-    resolutions: { default: '1080p', options: ['720p', '1080p'] },
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16', '1:1'] },
-    imageToVideo: { default: true, hint: 'Required for camera control.' },
-    motionControl: { default: false },
-    acceptedFiles: VID_REF_FILES,
-  },
-  'runway-gen-3-alpha': {
-    kind: 'video',
-    provider: 'runway',
-    brandName: 'Runway',
-    durations: { default: 5, options: [5, 10] },
-    maxDurationSec: 10,
-    resolutions: { default: '720p', options: ['720p', '1080p'] },
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16'] },
-    imageToVideo: { default: false },
-    motionControl: { default: false },
-    acceptedFiles: VID_REF_FILES,
-  },
-
-  // ---- Luma ----
-  'luma-dream-machine-2': {
-    kind: 'video',
-    provider: 'luma',
-    brandName: 'Luma AI',
-    durations: { default: 5, options: [5] },
-    maxDurationSec: 5,
-    resolutions: { default: '1080p', options: ['720p', '1080p'] },
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16', '1:1', '4:3', '3:4'] },
-    imageToVideo: { default: false, hint: 'Use as keyframe.' },
-    endFrame: { default: false },
-    acceptedFiles: VID_REF_FILES,
-    notes: 'Supports start- and end-frame keyframes for camera planning.',
-  },
-  'luma-dream-machine': {
-    kind: 'video',
-    provider: 'luma',
-    brandName: 'Luma AI',
-    durations: { default: 5, options: [5] },
-    maxDurationSec: 5,
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16'] },
-    imageToVideo: { default: false },
-    acceptedFiles: VID_REF_FILES,
-  },
-
-  // ---- Pika ----
-  'pika-2.0': {
-    kind: 'video',
-    provider: 'pika',
-    brandName: 'Pika',
-    durations: { default: 4, options: [3, 4, 6] },
-    maxDurationSec: 6,
-    resolutions: { default: '1080p', options: ['720p', '1080p'] },
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16', '1:1'] },
-    builtInAudio: true,
-    motionControl: { default: false },
-    imageToVideo: { default: false },
-    acceptedFiles: VID_REF_FILES,
-  },
-  'pika-1.5': {
-    kind: 'video',
-    provider: 'pika',
-    brandName: 'Pika',
-    durations: { default: 3, options: [3] },
-    maxDurationSec: 3,
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16', '1:1'] },
-    imageToVideo: { default: false },
-    acceptedFiles: VID_REF_FILES,
-  },
-
-  // ---- Haiper ----
-  'haiper-2.0': {
-    kind: 'video',
-    provider: 'haiper',
-    brandName: 'Haiper',
-    durations: { default: 4, options: [2, 4, 6] },
-    maxDurationSec: 6,
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16'] },
-    imageToVideo: { default: false },
-    acceptedFiles: VID_REF_FILES,
-  },
-
-  // ---- Stable Video ----
-  'stability-video': {
-    kind: 'video',
-    provider: 'stability',
-    brandName: 'Stable Video',
-    durations: { default: 4, options: [2, 4] },
-    maxDurationSec: 4,
-    aspectRatios: { default: '16:9', options: ['16:9'] },
-    imageToVideo: { default: true, hint: 'Required — Stable Video is image-to-video only.' },
-    acceptedFiles: VID_REF_FILES,
-    notes: 'Requires a starting image.',
-  },
-
-  // ---- Kling ----
-  'kling-2.0': {
-    kind: 'video',
-    provider: 'kuaishou',
-    brandName: 'Kling',
-    durations: { default: 5, options: [5, 10] },
-    maxDurationSec: 10,
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16', '1:1'] },
-    imageToVideo: { default: false },
-    builtInAudio: false,
-    acceptedFiles: VID_REF_FILES,
-  },
-  'kling-1.5': {
-    kind: 'video',
-    provider: 'kuaishou',
-    brandName: 'Kling',
-    durations: { default: 5, options: [5] },
-    maxDurationSec: 5,
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16'] },
-    acceptedFiles: VID_REF_FILES,
-  },
-
-  // ---- CogVideoX (Zhipu) ----
-  'cogvideo-x': {
-    kind: 'video',
-    provider: 'zhipu',
-    brandName: 'CogVideo',
-    durations: { default: 6, options: [6] },
-    maxDurationSec: 6,
-    aspectRatios: { default: '16:9', options: ['16:9'] },
-    imageToVideo: { default: false },
-    acceptedFiles: VID_REF_FILES,
-  },
-
-  // ---- PixVerse ----
-  'pixverse-v3': {
-    kind: 'video',
-    provider: 'pixverse',
-    brandName: 'PixVerse',
-    durations: { default: 4, options: [4] },
-    maxDurationSec: 4,
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16', '1:1'] },
-    imageToVideo: { default: false },
-    acceptedFiles: VID_REF_FILES,
-  },
-
-  // ---- Vidu ----
-  'vidu-1.5': {
-    kind: 'video',
-    provider: 'shengshu',
-    brandName: 'Vidu',
-    durations: { default: 4, options: [4, 8] },
-    maxDurationSec: 8,
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16'] },
-    imageToVideo: { default: false },
-    acceptedFiles: VID_REF_FILES,
-  },
-
-  // ---- Avatar/lipsync (HeyGen, Synthesia, D-ID) ----
-  'heygen-avatar-iv': {
-    kind: 'video',
-    provider: 'heygen',
-    brandName: 'HeyGen',
-    durations: { default: 60, options: [30, 60, 120, 300] },
-    maxDurationSec: 300,
-    resolutions: { default: '1080p', options: ['720p', '1080p'] },
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16'] },
-    avatar: true,
-    builtInAudio: true,
-    acceptedFiles: VID_REF_FILES,
-    notes: 'Avatar + voiceover. Choose an avatar and voice in the panel.',
-  },
-  'heygen-avatar-iii': {
-    kind: 'video',
-    provider: 'heygen',
-    brandName: 'HeyGen',
-    durations: { default: 60, options: [30, 60, 120, 300] },
-    maxDurationSec: 300,
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16'] },
-    avatar: true,
-    builtInAudio: true,
-    acceptedFiles: VID_REF_FILES,
-  },
-  'synthesia-standard': {
-    kind: 'video',
-    provider: 'synthesia',
-    brandName: 'Synthesia',
-    durations: { default: 60, options: [30, 60, 120, 300] },
-    maxDurationSec: 300,
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16'] },
-    avatar: true,
-    builtInAudio: true,
-    acceptedFiles: VID_REF_FILES,
-  },
-  'did-studio': {
-    kind: 'video',
-    provider: 'did',
-    brandName: 'D-ID',
-    durations: { default: 60, options: [30, 60, 120, 300] },
-    maxDurationSec: 300,
-    aspectRatios: { default: '16:9', options: ['16:9', '9:16', '1:1'] },
-    avatar: true,
-    builtInAudio: true,
-    acceptedFiles: VID_REF_FILES,
-    notes: 'Provide a still photo + a script and D-ID animates the speech.',
-  },
+/** Human summary, e.g. "Images (PNG/JPEG/WebP) — up to 8 MB". */
+export function summarizeAcceptedFiles(f: AcceptedFiles): string {
+  return f.humanLabel
 }
 
 // ---------------------------------------------------------------------------
-// Audio models
+// Text — text-completion models
 // ---------------------------------------------------------------------------
 
-const AUD_REF_FILES = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm']
-
-const AUDIO_CAPS: Record<string, AudioCapability> = {
-  // ---- Gemini TTS ----
-  'gemini-tts-3.1': {
-    kind: 'audio',
-    provider: 'google',
-    brandName: 'Gemini TTS',
-    audioKind: 'voice',
-    voices: {
-      default: 'Aoede',
-      options: [
-        { value: 'Aoede', label: 'Aoede — bright' },
-        { value: 'Charon', label: 'Charon — informative' },
-        { value: 'Fenrir', label: 'Fenrir — energetic' },
-        { value: 'Kore', label: 'Kore — soft' },
-        { value: 'Puck', label: 'Puck — upbeat' },
-      ],
+function gptText(id: string, label: string, ctx: number, maxOut: number, opts: Partial<{ reasoning: boolean; vision: boolean }> = {}): Capability {
+  return {
+    id, kind: 'text', provider: 'openai', label,
+    description: 'OpenAI text + vision model. Supports structured output (JSON), function calling, and parallel tools.',
+    contextWindow: ctx,
+    attachments: opts.vision ? ACCEPT_IMAGES_AND_DOCS : ACCEPT_DOCUMENTS,
+    fields: {
+      temperature: TEMPERATURE_0_2,
+      topP: TOP_P,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 256, max: maxOut, step: 256, default: Math.min(4096, maxOut) },
+      presencePenalty: PRESENCE_PENALTY,
+      frequencyPenalty: FREQUENCY_PENALTY,
+      ...(opts.reasoning ? { reasoningEffort: REASONING_EFFORT } : {}),
+      jsonMode: JSON_MODE,
+      toolUse: TOOL_USE,
+      stopSequences: STOP_SEQUENCES,
     },
-    speed: { min: 0.5, max: 2, step: 0.05, default: 1 },
-    format: { default: 'mp3', options: ['mp3', 'wav'] },
-    acceptedFiles: [],
-    notes: 'Direction-by-prose: tell the model "say this slower, sad" in the prompt.',
-  },
-  'gemini-tts': {
-    kind: 'audio',
-    provider: 'google',
-    brandName: 'Gemini TTS',
-    audioKind: 'voice',
-    voices: {
-      default: 'Aoede',
-      options: [
-        { value: 'Aoede', label: 'Aoede' },
-        { value: 'Charon', label: 'Charon' },
-        { value: 'Kore', label: 'Kore' },
-        { value: 'Puck', label: 'Puck' },
-      ],
-    },
-    speed: { min: 0.5, max: 2, step: 0.05, default: 1 },
-    format: { default: 'mp3', options: ['mp3', 'wav'] },
-    acceptedFiles: [],
-  },
-
-  // ---- ElevenLabs ----
-  'elevenlabs-turbo-v2.5': {
-    kind: 'audio',
-    provider: 'elevenlabs',
-    brandName: 'ElevenLabs',
-    audioKind: 'voice',
-    voices: {
-      default: 'Rachel',
-      options: [
-        { value: 'Rachel', label: 'Rachel — calm' },
-        { value: 'Adam', label: 'Adam — deep' },
-        { value: 'Antoni', label: 'Antoni — neutral' },
-        { value: 'Bella', label: 'Bella — soft' },
-        { value: 'Josh', label: 'Josh — narration' },
-        { value: 'Custom', label: 'Custom voice ID' },
-      ],
-    },
-    stability: { min: 0, max: 1, step: 0.01, default: 0.5 },
-    similarity: { min: 0, max: 1, step: 0.01, default: 0.75 },
-    speakerBoost: { default: true, label: 'Speaker boost' },
-    speed: { min: 0.7, max: 1.2, step: 0.05, default: 1 },
-    format: { default: 'mp3_44100_128', options: ['mp3_44100_128', 'mp3_44100_192', 'pcm_24000', 'pcm_44100'] },
-    voiceCloning: { default: false, hint: 'Reference audio clones a custom voice.' },
-    acceptedFiles: AUD_REF_FILES,
-  },
-  'elevenlabs-multilingual-v2': {
-    kind: 'audio',
-    provider: 'elevenlabs',
-    brandName: 'ElevenLabs',
-    audioKind: 'voice',
-    voices: {
-      default: 'Rachel',
-      options: [
-        { value: 'Rachel', label: 'Rachel' },
-        { value: 'Adam', label: 'Adam' },
-        { value: 'Custom', label: 'Custom voice ID' },
-      ],
-    },
-    stability: { min: 0, max: 1, step: 0.01, default: 0.5 },
-    similarity: { min: 0, max: 1, step: 0.01, default: 0.75 },
-    speakerBoost: { default: true },
-    voiceCloning: { default: false },
-    format: { default: 'mp3_44100_128', options: ['mp3_44100_128', 'mp3_44100_192'] },
-    acceptedFiles: AUD_REF_FILES,
-  },
-
-  // ---- OpenAI TTS ----
-  'openai-tts-1-hd': {
-    kind: 'audio',
-    provider: 'openai',
-    brandName: 'OpenAI TTS',
-    audioKind: 'voice',
-    voices: {
-      default: 'alloy',
-      options: [
-        { value: 'alloy', label: 'Alloy' },
-        { value: 'echo', label: 'Echo' },
-        { value: 'fable', label: 'Fable' },
-        { value: 'onyx', label: 'Onyx' },
-        { value: 'nova', label: 'Nova' },
-        { value: 'shimmer', label: 'Shimmer' },
-      ],
-    },
-    speed: { min: 0.25, max: 4, step: 0.05, default: 1 },
-    format: { default: 'mp3', options: ['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm'] },
-    acceptedFiles: [],
-  },
-  'openai-tts-1': {
-    kind: 'audio',
-    provider: 'openai',
-    brandName: 'OpenAI TTS',
-    audioKind: 'voice',
-    voices: {
-      default: 'alloy',
-      options: [
-        { value: 'alloy', label: 'Alloy' },
-        { value: 'echo', label: 'Echo' },
-        { value: 'fable', label: 'Fable' },
-        { value: 'onyx', label: 'Onyx' },
-        { value: 'nova', label: 'Nova' },
-        { value: 'shimmer', label: 'Shimmer' },
-      ],
-    },
-    speed: { min: 0.25, max: 4, step: 0.05, default: 1 },
-    format: { default: 'mp3', options: ['mp3', 'opus', 'aac', 'flac', 'wav'] },
-    acceptedFiles: [],
-  },
-
-  // ---- Azure ----
-  'azure-neural-tts': {
-    kind: 'audio',
-    provider: 'microsoft',
-    brandName: 'Azure TTS',
-    audioKind: 'voice',
-    voices: {
-      default: 'en-US-JennyNeural',
-      options: [
-        { value: 'en-US-JennyNeural', label: 'Jenny (US)' },
-        { value: 'en-US-GuyNeural', label: 'Guy (US)' },
-        { value: 'en-GB-SoniaNeural', label: 'Sonia (UK)' },
-        { value: 'en-AU-NatashaNeural', label: 'Natasha (AU)' },
-      ],
-    },
-    styles: {
-      default: 'general',
-      options: [
-        { value: 'general', label: 'General' },
-        { value: 'cheerful', label: 'Cheerful' },
-        { value: 'sad', label: 'Sad' },
-        { value: 'angry', label: 'Angry' },
-        { value: 'excited', label: 'Excited' },
-        { value: 'newscast', label: 'Newscast' },
-      ],
-    },
-    speed: { min: 0.5, max: 2, step: 0.05, default: 1 },
-    pitch: { min: -50, max: 50, step: 1, default: 0 },
-    format: { default: 'audio-24khz-160kbitrate-mono-mp3', options: [
-      'audio-24khz-160kbitrate-mono-mp3',
-      'audio-48khz-192kbitrate-mono-mp3',
-      'riff-24khz-16bit-mono-pcm',
-    ] },
-    acceptedFiles: [],
-  },
-
-  // ---- Play.ht ----
-  'play.ht-3.0': {
-    kind: 'audio',
-    provider: 'playht',
-    brandName: 'Play.ht',
-    audioKind: 'voice',
-    voices: {
-      default: 'jennifer',
-      options: [
-        { value: 'jennifer', label: 'Jennifer' },
-        { value: 'matthew', label: 'Matthew' },
-        { value: 'nathan', label: 'Nathan' },
-        { value: 'olivia', label: 'Olivia' },
-      ],
-    },
-    speed: { min: 0.5, max: 2, step: 0.05, default: 1 },
-    pitch: { min: -10, max: 10, step: 0.5, default: 0 },
-    format: { default: 'mp3', options: ['mp3', 'wav', 'ogg'] },
-    voiceCloning: { default: false },
-    acceptedFiles: AUD_REF_FILES,
-  },
-
-  // ---- Suno (music) ----
-  'suno-v4': {
-    kind: 'audio',
-    provider: 'suno',
-    brandName: 'Suno',
-    audioKind: 'music',
-    genres: {
-      default: 'pop',
-      options: [
-        { value: 'pop', label: 'Pop' },
-        { value: 'rock', label: 'Rock' },
-        { value: 'electronic', label: 'Electronic' },
-        { value: 'classical', label: 'Classical' },
-        { value: 'hip-hop', label: 'Hip Hop' },
-        { value: 'jazz', label: 'Jazz' },
-        { value: 'ambient', label: 'Ambient' },
-        { value: 'cinematic', label: 'Cinematic' },
-      ],
-    },
-    durations: { default: 60, options: [30, 60, 120, 240] },
-    lyrics: { default: true, label: 'Custom lyrics', hint: 'Provide lyrics in the prompt body.' },
-    format: { default: 'mp3', options: ['mp3'] },
-    acceptedFiles: [],
-  },
-  'suno-v3.5': {
-    kind: 'audio',
-    provider: 'suno',
-    brandName: 'Suno',
-    audioKind: 'music',
-    genres: {
-      default: 'pop',
-      options: [
-        { value: 'pop', label: 'Pop' },
-        { value: 'rock', label: 'Rock' },
-        { value: 'electronic', label: 'Electronic' },
-        { value: 'jazz', label: 'Jazz' },
-        { value: 'ambient', label: 'Ambient' },
-      ],
-    },
-    durations: { default: 60, options: [30, 60, 120] },
-    lyrics: { default: true },
-    format: { default: 'mp3', options: ['mp3'] },
-    acceptedFiles: [],
-  },
-
-  // ---- Udio ----
-  'udio-v2': {
-    kind: 'audio',
-    provider: 'udio',
-    brandName: 'Udio',
-    audioKind: 'music',
-    genres: {
-      default: 'pop',
-      options: [
-        { value: 'pop', label: 'Pop' },
-        { value: 'electronic', label: 'Electronic' },
-        { value: 'cinematic', label: 'Cinematic' },
-        { value: 'ambient', label: 'Ambient' },
-      ],
-    },
-    durations: { default: 60, options: [30, 60, 120, 240, 360] },
-    lyrics: { default: true },
-    format: { default: 'mp3', options: ['mp3', 'wav'] },
-    acceptedFiles: [],
-  },
-  'udio-v1.5': {
-    kind: 'audio',
-    provider: 'udio',
-    brandName: 'Udio',
-    audioKind: 'music',
-    durations: { default: 60, options: [30, 60, 120] },
-    lyrics: { default: true },
-    format: { default: 'mp3', options: ['mp3'] },
-    acceptedFiles: [],
-  },
-
-  // ---- Stable Audio ----
-  'stable-audio-2': {
-    kind: 'audio',
-    provider: 'stability',
-    brandName: 'Stable Audio',
-    audioKind: 'music',
-    durations: { default: 30, options: [15, 30, 60, 90, 180] },
-    format: { default: 'wav', options: ['mp3', 'wav'] },
-    acceptedFiles: AUD_REF_FILES,
-    notes: 'Reference audio works as a style condition.',
-  },
-
-  // ---- Fish Speech ----
-  'fish-speech-1.5': {
-    kind: 'audio',
-    provider: 'fishaudio',
-    brandName: 'Fish Speech',
-    audioKind: 'voice',
-    voices: {
-      default: 'default',
-      options: [
-        { value: 'default', label: 'Default' },
-        { value: 'custom', label: 'Custom (clone)' },
-      ],
-    },
-    voiceCloning: { default: false, hint: 'Provide ~10s of reference audio to clone.' },
-    speed: { min: 0.5, max: 2, step: 0.05, default: 1 },
-    format: { default: 'mp3', options: ['mp3', 'wav'] },
-    acceptedFiles: AUD_REF_FILES,
-  },
-
-  // ---- ChatGLM Audio ----
-  'chatglm-audio': {
-    kind: 'audio',
-    provider: 'zhipu',
-    brandName: 'ChatGLM Audio',
-    audioKind: 'voice',
-    voices: {
-      default: 'tongtong',
-      options: [
-        { value: 'tongtong', label: 'Tongtong' },
-        { value: 'xiaomei', label: 'Xiaomei' },
-      ],
-    },
-    speed: { min: 0.5, max: 2, step: 0.05, default: 1 },
-    format: { default: 'mp3', options: ['mp3', 'wav'] },
-    acceptedFiles: [],
-  },
-}
-
-// ---------------------------------------------------------------------------
-// Public lookups
-// ---------------------------------------------------------------------------
-
-const FALLBACK_TEXT: TextCapability = {
-  kind: 'text',
-  provider: 'unknown',
-  brandName: 'Model',
-  temperature: { min: 0, max: 1, step: 0.05, default: 0.7 },
-  maxTokens: { min: 256, max: 4_096, step: 256, default: 2_048 },
-  acceptedFiles: [],
-  notes: 'Capabilities not registered — generic defaults shown.',
-}
-
-export function getTextCapability(modelId: string): TextCapability {
-  return TEXT_CAPS[modelId] ?? FALLBACK_TEXT
-}
-
-export function getImageCapability(modelId: string): ImageCapability | undefined {
-  return IMAGE_CAPS[modelId]
-}
-
-export function getVideoCapability(modelId: string): VideoCapability | undefined {
-  return VIDEO_CAPS[modelId]
-}
-
-export function getAudioCapability(modelId: string): AudioCapability | undefined {
-  return AUDIO_CAPS[modelId]
-}
-
-/**
- * Plain-language summary of a MIME-type list. The drawer uses this to render
- * a single line under the upload zone ("Accepts: PNG · JPEG · PDF · WAV").
- */
-export function summarizeAcceptedFiles(mimeList: string[]): string {
-  if (!mimeList || mimeList.length === 0) return 'No file uploads supported on this model.'
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const mime of mimeList) {
-    const tag = friendlyMimeTag(mime)
-    if (!seen.has(tag)) {
-      seen.add(tag)
-      out.push(tag)
-    }
   }
-  return `Accepts: ${out.join(' · ')}`
 }
 
-/** Map a MIME type to a short label users recognise. */
-function friendlyMimeTag(mime: string): string {
-  if (mime === 'image/png') return 'PNG'
-  if (mime === 'image/jpeg') return 'JPEG'
-  if (mime === 'image/webp') return 'WebP'
-  if (mime === 'image/gif') return 'GIF'
-  if (mime === 'application/pdf') return 'PDF'
-  if (mime === 'text/plain') return 'TXT'
-  if (mime === 'text/markdown') return 'MD'
-  if (mime === 'text/csv') return 'CSV'
-  if (mime === 'application/json') return 'JSON'
-  if (mime === 'audio/mpeg' || mime === 'audio/mp3') return 'MP3'
-  if (mime === 'audio/wav') return 'WAV'
-  if (mime === 'audio/ogg') return 'OGG'
-  if (mime === 'audio/webm') return 'WebM audio'
-  if (mime === 'video/mp4') return 'MP4'
-  if (mime === 'video/webm') return 'WebM video'
-  if (mime === 'video/quicktime') return 'MOV'
-  return mime
+function geminiText(id: string, label: string, ctx: number, maxOut: number): Capability {
+  return {
+    id, kind: 'text', provider: 'google', label,
+    description: 'Google Gemini multimodal model. Accepts images, PDFs, audio, video, and text in a single request.',
+    contextWindow: ctx,
+    attachments: ACCEPT_GEMINI_MULTIMODAL,
+    fields: {
+      temperature: TEMPERATURE_0_2,
+      topP: TOP_P,
+      topK: TOP_K,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 256, max: maxOut, step: 256, default: Math.min(8192, maxOut) },
+      jsonMode: JSON_MODE,
+      toolUse: TOOL_USE,
+      stopSequences: STOP_SEQUENCES,
+    },
+  }
 }
 
-/** Build the `accept=` attribute for an `<input type=file>` element. */
-export function buildAcceptAttribute(mimeList: string[]): string {
-  return Array.from(new Set(mimeList)).join(',')
+function claudeText(id: string, label: string, ctx: number, maxOut: number, opts: { extendedThinking?: boolean } = {}): Capability {
+  return {
+    id, kind: 'text', provider: 'anthropic', label,
+    description: 'Anthropic Claude. Strong at long-context reasoning, tool use, and document analysis.',
+    contextWindow: ctx,
+    attachments: ACCEPT_IMAGES_AND_DOCS,
+    fields: {
+      temperature: TEMPERATURE_0_1,
+      topP: TOP_P,
+      topK: TOP_K,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 1024, max: maxOut, step: 512, default: Math.min(8192, maxOut) },
+      ...(opts.extendedThinking ? { reasoningEffort: REASONING_EFFORT } : {}),
+      toolUse: TOOL_USE,
+      stopSequences: STOP_SEQUENCES,
+    },
+  }
 }
+
+function mistralText(id: string, label: string, ctx: number, maxOut: number): Capability {
+  return {
+    id, kind: 'text', provider: 'mistral', label,
+    description: 'Mistral text model. Supports JSON output and tool calling.',
+    contextWindow: ctx,
+    attachments: ACCEPT_DOCUMENTS,
+    fields: {
+      temperature: TEMPERATURE_0_2,
+      topP: TOP_P,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 256, max: maxOut, step: 256, default: Math.min(4096, maxOut) },
+      presencePenalty: PRESENCE_PENALTY,
+      frequencyPenalty: FREQUENCY_PENALTY,
+      jsonMode: JSON_MODE,
+      toolUse: TOOL_USE,
+      stopSequences: STOP_SEQUENCES,
+    },
+  }
+}
+
+function grokText(id: string, label: string, ctx: number, maxOut: number, opts: { reasoning?: boolean; web?: boolean } = {}): Capability {
+  return {
+    id, kind: 'text', provider: 'xai', label,
+    description: 'xAI Grok. Strong at real-time web context and chain-of-thought reasoning.',
+    contextWindow: ctx,
+    attachments: ACCEPT_IMAGES_AND_DOCS,
+    fields: {
+      temperature: TEMPERATURE_0_2,
+      topP: TOP_P,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 256, max: maxOut, step: 256, default: Math.min(8192, maxOut) },
+      ...(opts.reasoning ? { reasoningEffort: REASONING_EFFORT } : {}),
+      ...(opts.web ? { webBrowsing: { type: 'toggle', label: 'Web browsing', default: false } as ToggleField } : {}),
+      toolUse: TOOL_USE,
+      stopSequences: STOP_SEQUENCES,
+    },
+  }
+}
+
+function deepseekText(id: string, label: string, ctx: number, maxOut: number, reasoning: boolean): Capability {
+  return {
+    id, kind: 'text', provider: 'deepseek', label,
+    description: reasoning
+      ? 'DeepSeek reasoning model — exposes a separate "reasoning" channel before the answer.'
+      : 'DeepSeek chat model. OpenAI-compatible API.',
+    contextWindow: ctx,
+    attachments: ACCEPT_DOCUMENTS,
+    fields: {
+      temperature: TEMPERATURE_0_2,
+      topP: TOP_P,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 256, max: maxOut, step: 256, default: Math.min(4096, maxOut) },
+      ...(reasoning ? { reasoningEffort: REASONING_EFFORT } : {}),
+      jsonMode: JSON_MODE,
+      toolUse: TOOL_USE,
+    },
+  }
+}
+
+function moonshotText(id: string, label: string, ctx: number, maxOut: number): Capability {
+  return {
+    id, kind: 'text', provider: 'moonshot', label,
+    description: 'Moonshot Kimi. Long-context Chinese-first model with English support.',
+    contextWindow: ctx,
+    attachments: ACCEPT_DOCUMENTS,
+    fields: {
+      temperature: TEMPERATURE_0_2,
+      topP: TOP_P,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 256, max: maxOut, step: 256, default: Math.min(4096, maxOut) },
+      jsonMode: JSON_MODE,
+      toolUse: TOOL_USE,
+    },
+  }
+}
+
+function qwenText(id: string, label: string, ctx: number, maxOut: number): Capability {
+  return {
+    id, kind: 'text', provider: 'alibaba', label,
+    description: 'Alibaba Qwen. Strong at multilingual tasks, code, and tool use.',
+    contextWindow: ctx,
+    attachments: ACCEPT_DOCUMENTS,
+    fields: {
+      temperature: TEMPERATURE_0_2,
+      topP: TOP_P,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 256, max: maxOut, step: 256, default: Math.min(4096, maxOut) },
+      jsonMode: JSON_MODE,
+      toolUse: TOOL_USE,
+    },
+  }
+}
+
+function cohereText(id: string, label: string, ctx: number, maxOut: number): Capability {
+  return {
+    id, kind: 'text', provider: 'cohere', label,
+    description: 'Cohere Command. Tuned for retrieval-augmented generation and tool calling.',
+    contextWindow: ctx,
+    attachments: ACCEPT_DOCUMENTS,
+    fields: {
+      temperature: { ...TEMPERATURE_0_2, max: 5, default: 0.3 },
+      topP: TOP_P,
+      topK: TOP_K,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 256, max: maxOut, step: 256, default: Math.min(4096, maxOut) },
+      presencePenalty: PRESENCE_PENALTY,
+      frequencyPenalty: FREQUENCY_PENALTY,
+      toolUse: TOOL_USE,
+      stopSequences: STOP_SEQUENCES,
+    },
+  }
+}
+
+function perplexityText(id: string, label: string, ctx: number, maxOut: number): Capability {
+  return {
+    id, kind: 'text', provider: 'perplexity', label,
+    description: 'Perplexity Sonar — answers grounded in live web search results with inline citations.',
+    contextWindow: ctx,
+    attachments: ACCEPT_DOCUMENTS,
+    fields: {
+      temperature: { ...TEMPERATURE_0_2, max: 2, default: 0.2 },
+      topP: TOP_P,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 256, max: maxOut, step: 256, default: Math.min(4096, maxOut) },
+      searchRecency: {
+        type: 'select', label: 'Search recency', default: 'month',
+        options: [
+          { value: 'day',   label: 'Past day' },
+          { value: 'week',  label: 'Past week' },
+          { value: 'month', label: 'Past month' },
+          { value: 'year',  label: 'Past year' },
+        ],
+      },
+      returnImages: { type: 'toggle', label: 'Return images', default: false },
+      returnRelated: { type: 'toggle', label: 'Suggest follow-up questions', default: true },
+    },
+  }
+}
+
+function zhipuText(id: string, label: string, ctx: number, maxOut: number): Capability {
+  return {
+    id, kind: 'text', provider: 'zhipu', label,
+    description: 'Zhipu GLM. Strong at Chinese, code, and tool use.',
+    contextWindow: ctx,
+    attachments: ACCEPT_DOCUMENTS,
+    fields: {
+      temperature: TEMPERATURE_0_1,
+      topP: TOP_P,
+      maxTokens: { type: 'integer', label: 'Max output tokens', min: 256, max: maxOut, step: 256, default: Math.min(4096, maxOut) },
+      toolUse: TOOL_USE,
+    },
+  }
+}
+
+const TEXT_CAPABILITIES: Capability[] = [
+  // Google Gemini
+  geminiText('gemini-2.5-flash', 'Gemini 2.5 Flash', 1_000_000, 8192),
+  geminiText('gemini-2.0-flash', 'Gemini 2.0 Flash', 1_000_000, 8192),
+  geminiText('gemini-1.5-pro',   'Gemini 1.5 Pro',     2_000_000, 8192),
+
+  // OpenAI
+  gptText('gpt-4o',      'GPT-4o',      128_000, 16_384, { vision: true }),
+  gptText('gpt-4o-mini', 'GPT-4o mini', 128_000, 16_384, { vision: true }),
+
+  // Anthropic Claude
+  claudeText('claude-opus-4.6',   'Claude Opus 4.6',   200_000, 32_000, { extendedThinking: true }),
+  claudeText('claude-sonnet-4.6', 'Claude Sonnet 4.6', 200_000, 16_000, { extendedThinking: true }),
+  claudeText('claude-haiku-4.5',  'Claude Haiku 4.5',  200_000, 8_000),
+
+  // Mistral
+  mistralText('mistral-large-latest', 'Mistral Large', 128_000, 8_000),
+  mistralText('mistral-small-latest', 'Mistral Small', 128_000, 8_000),
+
+  // xAI Grok
+  grokText('grok-4', 'Grok 4', 1_000_000, 8_192, { reasoning: true, web: true }),
+  grokText('grok-3', 'Grok 3',   131_072, 8_192, { web: true }),
+
+  // DeepSeek
+  deepseekText('deepseek-chat',     'DeepSeek Chat',      128_000, 8_000, false),
+  deepseekText('deepseek-reasoner', 'DeepSeek Reasoner', 128_000, 8_000, true),
+
+  // Moonshot Kimi
+  moonshotText('kimi-k2',         'Kimi K2',         200_000, 8_000),
+  moonshotText('moonshot-v1-128k', 'Moonshot V1 128k', 128_000, 4_000),
+
+  // Alibaba Qwen
+  qwenText('qwen-max',  'Qwen Max',  32_000, 8_000),
+  qwenText('qwen-plus', 'Qwen Plus', 131_072, 8_000),
+
+  // Cohere
+  cohereText('command-r-plus', 'Command R+', 128_000, 4_000),
+  cohereText('command-r',      'Command R',  128_000, 4_000),
+
+  // Perplexity Sonar
+  perplexityText('sonar-large', 'Sonar Large', 127_072, 4_000),
+  perplexityText('sonar-small', 'Sonar Small', 127_072, 4_000),
+
+  // Zhipu
+  zhipuText('glm-4.5', 'GLM 4.5', 128_000, 8_000),
+]
+
+// ---------------------------------------------------------------------------
+// Image — t2i + i2i
+// ---------------------------------------------------------------------------
+
+const ASPECT_COMMON: SelectField = {
+  type: 'select', label: 'Aspect ratio', default: '1:1',
+  options: [
+    { value: '1:1',  label: '1:1 (square)' },
+    { value: '16:9', label: '16:9 (wide)' },
+    { value: '9:16', label: '9:16 (tall)' },
+    { value: '4:3',  label: '4:3' },
+    { value: '3:4',  label: '3:4' },
+  ],
+}
+const ASPECT_MJ: SelectField = {
+  ...ASPECT_COMMON, default: '1:1',
+  options: [
+    { value: '1:1',  label: '1:1' },
+    { value: '16:9', label: '16:9' },
+    { value: '9:16', label: '9:16' },
+    { value: '3:2',  label: '3:2' },
+    { value: '2:3',  label: '2:3' },
+    { value: '7:4',  label: '7:4' },
+  ],
+}
+
+const COUNT_FIELD: IntegerField = { type: 'integer', label: 'Number of images', min: 1, max: 4, step: 1, default: 1 }
+const SEED_FIELD: TextField = { type: 'text', label: 'Seed', placeholder: 'integer or blank for random', default: '' }
+const NEGATIVE_PROMPT_FIELD: TextField = { type: 'text', label: 'Negative prompt', placeholder: 'avoid these…', default: '' }
+
+const IMAGE_CAPABILITIES: Capability[] = [
+  // Google Imagen / Nano-Banana (Gemini Flash Image)
+  {
+    id: 'nano-banana-2', kind: 'image', provider: 'google', label: 'Nano Banana 2',
+    description: 'Gemini-3 Flash Image. Multimodal text+image generation with strong text-in-image and editing.',
+    attachments: { ...ACCEPT_REFERENCE_IMAGE, maxFiles: 4, humanLabel: 'Up to 4 reference images (PNG/JPEG/WebP) — up to 8 MB each' },
+    fields: { aspectRatio: ASPECT_COMMON, count: COUNT_FIELD, seed: SEED_FIELD, negativePrompt: NEGATIVE_PROMPT_FIELD },
+  },
+  {
+    id: 'nano-banana-pro', kind: 'image', provider: 'google', label: 'Nano Banana Pro',
+    description: 'Higher-fidelity Nano Banana variant.',
+    attachments: { ...ACCEPT_REFERENCE_IMAGE, maxFiles: 4, humanLabel: 'Up to 4 reference images (PNG/JPEG/WebP) — up to 8 MB each' },
+    fields: { aspectRatio: ASPECT_COMMON, count: COUNT_FIELD, seed: SEED_FIELD, negativePrompt: NEGATIVE_PROMPT_FIELD },
+  },
+  {
+    id: 'nano-banana', kind: 'image', provider: 'google', label: 'Nano Banana',
+    description: 'Original Gemini 2.5 Flash Image.',
+    attachments: ACCEPT_REFERENCE_IMAGE,
+    fields: { aspectRatio: ASPECT_COMMON, count: COUNT_FIELD, seed: SEED_FIELD },
+  },
+  {
+    id: 'imagen-4', kind: 'image', provider: 'google', label: 'Imagen 4',
+    description: 'Google Imagen 4. Photoreal output and clean text rendering.',
+    attachments: ACCEPT_REFERENCE_IMAGE,
+    fields: {
+      aspectRatio: ASPECT_COMMON, count: COUNT_FIELD,
+      personGeneration: { type: 'select', label: 'Person generation', default: 'allow_adult',
+        options: [
+          { value: 'dont_allow',  label: 'Disallow' },
+          { value: 'allow_adult', label: 'Allow adult' },
+          { value: 'allow_all',   label: 'Allow all' },
+        ],
+      },
+      seed: SEED_FIELD,
+      negativePrompt: NEGATIVE_PROMPT_FIELD,
+    },
+  },
+  {
+    id: 'imagen-3', kind: 'image', provider: 'google', label: 'Imagen 3',
+    attachments: ACCEPT_REFERENCE_IMAGE,
+    fields: { aspectRatio: ASPECT_COMMON, count: COUNT_FIELD, seed: SEED_FIELD, negativePrompt: NEGATIVE_PROMPT_FIELD },
+  },
+
+  // OpenAI DALL-E
+  {
+    id: 'dall-e-4', kind: 'image', provider: 'openai', label: 'DALL-E 4',
+    description: 'Latest OpenAI image model. Higher fidelity and better prompt adherence.',
+    attachments: ACCEPT_REFERENCE_IMAGE,
+    fields: {
+      size: { type: 'select', label: 'Size', default: '1024x1024',
+        options: [
+          { value: '1024x1024', label: '1024 x 1024 (square)' },
+          { value: '1792x1024', label: '1792 x 1024 (landscape)' },
+          { value: '1024x1792', label: '1024 x 1792 (portrait)' },
+        ],
+      },
+      quality: { type: 'select', label: 'Quality', default: 'hd',
+        options: [{ value: 'standard', label: 'Standard' }, { value: 'hd', label: 'HD' }],
+      },
+      style: { type: 'select', label: 'Style', default: 'vivid',
+        options: [{ value: 'vivid', label: 'Vivid' }, { value: 'natural', label: 'Natural' }],
+      },
+      count: { ...COUNT_FIELD, max: 1 },
+    },
+  },
+  {
+    id: 'dall-e-3', kind: 'image', provider: 'openai', label: 'DALL-E 3',
+    fields: {
+      size: { type: 'select', label: 'Size', default: '1024x1024',
+        options: [
+          { value: '1024x1024', label: '1024 x 1024' },
+          { value: '1792x1024', label: '1792 x 1024' },
+          { value: '1024x1792', label: '1024 x 1792' },
+        ],
+      },
+      quality: { type: 'select', label: 'Quality', default: 'standard',
+        options: [{ value: 'standard', label: 'Standard' }, { value: 'hd', label: 'HD' }],
+      },
+      style: { type: 'select', label: 'Style', default: 'vivid',
+        options: [{ value: 'vivid', label: 'Vivid' }, { value: 'natural', label: 'Natural' }],
+      },
+      count: { ...COUNT_FIELD, max: 1 },
+    },
+  },
+
+  // Midjourney
+  {
+    id: 'midjourney-v7', kind: 'image', provider: 'midjourney', label: 'Midjourney v7',
+    description: 'Midjourney v7 via API. Distinctive aesthetic, strong stylisation.',
+    attachments: { ...ACCEPT_REFERENCE_IMAGE, maxFiles: 4, humanLabel: 'Up to 4 reference images for character / style' },
+    fields: {
+      aspectRatio: ASPECT_MJ,
+      stylize: { type: 'integer', label: 'Stylize', min: 0, max: 1000, step: 50, default: 100 },
+      chaos:   { type: 'integer', label: 'Chaos',   min: 0, max: 100,  step: 5,  default: 0 },
+      weird:   { type: 'integer', label: 'Weird',   min: 0, max: 3000, step: 100, default: 0 },
+      version: { type: 'select', label: 'Mode', default: 'standard',
+        options: [
+          { value: 'standard', label: 'Standard' },
+          { value: 'raw',      label: 'Raw' },
+          { value: 'turbo',    label: 'Turbo' },
+        ],
+      },
+      seed: SEED_FIELD,
+    },
+  },
+  {
+    id: 'midjourney-v6.1', kind: 'image', provider: 'midjourney', label: 'Midjourney v6.1',
+    fields: {
+      aspectRatio: ASPECT_MJ,
+      stylize: { type: 'integer', label: 'Stylize', min: 0, max: 1000, step: 50, default: 100 },
+      chaos:   { type: 'integer', label: 'Chaos',   min: 0, max: 100,  step: 5,  default: 0 },
+      seed: SEED_FIELD,
+    },
+  },
+
+  // Stability
+  {
+    id: 'stable-diffusion-3.5', kind: 'image', provider: 'stability', label: 'Stable Diffusion 3.5',
+    description: 'Stability AI SD 3.5. Open weights, supports negative prompts and steps.',
+    attachments: ACCEPT_REFERENCE_IMAGE,
+    fields: {
+      aspectRatio: ASPECT_COMMON,
+      cfgScale: { type: 'range', label: 'CFG scale', min: 1, max: 20, step: 0.5, default: 7 },
+      steps:    { type: 'integer', label: 'Steps',   min: 10, max: 50, step: 1, default: 30 },
+      seed: SEED_FIELD,
+      negativePrompt: NEGATIVE_PROMPT_FIELD,
+    },
+  },
+  {
+    id: 'stable-diffusion-xl', kind: 'image', provider: 'stability', label: 'Stable Diffusion XL',
+    attachments: ACCEPT_REFERENCE_IMAGE,
+    fields: {
+      aspectRatio: ASPECT_COMMON,
+      cfgScale: { type: 'range', label: 'CFG scale', min: 1, max: 20, step: 0.5, default: 7 },
+      steps:    { type: 'integer', label: 'Steps',   min: 10, max: 50, step: 1, default: 25 },
+      seed: SEED_FIELD,
+      negativePrompt: NEGATIVE_PROMPT_FIELD,
+    },
+  },
+
+  // FLUX (Black Forest Labs)
+  {
+    id: 'flux-1.1-pro-ultra', kind: 'image', provider: 'bfl', label: 'FLUX 1.1 Pro Ultra',
+    description: 'Black Forest Labs FLUX. Strong text rendering and prompt adherence.',
+    attachments: ACCEPT_REFERENCE_IMAGE,
+    fields: {
+      aspectRatio: ASPECT_COMMON,
+      raw: { type: 'toggle', label: 'Raw mode (less stylised)', default: false },
+      seed: SEED_FIELD,
+    },
+  },
+  {
+    id: 'flux-1-pro', kind: 'image', provider: 'bfl', label: 'FLUX 1 Pro',
+    attachments: ACCEPT_REFERENCE_IMAGE,
+    fields: { aspectRatio: ASPECT_COMMON, seed: SEED_FIELD },
+  },
+  {
+    id: 'flux-1-dev', kind: 'image', provider: 'bfl', label: 'FLUX 1 Dev',
+    attachments: ACCEPT_REFERENCE_IMAGE,
+    fields: {
+      aspectRatio: ASPECT_COMMON,
+      guidanceScale: { type: 'range', label: 'Guidance scale', min: 1, max: 10, step: 0.5, default: 3.5 },
+      steps: { type: 'integer', label: 'Steps', min: 1, max: 50, step: 1, default: 28 },
+      seed: SEED_FIELD,
+    },
+  },
+
+  // Ideogram
+  {
+    id: 'ideogram-3.0', kind: 'image', provider: 'ideogram', label: 'Ideogram 3.0',
+    description: 'Best-in-class for text-in-image and graphic design.',
+    attachments: ACCEPT_REFERENCE_IMAGE,
+    fields: {
+      aspectRatio: ASPECT_COMMON,
+      magicPrompt: { type: 'toggle', label: 'Magic prompt enhancement', default: true },
+      styleType: { type: 'select', label: 'Style', default: 'general',
+        options: [
+          { value: 'general',  label: 'General' },
+          { value: 'realistic', label: 'Realistic' },
+          { value: 'design',   label: 'Design' },
+          { value: 'anime',    label: 'Anime' },
+        ],
+      },
+      seed: SEED_FIELD,
+      negativePrompt: NEGATIVE_PROMPT_FIELD,
+    },
+  },
+  {
+    id: 'ideogram-2.0-turbo', kind: 'image', provider: 'ideogram', label: 'Ideogram 2.0 Turbo',
+    fields: {
+      aspectRatio: ASPECT_COMMON,
+      magicPrompt: { type: 'toggle', label: 'Magic prompt', default: true },
+      seed: SEED_FIELD,
+    },
+  },
+
+  // Recraft / Playground
+  {
+    id: 'recraft-v3', kind: 'image', provider: 'recraft', label: 'Recraft v3',
+    description: 'Recraft. Vector + raster output, brand-style consistency.',
+    fields: {
+      style: { type: 'select', label: 'Style', default: 'realistic_image',
+        options: [
+          { value: 'realistic_image', label: 'Realistic' },
+          { value: 'digital_illustration', label: 'Digital illustration' },
+          { value: 'vector_illustration',  label: 'Vector illustration' },
+          { value: 'icon',                  label: 'Icon' },
+        ],
+      },
+      size: { type: 'select', label: 'Size', default: '1024x1024',
+        options: [
+          { value: '1024x1024', label: '1024 x 1024' },
+          { value: '1365x1024', label: '1365 x 1024' },
+          { value: '1024x1365', label: '1024 x 1365' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'playground-v3', kind: 'image', provider: 'playground', label: 'Playground v3',
+    fields: { aspectRatio: ASPECT_COMMON, count: COUNT_FIELD, seed: SEED_FIELD, negativePrompt: NEGATIVE_PROMPT_FIELD },
+  },
+
+  // Chinese providers
+  {
+    id: 'cogview-3-plus', kind: 'image', provider: 'zhipu', label: 'CogView 3 Plus',
+    fields: { aspectRatio: ASPECT_COMMON, seed: SEED_FIELD },
+  },
+  {
+    id: 'wanxiang-2.1', kind: 'image', provider: 'alibaba', label: 'Wanxiang 2.1',
+    fields: { aspectRatio: ASPECT_COMMON, seed: SEED_FIELD, negativePrompt: NEGATIVE_PROMPT_FIELD },
+  },
+  {
+    id: 'tongyi-wanxiang', kind: 'image', provider: 'alibaba', label: 'Tongyi Wanxiang',
+    fields: { aspectRatio: ASPECT_COMMON, seed: SEED_FIELD },
+  },
+  {
+    id: 'ernie-vilg-2.0', kind: 'image', provider: 'baidu', label: 'Ernie ViLG 2.0',
+    fields: { aspectRatio: ASPECT_COMMON, seed: SEED_FIELD, negativePrompt: NEGATIVE_PROMPT_FIELD },
+  },
+  {
+    id: 'wenxin-yige', kind: 'image', provider: 'baidu', label: 'Wenxin Yige',
+    fields: { aspectRatio: ASPECT_COMMON, seed: SEED_FIELD },
+  },
+  {
+    id: 'kolors', kind: 'image', provider: 'kuaishou', label: 'Kolors',
+    fields: { aspectRatio: ASPECT_COMMON, seed: SEED_FIELD },
+  },
+]
+
+// ---------------------------------------------------------------------------
+// Video
+// ---------------------------------------------------------------------------
+
+const VIDEO_ASPECT: SelectField = {
+  type: 'select', label: 'Aspect ratio', default: '16:9',
+  options: [
+    { value: '16:9', label: '16:9 (landscape)' },
+    { value: '9:16', label: '9:16 (vertical)' },
+    { value: '1:1',  label: '1:1 (square)' },
+  ],
+}
+
+const VIDEO_DURATION_5_10: SelectField = {
+  type: 'select', label: 'Duration', default: '5',
+  options: [{ value: '5', label: '5 sec' }, { value: '10', label: '10 sec' }],
+}
+
+const VIDEO_RESOLUTION: SelectField = {
+  type: 'select', label: 'Resolution', default: '1080p',
+  options: [
+    { value: '720p',  label: '720p' },
+    { value: '1080p', label: '1080p' },
+    { value: '4k',    label: '4K' },
+  ],
+}
+
+const VIDEO_CAPABILITIES: Capability[] = [
+  // OpenAI Sora
+  {
+    id: 'sora-turbo', kind: 'video', provider: 'openai', label: 'Sora Turbo',
+    description: 'OpenAI Sora text-to-video. Strong physics and complex camera motion.',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: { type: 'integer', label: 'Duration', min: 5, max: 20, step: 5, default: 10, suffix: 's' },
+      resolution: VIDEO_RESOLUTION,
+    },
+  },
+  {
+    id: 'sora', kind: 'video', provider: 'openai', label: 'Sora',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: { type: 'integer', label: 'Duration', min: 10, max: 60, step: 10, default: 20, suffix: 's' },
+      resolution: VIDEO_RESOLUTION,
+    },
+  },
+
+  // Runway Gen-4 / Gen-3
+  {
+    id: 'runway-gen-4-turbo', kind: 'video', provider: 'runway', label: 'Runway Gen-4 Turbo',
+    description: 'Image-to-video and text-to-video. Industry-standard camera motion controls.',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: VIDEO_DURATION_5_10,
+      resolution: { type: 'select', label: 'Resolution', default: '720p',
+        options: [{ value: '720p', label: '720p' }, { value: '1080p', label: '1080p' }] },
+      cameraMotion: { type: 'select', label: 'Camera motion', default: 'static',
+        options: [
+          { value: 'static',     label: 'Static' },
+          { value: 'pan-left',   label: 'Pan left' },
+          { value: 'pan-right',  label: 'Pan right' },
+          { value: 'zoom-in',    label: 'Zoom in' },
+          { value: 'zoom-out',   label: 'Zoom out' },
+          { value: 'orbit',      label: 'Orbit' },
+        ],
+      },
+      seed: SEED_FIELD,
+    },
+  },
+  {
+    id: 'runway-gen-3-alpha', kind: 'video', provider: 'runway', label: 'Runway Gen-3 Alpha',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: VIDEO_DURATION_5_10,
+      seed: SEED_FIELD,
+    },
+  },
+
+  // Luma Dream Machine
+  {
+    id: 'luma-dream-machine-2', kind: 'video', provider: 'luma', label: 'Luma Dream Machine 2',
+    description: 'Smooth motion, supports start- and end-frame conditioning.',
+    attachments: { ...ACCEPT_VIDEO_START_FRAME, maxFiles: 2, humanLabel: 'Up to 2 frame images (start + end) — PNG/JPEG/WebP, 8 MB each' },
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: { type: 'select', label: 'Duration', default: '5',
+        options: [{ value: '5', label: '5 sec' }, { value: '9', label: '9 sec' }] },
+      loop: { type: 'toggle', label: 'Loop', default: false },
+    },
+  },
+  {
+    id: 'luma-dream-machine', kind: 'video', provider: 'luma', label: 'Luma Dream Machine',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: { aspectRatio: VIDEO_ASPECT, duration: VIDEO_DURATION_5_10, loop: { type: 'toggle', label: 'Loop', default: false } },
+  },
+
+  // Pika
+  {
+    id: 'pika-2.0', kind: 'video', provider: 'pika', label: 'Pika 2.0',
+    description: 'Pika 2.0 — strong text-to-video with Pikaffects (effects) and ingredients (consistent characters).',
+    attachments: { ...ACCEPT_VIDEO_START_FRAME, maxFiles: 4, humanLabel: 'Up to 4 ingredient images (PNG/JPEG/WebP) — 8 MB each' },
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: { type: 'select', label: 'Duration', default: '5', options: [{ value: '5', label: '5 sec' }, { value: '10', label: '10 sec' }] },
+      style: { type: 'select', label: 'Style', default: 'natural',
+        options: [
+          { value: 'natural',   label: 'Natural' },
+          { value: 'cinematic', label: 'Cinematic' },
+          { value: 'animation', label: 'Animation' },
+          { value: '3d',        label: '3D' },
+        ],
+      },
+      negativePrompt: NEGATIVE_PROMPT_FIELD,
+    },
+  },
+  {
+    id: 'pika-1.5', kind: 'video', provider: 'pika', label: 'Pika 1.5',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: { aspectRatio: VIDEO_ASPECT, duration: VIDEO_DURATION_5_10 },
+  },
+
+  // Haiper / Stability / Kling / CogVideo / Pixverse / Vidu
+  {
+    id: 'haiper-2.0', kind: 'video', provider: 'haiper', label: 'Haiper 2.0',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: { type: 'select', label: 'Duration', default: '4',
+        options: [{ value: '4', label: '4 sec' }, { value: '6', label: '6 sec' }, { value: '8', label: '8 sec' }] },
+      seed: SEED_FIELD,
+    },
+  },
+  {
+    id: 'stability-video', kind: 'video', provider: 'stability', label: 'Stable Video',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: { type: 'select', label: 'Duration', default: '4', options: [{ value: '4', label: '4 sec' }] },
+      cfgScale: { type: 'range', label: 'CFG scale', min: 1, max: 10, step: 0.5, default: 1.8 },
+      seed: SEED_FIELD,
+    },
+  },
+  {
+    id: 'kling-2.0', kind: 'video', provider: 'kuaishou', label: 'Kling 2.0',
+    description: 'Kuaishou Kling. Strong physics + camera control.',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: { type: 'select', label: 'Duration', default: '5', options: [{ value: '5', label: '5 sec' }, { value: '10', label: '10 sec' }] },
+      mode: { type: 'select', label: 'Mode', default: 'standard',
+        options: [{ value: 'standard', label: 'Standard' }, { value: 'pro', label: 'Pro' }] },
+      negativePrompt: NEGATIVE_PROMPT_FIELD,
+    },
+  },
+  {
+    id: 'kling-1.5', kind: 'video', provider: 'kuaishou', label: 'Kling 1.5',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: { aspectRatio: VIDEO_ASPECT, duration: VIDEO_DURATION_5_10 },
+  },
+  {
+    id: 'cogvideo-x', kind: 'video', provider: 'zhipu', label: 'CogVideoX',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: { aspectRatio: VIDEO_ASPECT, duration: { type: 'select', label: 'Duration', default: '6', options: [{ value: '6', label: '6 sec' }] } },
+  },
+  {
+    id: 'pixverse-v3', kind: 'video', provider: 'pixverse', label: 'Pixverse V3',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: { type: 'select', label: 'Duration', default: '5', options: [{ value: '5', label: '5 sec' }, { value: '8', label: '8 sec' }] },
+      style: { type: 'select', label: 'Style', default: 'realistic',
+        options: [
+          { value: 'realistic',  label: 'Realistic' },
+          { value: 'anime',      label: 'Anime' },
+          { value: '3d',         label: '3D' },
+          { value: 'clay',       label: 'Clay' },
+          { value: 'comic',      label: 'Comic' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'vidu-1.5', kind: 'video', provider: 'shengshu', label: 'Vidu 1.5',
+    attachments: ACCEPT_VIDEO_START_FRAME,
+    fields: {
+      aspectRatio: VIDEO_ASPECT,
+      duration: { type: 'select', label: 'Duration', default: '4', options: [{ value: '4', label: '4 sec' }, { value: '8', label: '8 sec' }] },
+    },
+  },
+
+  // Avatar / lipsync
+  {
+    id: 'heygen-avatar-iv', kind: 'video', provider: 'heygen', label: 'HeyGen Avatar IV',
+    description: 'AI avatar with lip-sync. Reads either typed text or an audio track.',
+    attachments: { mimeTypes: ['audio/mpeg','audio/wav'], humanLabel: 'Optional audio track (MP3/WAV) — 50 MB max', maxFiles: 1, maxBytesEach: 50 * 1024 * 1024 },
+    fields: {
+      avatar: { type: 'text', label: 'Avatar id', placeholder: 'e.g. Anna_public', default: '' },
+      voice:  { type: 'text', label: 'Voice id',  placeholder: 'e.g. en-US-JennyNeural', default: '' },
+      aspectRatio: VIDEO_ASPECT,
+      background: { type: 'select', label: 'Background', default: 'office',
+        options: [
+          { value: 'office',  label: 'Office' },
+          { value: 'studio',  label: 'Studio' },
+          { value: 'plain',   label: 'Plain' },
+          { value: 'custom',  label: 'Custom (upload)' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'heygen-avatar-iii', kind: 'video', provider: 'heygen', label: 'HeyGen Avatar III',
+    fields: {
+      avatar: { type: 'text', label: 'Avatar id', placeholder: 'avatar id', default: '' },
+      voice:  { type: 'text', label: 'Voice id',  placeholder: 'voice id', default: '' },
+      aspectRatio: VIDEO_ASPECT,
+    },
+  },
+  {
+    id: 'synthesia-standard', kind: 'video', provider: 'synthesia', label: 'Synthesia Standard',
+    fields: {
+      avatar: { type: 'text', label: 'Avatar', placeholder: 'e.g. anna_costume1_cameraA', default: '' },
+      voice:  { type: 'text', label: 'Voice',  placeholder: 'e.g. Jenny', default: '' },
+      aspectRatio: VIDEO_ASPECT,
+    },
+  },
+  {
+    id: 'did-studio', kind: 'video', provider: 'd-id', label: 'D-ID Studio',
+    description: 'Image-driven talking-head video. Provide a portrait + a script.',
+    attachments: { mimeTypes: ['image/png','image/jpeg'], humanLabel: 'A portrait photo (PNG/JPEG)', maxFiles: 1, maxBytesEach: 10 * 1024 * 1024 },
+    fields: {
+      voice: { type: 'text', label: 'Voice', placeholder: 'e.g. en-US-JennyNeural', default: '' },
+      style: { type: 'select', label: 'Style', default: 'natural',
+        options: [{ value: 'natural', label: 'Natural' }, { value: 'animated', label: 'Animated' }] },
+    },
+  },
+]
+
+// ---------------------------------------------------------------------------
+// Audio — TTS + music + SFX
+// ---------------------------------------------------------------------------
+
+function geminiTts(id: string, label: string): Capability {
+  return {
+    id, kind: 'audio', provider: 'google', label,
+    description: 'Google TTS via Gemini. Multilingual, expressive prosody.',
+    fields: {
+      voice: { type: 'select', label: 'Voice', default: 'Aoede',
+        options: [
+          { value: 'Aoede',     label: 'Aoede (warm, female)' },
+          { value: 'Puck',      label: 'Puck (playful, male)' },
+          { value: 'Charon',    label: 'Charon (deep, male)' },
+          { value: 'Kore',      label: 'Kore (firm, female)' },
+          { value: 'Fenrir',    label: 'Fenrir (energetic, male)' },
+        ],
+      },
+      speed: { type: 'range', label: 'Speed', min: 0.5, max: 2, step: 0.05, default: 1, suffix: 'x' },
+      format: { type: 'select', label: 'Format', default: 'wav',
+        options: [{ value: 'wav', label: 'WAV' }, { value: 'mp3', label: 'MP3' }] },
+    },
+  }
+}
+
+const AUDIO_CAPABILITIES: Capability[] = [
+  // Google Gemini TTS
+  geminiTts('gemini-tts-3.1', 'Gemini TTS 3.1'),
+  geminiTts('gemini-tts',     'Gemini TTS'),
+
+  // ElevenLabs
+  {
+    id: 'elevenlabs-turbo-v2.5', kind: 'audio', provider: 'elevenlabs', label: 'ElevenLabs Turbo v2.5',
+    description: 'Low-latency multilingual TTS with voice cloning.',
+    attachments: ACCEPT_VOICE_CLONE_AUDIO,
+    fields: {
+      voice:       { type: 'text', label: 'Voice id', placeholder: 'voice id', default: '21m00Tcm4TlvDq8ikWAM' },
+      stability:   { type: 'range', label: 'Stability',   min: 0, max: 1, step: 0.05, default: 0.5 },
+      similarity:  { type: 'range', label: 'Similarity boost', min: 0, max: 1, step: 0.05, default: 0.75 },
+      style:       { type: 'range', label: 'Style exaggeration', min: 0, max: 1, step: 0.05, default: 0 },
+      speakerBoost: { type: 'toggle', label: 'Speaker boost', default: true },
+      format: { type: 'select', label: 'Format', default: 'mp3_44100_128',
+        options: [
+          { value: 'mp3_44100_128', label: 'MP3 44.1 kHz / 128 kbps' },
+          { value: 'mp3_44100_192', label: 'MP3 44.1 kHz / 192 kbps' },
+          { value: 'pcm_24000',     label: 'PCM 24 kHz' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'elevenlabs-multilingual-v2', kind: 'audio', provider: 'elevenlabs', label: 'ElevenLabs Multilingual v2',
+    description: '29-language TTS with emotional range.',
+    attachments: ACCEPT_VOICE_CLONE_AUDIO,
+    fields: {
+      voice:       { type: 'text', label: 'Voice id', placeholder: 'voice id', default: '21m00Tcm4TlvDq8ikWAM' },
+      stability:   { type: 'range', label: 'Stability',   min: 0, max: 1, step: 0.05, default: 0.5 },
+      similarity:  { type: 'range', label: 'Similarity boost', min: 0, max: 1, step: 0.05, default: 0.75 },
+      speakerBoost: { type: 'toggle', label: 'Speaker boost', default: true },
+    },
+  },
+
+  // OpenAI TTS
+  {
+    id: 'openai-tts-1-hd', kind: 'audio', provider: 'openai', label: 'OpenAI TTS-1 HD',
+    description: 'Higher-fidelity OpenAI TTS. 6 voices, 24 kHz.',
+    fields: {
+      voice: { type: 'select', label: 'Voice', default: 'alloy',
+        options: [
+          { value: 'alloy',   label: 'Alloy' },
+          { value: 'echo',    label: 'Echo' },
+          { value: 'fable',   label: 'Fable' },
+          { value: 'onyx',    label: 'Onyx' },
+          { value: 'nova',    label: 'Nova' },
+          { value: 'shimmer', label: 'Shimmer' },
+        ],
+      },
+      speed: { type: 'range', label: 'Speed', min: 0.25, max: 4, step: 0.05, default: 1, suffix: 'x' },
+      format: { type: 'select', label: 'Format', default: 'mp3',
+        options: [
+          { value: 'mp3',  label: 'MP3' },
+          { value: 'opus', label: 'Opus' },
+          { value: 'aac',  label: 'AAC' },
+          { value: 'flac', label: 'FLAC' },
+          { value: 'wav',  label: 'WAV' },
+          { value: 'pcm',  label: 'PCM' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'openai-tts-1', kind: 'audio', provider: 'openai', label: 'OpenAI TTS-1',
+    description: 'Standard OpenAI TTS. Faster than HD.',
+    fields: {
+      voice: { type: 'select', label: 'Voice', default: 'alloy',
+        options: [
+          { value: 'alloy', label: 'Alloy' },{ value: 'echo', label: 'Echo' },{ value: 'fable', label: 'Fable' },
+          { value: 'onyx', label: 'Onyx' },{ value: 'nova', label: 'Nova' },{ value: 'shimmer', label: 'Shimmer' },
+        ],
+      },
+      speed: { type: 'range', label: 'Speed', min: 0.25, max: 4, step: 0.05, default: 1, suffix: 'x' },
+      format: { type: 'select', label: 'Format', default: 'mp3',
+        options: [
+          { value: 'mp3', label: 'MP3' }, { value: 'opus', label: 'Opus' }, { value: 'aac', label: 'AAC' }, { value: 'flac', label: 'FLAC' },
+        ],
+      },
+    },
+  },
+
+  // Azure / Play.ht
+  {
+    id: 'azure-neural-tts', kind: 'audio', provider: 'azure', label: 'Azure Neural TTS',
+    description: '500+ voices in 140 languages. Uses SSML for prosody control.',
+    fields: {
+      voice: { type: 'text', label: 'Voice', placeholder: 'e.g. en-US-JennyNeural', default: 'en-US-JennyNeural' },
+      style: { type: 'text', label: 'Style', placeholder: 'e.g. cheerful, sad, excited', default: '' },
+      speed: { type: 'range', label: 'Rate', min: 0.5, max: 2, step: 0.05, default: 1, suffix: 'x' },
+      pitch: { type: 'range', label: 'Pitch', min: -50, max: 50, step: 1, default: 0, suffix: '%' },
+      format: { type: 'select', label: 'Format', default: 'audio-24khz-96kbitrate-mono-mp3',
+        options: [
+          { value: 'audio-24khz-96kbitrate-mono-mp3',  label: 'MP3 24 kHz / 96 kbps' },
+          { value: 'audio-48khz-192kbitrate-mono-mp3', label: 'MP3 48 kHz / 192 kbps' },
+          { value: 'riff-24khz-16bit-mono-pcm',        label: 'PCM 24 kHz' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'play.ht-3.0', kind: 'audio', provider: 'playht', label: 'Play.ht 3.0',
+    description: 'Real-time TTS with voice cloning.',
+    attachments: ACCEPT_VOICE_CLONE_AUDIO,
+    fields: {
+      voice: { type: 'text', label: 'Voice id', placeholder: 'voice id', default: '' },
+      speed: { type: 'range', label: 'Speed', min: 0.5, max: 2, step: 0.05, default: 1, suffix: 'x' },
+      style: { type: 'text', label: 'Style', placeholder: 'e.g. friendly, narration', default: '' },
+      format: { type: 'select', label: 'Format', default: 'mp3',
+        options: [{ value: 'mp3', label: 'MP3' }, { value: 'wav', label: 'WAV' }, { value: 'ogg', label: 'OGG' }] },
+    },
+  },
+
+  // Music
+  {
+    id: 'suno-v4', kind: 'audio', provider: 'suno', label: 'Suno v4',
+    description: 'Suno music generation. Lyrics + melody.',
+    fields: {
+      mode: { type: 'select', label: 'Mode', default: 'song',
+        options: [{ value: 'song', label: 'Song (with vocals)' }, { value: 'instrumental', label: 'Instrumental' }] },
+      style: { type: 'text', label: 'Style', placeholder: 'e.g. lo-fi hip hop, jazz piano', default: '' },
+      lyrics: { type: 'text', label: 'Lyrics', placeholder: 'optional lyrics or [verse 1] markers', default: '' },
+      duration: { type: 'integer', label: 'Duration', min: 30, max: 240, step: 30, default: 90, suffix: 's' },
+    },
+  },
+  {
+    id: 'suno-v3.5', kind: 'audio', provider: 'suno', label: 'Suno v3.5',
+    fields: {
+      mode: { type: 'select', label: 'Mode', default: 'song',
+        options: [{ value: 'song', label: 'Song' }, { value: 'instrumental', label: 'Instrumental' }] },
+      style: { type: 'text', label: 'Style', placeholder: 'e.g. lo-fi, jazz', default: '' },
+      lyrics: { type: 'text', label: 'Lyrics', placeholder: 'optional', default: '' },
+      duration: { type: 'integer', label: 'Duration', min: 30, max: 180, step: 30, default: 60, suffix: 's' },
+    },
+  },
+  {
+    id: 'udio-v2', kind: 'audio', provider: 'udio', label: 'Udio v2',
+    description: 'Udio music generation. Strong vocal synthesis.',
+    fields: {
+      style: { type: 'text', label: 'Style tags', placeholder: 'e.g. indie pop, female vocals', default: '' },
+      lyrics: { type: 'text', label: 'Lyrics', placeholder: 'optional', default: '' },
+      duration: { type: 'integer', label: 'Duration', min: 30, max: 180, step: 30, default: 60, suffix: 's' },
+    },
+  },
+  {
+    id: 'udio-v1.5', kind: 'audio', provider: 'udio', label: 'Udio v1.5',
+    fields: {
+      style: { type: 'text', label: 'Style tags', placeholder: 'e.g. acoustic, mellow', default: '' },
+      duration: { type: 'integer', label: 'Duration', min: 30, max: 120, step: 30, default: 60, suffix: 's' },
+    },
+  },
+  {
+    id: 'stable-audio-2', kind: 'audio', provider: 'stability', label: 'Stable Audio 2',
+    description: 'Stability AI music + sound effects. Up to 3 minutes per track.',
+    fields: {
+      style: { type: 'text', label: 'Style', placeholder: 'e.g. ambient electronic', default: '' },
+      duration: { type: 'integer', label: 'Duration', min: 1, max: 180, step: 1, default: 30, suffix: 's' },
+      cfgScale: { type: 'range', label: 'CFG scale', min: 1, max: 15, step: 0.5, default: 6 },
+      seed: SEED_FIELD,
+    },
+  },
+
+  // Open / Chinese voice
+  {
+    id: 'fish-speech-1.5', kind: 'audio', provider: 'fish', label: 'Fish Speech 1.5',
+    description: 'Open-source multilingual TTS with voice cloning.',
+    attachments: ACCEPT_VOICE_CLONE_AUDIO,
+    fields: {
+      voice: { type: 'text', label: 'Voice id', placeholder: 'voice id', default: '' },
+      speed: { type: 'range', label: 'Speed', min: 0.5, max: 2, step: 0.05, default: 1, suffix: 'x' },
+      format: { type: 'select', label: 'Format', default: 'wav',
+        options: [{ value: 'wav', label: 'WAV' }, { value: 'mp3', label: 'MP3' }] },
+    },
+  },
+  {
+    id: 'chatglm-audio', kind: 'audio', provider: 'zhipu', label: 'ChatGLM Audio',
+    description: 'Zhipu Chinese-first TTS.',
+    fields: {
+      voice: { type: 'select', label: 'Voice', default: 'female_1',
+        options: [
+          { value: 'female_1', label: 'Female 1' }, { value: 'female_2', label: 'Female 2' },
+          { value: 'male_1',   label: 'Male 1' },   { value: 'male_2',   label: 'Male 2' },
+        ],
+      },
+      speed: { type: 'range', label: 'Speed', min: 0.5, max: 2, step: 0.05, default: 1, suffix: 'x' },
+    },
+  },
+]
+
+// ---------------------------------------------------------------------------
+// Lookup
+// ---------------------------------------------------------------------------
+
+const ALL_CAPABILITIES: Capability[] = [
+  ...TEXT_CAPABILITIES,
+  ...IMAGE_CAPABILITIES,
+  ...VIDEO_CAPABILITIES,
+  ...AUDIO_CAPABILITIES,
+]
+
+const BY_ID_AND_KIND: Map<string, Capability> = new Map(
+  ALL_CAPABILITIES.map(c => [`${c.kind}:${c.id}`, c]),
+)
+
+/** Look up a capability by model id + modality. Returns `undefined` if the
+ *  model isn't registered, in which case the drawer falls back to a
+ *  conservative default. */
+export function getCapability(id: string, kind: ModalityKind): Capability | undefined {
+  return BY_ID_AND_KIND.get(`${kind}:${id}`)
+}
+
+// ---------------------------------------------------------------------------
+// Back-compat type aliases — older imports referenced `TextCapability`,
+// `ImageCapability`, etc. Keep them as type-only aliases so call sites that
+// type-narrow on `kind` still compile.
+// ---------------------------------------------------------------------------
+
+export type TextCapability  = Capability & { kind: 'text' }
+export type ImageCapability = Capability & { kind: 'image' }
+export type VideoCapability = Capability & { kind: 'video' }
+export type AudioCapability = Capability & { kind: 'audio' }

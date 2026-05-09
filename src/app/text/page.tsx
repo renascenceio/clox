@@ -20,8 +20,12 @@ import {
 } from '@/shared/ui/chat/palettes'
 
 import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
+import { IMAGE_MODELS } from '@/domains/image-generation/services/image-models'
+import { VIDEO_MODELS } from '@/domains/video-generation/services/video-models'
+import { AUDIO_MODELS } from '@/domains/audio-generation/services/audio-models'
+import { getCapability, type Capability } from '@/lib/ai-capabilities'
 import { useAvailableModels } from '@/lib/use-available-models'
-import { getAdminSettings } from '@/lib/admin-settings'
+import { getAdminSettings, getProviderApiKey } from '@/lib/admin-settings'
 import { createClient } from '@/lib/supabase/client'
 import {
   ensureActiveChat,
@@ -68,7 +72,10 @@ function timestamp(date: Date | number): string {
 
 export default function TextPage() {
   const router = useRouter()
-  const enabledModels = useAvailableModels(TEXT_MODELS)
+  const enabledTextModels  = useAvailableModels(TEXT_MODELS)
+  const enabledImageModels = useAvailableModels(IMAGE_MODELS)
+  const enabledVideoModels = useAvailableModels(VIDEO_MODELS)
+  const enabledAudioModels = useAvailableModels(AUDIO_MODELS)
 
   /* ----- theme ------------------------------------------------------- */
   const [theme, setTheme] = useState<PaletteKey>('pearl')
@@ -78,9 +85,32 @@ export default function TextPage() {
     document.documentElement.dataset.palette = stored
   }, [])
 
-  /* ----- model + mode + active chat --------------------------------- */
-  const [selectedModel, setSelectedModel] = useState<typeof TEXT_MODELS[number]>(TEXT_MODELS[0])
+  /* ----- modality + model + active chat ----------------------------
+     The /text surface is the single shell for every modality. `modeId`
+     drives which model registry is active, which generation endpoint
+     `handleSend` hits, and which capability spec the ConfigDrawer reads
+     from. The legacy /image, /audio, /video routes still exist for direct
+     deep-links, but the slash menu and intra-app navigation stay here. */
   const [modeId, setModeId] = useState<string>('chat')
+  const modality: 'text' | 'image' | 'video' | 'audio' =
+    modeId === 'image' ? 'image' :
+    modeId === 'video' ? 'video' :
+    modeId === 'voice' ? 'audio' : 'text'
+
+  // The active model swaps as soon as the modality changes. We keep one
+  // selected model per modality so flipping back and forth doesn't lose
+  // your choice.
+  const [selectedTextModel, setSelectedTextModel]   = useState<typeof TEXT_MODELS[number]>(TEXT_MODELS[0])
+  const [selectedImageModel, setSelectedImageModel] = useState<typeof IMAGE_MODELS[number]>(IMAGE_MODELS[0])
+  const [selectedVideoModel, setSelectedVideoModel] = useState<typeof VIDEO_MODELS[number]>(VIDEO_MODELS[0])
+  const [selectedAudioModel, setSelectedAudioModel] = useState<typeof AUDIO_MODELS[number]>(AUDIO_MODELS[0])
+
+  // Fan-out helpers — components only know about one "selectedModel" at a
+  // time and one "registry" of options to choose from.
+  const selectedModel =
+    modality === 'image' ? selectedImageModel :
+    modality === 'video' ? selectedVideoModel :
+    modality === 'audio' ? selectedAudioModel : selectedTextModel
 
   const [activeChatId, setActiveChatIdState] = useState<string>(() => {
     if (typeof window === 'undefined') return 'default-chat'
@@ -91,13 +121,14 @@ export default function TextPage() {
     )
   })
 
-  // Recent chats — refreshed when the chat store mutates.
+  // Recent chats — refreshed when the chat store mutates. Scoped to the
+  // active modality so flipping into "image" surfaces image threads, etc.
   const [recentChats, setRecentChats] = useState<Chat[]>([])
   useEffect(() => {
     function refresh() {
       setRecentChats(
         listChats()
-          .filter(c => (c.modality ?? 'text') === 'text')
+          .filter(c => (c.modality ?? 'text') === modality)
           .sort((a, b) => b.createdAt - a.createdAt)
           .slice(0, 8)
       )
@@ -105,7 +136,7 @@ export default function TextPage() {
     refresh()
     window.addEventListener('storage', refresh)
     return () => window.removeEventListener('storage', refresh)
-  }, [activeChatId])
+  }, [activeChatId, modality])
 
   /* ----- per-chat config (system prompt, params) -------------------- */
   const [systemPrompt, setSystemPrompt] = useState('')
@@ -125,7 +156,7 @@ export default function TextPage() {
       }
       if (settings.modelId) {
         const model = TEXT_MODELS.find(m => m.id === settings.modelId)
-        if (model) setSelectedModel(model)
+        if (model) setSelectedTextModel(model)
       }
       if (settings.systemPrompt !== undefined) setSystemPrompt(settings.systemPrompt)
       if (settings.temperature !== undefined) setTemperature(settings.temperature)
@@ -141,27 +172,42 @@ export default function TextPage() {
     localStorage.setItem(`chat-settings-${activeChatId}`, JSON.stringify(settings))
   }, [activeChatId, selectedModel.id, systemPrompt, temperature, maxTokens])
 
-  // Keep selected model valid against the available list.
+  // Keep the per-modality selection valid against what the admin has
+  // enabled. Each modality has its own registry, so we run four guards.
   useEffect(() => {
-    if (enabledModels.length === 0) return
-    const current = enabledModels.find(m => m.id === selectedModel.id)
-    if (!current) setSelectedModel(enabledModels[0])
-  }, [enabledModels, selectedModel.id])
+    if (enabledTextModels.length === 0) return
+    if (!enabledTextModels.find(m => m.id === selectedTextModel.id)) setSelectedTextModel(enabledTextModels[0])
+  }, [enabledTextModels, selectedTextModel.id])
+  useEffect(() => {
+    if (enabledImageModels.length === 0) return
+    if (!enabledImageModels.find(m => m.id === selectedImageModel.id)) setSelectedImageModel(enabledImageModels[0])
+  }, [enabledImageModels, selectedImageModel.id])
+  useEffect(() => {
+    if (enabledVideoModels.length === 0) return
+    if (!enabledVideoModels.find(m => m.id === selectedVideoModel.id)) setSelectedVideoModel(enabledVideoModels[0])
+  }, [enabledVideoModels, selectedVideoModel.id])
+  useEffect(() => {
+    if (enabledAudioModels.length === 0) return
+    if (!enabledAudioModels.find(m => m.id === selectedAudioModel.id)) setSelectedAudioModel(enabledAudioModels[0])
+  }, [enabledAudioModels, selectedAudioModel.id])
 
-  /* ----- chat hook -------------------------------------------------- */
+  /* ----- chat hook (text-only path) --------------------------------
+     The hook only fires when modality === 'text'. Image/audio/video are
+     sent through dedicated REST calls below; we still drive their results
+     into the same transcript so the surface stays unified. */
   const [currentApiKey, setCurrentApiKey] = useState('')
   useEffect(() => {
     const settings = getAdminSettings()
-    const key = settings.providers[selectedModel.provider]?.apiKey || ''
+    const key = settings.providers[selectedTextModel.provider]?.apiKey || ''
     setCurrentApiKey(key)
-  }, [selectedModel.provider])
+  }, [selectedTextModel.provider])
 
   const chat = useChat({
     id: activeChatId,
     api: '/api/chat',
     body: {
-      model: selectedModel.id,
-      provider: selectedModel.provider,
+      model: selectedTextModel.id,
+      provider: selectedTextModel.provider,
       systemPrompt,
       temperature,
       maxTokens,
@@ -231,41 +277,157 @@ export default function TextPage() {
     setAttachments(curr => curr.filter(a => a.id !== id))
   }
 
+  /* ----- per-modality params ---------------------------------------
+     One bag per modality so flipping back and forth keeps the user's
+     knobs intact. The ConfigDrawer reads from / writes to the slot that
+     matches the current modality. */
+  const [textParams,  setTextParams]  = useState<Record<string, unknown>>({})
+  const [imageParams, setImageParams] = useState<Record<string, unknown>>({})
+  const [videoParams, setVideoParams] = useState<Record<string, unknown>>({})
+  const [audioParams, setAudioParams] = useState<Record<string, unknown>>({})
+
+  const activeParams =
+    modality === 'image' ? imageParams :
+    modality === 'video' ? videoParams :
+    modality === 'audio' ? audioParams : textParams
+
+  function handleChangeParam(key: string, value: unknown) {
+    const setter =
+      modality === 'image' ? setImageParams :
+      modality === 'video' ? setVideoParams :
+      modality === 'audio' ? setAudioParams : setTextParams
+    setter(prev => ({ ...prev, [key]: value }))
+    // Mirror the legacy slots for the text path so existing useChat body
+    // picks up the new values without a wider refactor.
+    if (modality === 'text') {
+      if (key === 'temperature') setTemperature(Number(value))
+      if (key === 'maxTokens')   setMaxTokens(Number(value))
+    }
+  }
+
   /* ----- send ------------------------------------------------------- */
-  function handleSend() {
+  // The single send entry point. Dispatches to /api/chat for text and to
+  // the appropriate /api/generate-* endpoint for image/video/audio. Media
+  // results are appended to the same transcript via setMessages so the UI
+  // surface stays unified.
+  async function handleSend() {
     const promptText = (input || '').trim()
     if (!promptText && attachments.length === 0) return
-    const c = ensureActiveChat('text', promptText || '(attachment)', selectedModel.name)
+
+    const c = ensureActiveChat(modality, promptText || '(attachment)', selectedModel.name)
     if (c.id !== activeChatId) {
       setActiveChatIdState(c.id)
-      persistActiveChatId('text', c.id)
+      persistActiveChatId(modality, c.id)
     } else {
       touchChat(c.id, { model: selectedModel.name })
     }
-    // useChat's `experimental_attachments` accepts an array of
-    // `{ name, contentType, url }` where url is a data URL. The server
-    // route inflates these into multimodal message parts before streaming.
-    const expAttachments = attachments.length > 0
-      ? attachments.map(a => ({ name: a.name, contentType: a.contentType, url: a.dataUrl }))
-      : undefined
-    handleSubmit?.(
-      new Event('submit') as unknown as React.FormEvent<HTMLFormElement>,
-      expAttachments ? { experimental_attachments: expAttachments } : undefined,
-    )
-    // Clear after handing off; the user-message bubble will keep its own copy.
-    setAttachments([])
+
+    if (modality === 'text') {
+      const expAttachments = attachments.length > 0
+        ? attachments.map(a => ({ name: a.name, contentType: a.contentType, url: a.dataUrl }))
+        : undefined
+      handleSubmit?.(
+        new Event('submit') as unknown as React.FormEvent<HTMLFormElement>,
+        expAttachments ? { experimental_attachments: expAttachments } : undefined,
+      )
+      setAttachments([])
+      return
+    }
+
+    // ---- media path -----------------------------------------------
+    // Append a user message and a placeholder assistant message; we'll
+    // patch the assistant placeholder when the result arrives.
+    const userId = `u-${Date.now()}`
+    const aiId   = `a-${Date.now()}`
+    setMessages?.((prev: unknown[]) => [
+      ...(prev as unknown[]),
+      { id: userId, role: 'user',      content: promptText, createdAt: new Date() },
+      { id: aiId,   role: 'assistant', content: '', createdAt: new Date(),
+        // Custom slot the transcript renderer below recognises.
+        clox_pending: true, clox_modality: modality },
+    ])
+    setInput('')
+
+    try {
+      const apiKey = getProviderApiKey(selectedModel.provider) || undefined
+      let result: { url?: string; durationSec?: number; error?: string } = {}
+      if (modality === 'image') {
+        const ratio = (imageParams.aspectRatio as string | undefined) ?? '1:1'
+        const res = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: promptText, model: selectedImageModel.id, ratio, apiKey }),
+        })
+        result = await res.json()
+        if (!res.ok || !result.url) throw new Error(result.error || `Image generation failed (${res.status})`)
+      } else if (modality === 'video') {
+        const aspect   = (videoParams.aspectRatio as string | undefined) ?? '16:9'
+        const duration = (videoParams.duration as number | undefined) ?? 5
+        const res = await fetch('/api/generate-video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: promptText, model: selectedVideoModel.id, aspectRatio: aspect, duration, apiKey }),
+        })
+        result = await res.json()
+        if (!res.ok || !result.url) throw new Error(result.error || `Video generation failed (${res.status})`)
+      } else if (modality === 'audio') {
+        const voice = audioParams.voice as string | undefined
+        const res = await fetch('/api/generate-audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: promptText, model: selectedAudioModel.id, voice, apiKey }),
+        })
+        result = await res.json()
+        if (!res.ok || !result.url) throw new Error(result.error || `Audio generation failed (${res.status})`)
+      }
+
+      setMessages?.((prev: unknown[]) =>
+        (prev as Array<Record<string, unknown>>).map(m =>
+          m.id === aiId
+            ? {
+                ...m,
+                content: '',
+                clox_pending: false,
+                clox_media_url: result.url,
+                clox_media_kind: modality,
+                clox_media_duration: result.durationSec,
+              }
+            : m,
+        ),
+      )
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Generation failed'
+      setMessages?.((prev: unknown[]) =>
+        (prev as Array<Record<string, unknown>>).map(m =>
+          m.id === aiId ? { ...m, content: msg, clox_pending: false, clox_error: true } : m,
+        ),
+      )
+    }
   }
 
   /* ----- compose props for ChatWorkspace ---------------------------- */
 
+  // The model dropdown surfaces only the registry that matches the
+  // current modality, so users can't pick an image model in text mode.
+  const activeRegistry =
+    modality === 'image' ? enabledImageModels :
+    modality === 'video' ? enabledVideoModels :
+    modality === 'audio' ? enabledAudioModels : enabledTextModels
+
   const models: ModelOption[] = useMemo(
-    () => enabledModels.map(m => ({
+    () => activeRegistry.map(m => ({
       id: m.id,
       label: `${m.brandName ?? m.provider} ${m.version || m.name}`,
       tag: modelTagFor(m.provider, m.brandName),
       short: shortName(m.version, m.name),
     })),
-    [enabledModels],
+    [activeRegistry],
+  )
+
+  // Capability descriptor for the active model — drives the ConfigDrawer.
+  const capability: Capability | undefined = useMemo(
+    () => getCapability(selectedModel.id, modality),
+    [selectedModel.id, modality],
   )
 
   const transcript: TranscriptMessage[] = useMemo(() => {
@@ -325,16 +487,51 @@ export default function TextPage() {
           ),
         }
       }
+      // Image / video / audio results are surfaced as assistant messages
+      // tagged with `clox_media_*`. Render them inline so the transcript
+      // is one consistent timeline regardless of modality.
+      const pending  = Boolean(m.clox_pending)
+      const errored  = Boolean(m.clox_error)
+      const mediaKind = m.clox_media_kind as 'image' | 'video' | 'audio' | undefined
+      const mediaUrl  = m.clox_media_url  as string | undefined
+      let body: React.ReactNode
+      if (pending) {
+        body = (
+          <span style={{ fontStyle: 'italic', opacity: 0.7 }}>
+            generating {String(m.clox_modality ?? '')}…
+          </span>
+        )
+      } else if (errored) {
+        body = (
+          <span style={{ color: 'var(--accent, #b00020)', fontStyle: 'italic' }}>
+            {String(m.content ?? 'Generation failed')}
+          </span>
+        )
+      } else if (mediaKind === 'image' && mediaUrl) {
+        body = (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={mediaUrl} alt="generated" style={{ maxWidth: 360, borderRadius: 2, display: 'block' }} />
+        )
+      } else if (mediaKind === 'video' && mediaUrl) {
+        body = (
+          <video src={mediaUrl} controls style={{ maxWidth: 360, borderRadius: 2, display: 'block' }} />
+        )
+      } else if (mediaKind === 'audio' && mediaUrl) {
+        body = <audio src={mediaUrl} controls style={{ width: 320 }} />
+      } else {
+        body = (
+          <div className="prose prose-sm max-w-none prose-p:my-2 prose-p:leading-[1.6]">
+            <ReactMarkdown>{String(m.content ?? '')}</ReactMarkdown>
+          </div>
+        )
+      }
+
       return {
         id: m.id ?? `a-${i}`,
         who: 'ai' as const,
         time,
         model: shortName(selectedModel.version, selectedModel.name),
-        body: (
-          <div className="prose prose-sm max-w-none prose-p:my-2 prose-p:leading-[1.6]">
-            <ReactMarkdown>{String(m.content ?? '')}</ReactMarkdown>
-          </div>
-        ),
+        body,
       }
     })
   }, [messages, selectedModel.version, selectedModel.name])
@@ -353,7 +550,7 @@ export default function TextPage() {
     active: c.id === activeChatId,
     onClick: () => {
       setActiveChatIdState(c.id)
-      persistActiveChatId('text', c.id)
+      persistActiveChatId(modality, c.id)
     },
   }))
 
@@ -391,18 +588,17 @@ export default function TextPage() {
   ]), [recentChats, router])
 
   function handleNewChat() {
-    const c = ensureActiveChat('text', 'New thread', selectedModel.name)
+    const c = ensureActiveChat(modality, 'New thread', selectedModel.name)
     setActiveChatIdState(c.id)
-    persistActiveChatId('text', c.id)
+    persistActiveChatId(modality, c.id)
     setMessages?.([])
   }
 
   function handleModeChange(id: string) {
+    // All modalities live on /text. Switching mode only swaps the active
+    // capability + send handler; the surface stays put. The dedicated
+    // /image, /audio, /video routes remain for direct deep-links.
     setModeId(id)
-    if (id === 'image')      router.push('/image')
-    else if (id === 'voice') router.push('/audio')
-    else if (id === 'video') router.push('/video')
-    // 'chat' / 'research' / 'code' stay on /text
   }
 
   function handleThemeChange(next: PaletteKey) {
@@ -545,10 +741,21 @@ export default function TextPage() {
         models={models}
         modelId={selectedModel.id}
         onChangeModel={(id) => {
-          const m = enabledModels.find(x => x.id === id)
-          if (m) {
-            setSelectedModel(m)
-            localStorage.setItem('selectedTextModelId', id)
+          // Route the change into the right per-modality slot. Each
+          // modality keeps its own selection so flipping between them
+          // is sticky.
+          if (modality === 'image') {
+            const m = enabledImageModels.find(x => x.id === id)
+            if (m) { setSelectedImageModel(m); localStorage.setItem('selectedImageModelId', id) }
+          } else if (modality === 'video') {
+            const m = enabledVideoModels.find(x => x.id === id)
+            if (m) { setSelectedVideoModel(m); localStorage.setItem('selectedVideoModelId', id) }
+          } else if (modality === 'audio') {
+            const m = enabledAudioModels.find(x => x.id === id)
+            if (m) { setSelectedAudioModel(m); localStorage.setItem('selectedAudioModelId', id) }
+          } else {
+            const m = enabledTextModels.find(x => x.id === id)
+            if (m) { setSelectedTextModel(m); localStorage.setItem('selectedTextModelId', id) }
           }
         }}
         modes={TEXT_MODES}
@@ -566,6 +773,9 @@ export default function TextPage() {
         cmdkGroups={cmdkGroups}
         systemPrompt={systemPrompt}
         onChangeSystemPrompt={setSystemPrompt}
+        capability={capability}
+        params={activeParams}
+        onChangeParam={handleChangeParam}
         temperature={temperature}
         onChangeTemperature={setTemperature}
         topP={0.95}

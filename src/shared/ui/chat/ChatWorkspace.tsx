@@ -262,6 +262,9 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     cmdkGroups,
     systemPrompt,
     onChangeSystemPrompt,
+    params,
+    onChangeParam,
+    capability,
     temperature,
     onChangeTemperature,
     topP,
@@ -437,11 +440,17 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
         onClose={() => setConfigOpen(false)}
         systemPrompt={systemPrompt}
         onChangeSystemPrompt={onChangeSystemPrompt}
+        capability={capability}
+        params={params}
+        onChangeParam={onChangeParam}
         temperature={temperature}
         onChangeTemperature={onChangeTemperature}
         topP={topP}
         maxTokens={maxTokens}
         onChangeMaxTokens={onChangeMaxTokens}
+        attachments={attachments}
+        onAttach={onAttach}
+        onRemoveAttachment={onRemoveAttachment}
         knowledgeDocs={knowledgeDocs}
         toolsState={toolsState}
         onToggleTool={onToggleTool}
@@ -1832,25 +1841,65 @@ function CommandK({
 function ConfigDrawer({
   p, mono, serif, open, onClose,
   systemPrompt, onChangeSystemPrompt,
+  capability,
+  params,
+  onChangeParam,
+  // Legacy text-only knobs — preserved for back-compat with pages that haven't
+  // moved to the `params` bag yet. New code should use `capability` + `params`.
   temperature, onChangeTemperature,
   topP,
   maxTokens, onChangeMaxTokens,
+  attachments,
+  onAttach,
+  onRemoveAttachment,
   knowledgeDocs, toolsState, onToggleTool,
 }: {
   p: Palette; mono: string; serif: string
   open: boolean; onClose: () => void
   systemPrompt?: string; onChangeSystemPrompt?: (v: string) => void
+  capability?: Capability
+  params?: Record<string, unknown>
+  onChangeParam?: (key: string, value: unknown) => void
   temperature?: number; onChangeTemperature?: (v: number) => void
   topP?: number
   maxTokens?: number; onChangeMaxTokens?: (v: number) => void
+  attachments?: Attachment[]
+  onAttach?: (files: FileList) => void
+  onRemoveAttachment?: (id: string) => void
   knowledgeDocs?: { name: string }[]
   toolsState?: { label: string; on: boolean }[]
   onToggleTool?: (label: string) => void
 }) {
+  // Native file picker — wired to onAttach so the document section actually
+  // attaches files to the next outgoing message (which then ride along as
+  // `experimental_attachments` on the underlying useChat call).
+  const docInputRef = useRef<HTMLInputElement | null>(null)
+
   if (!open) return null
+
+  // Resolve the effective parameter bag. The drawer reads from `params` first,
+  // then falls back to the legacy individual props so older call sites keep
+  // working unchanged.
+  const readParam = <T,>(key: string, fallback: T): T => {
+    const v = params?.[key]
+    return (v === undefined || v === null ? fallback : v) as T
+  }
+  const writeParam = (key: string, value: unknown) => {
+    onChangeParam?.(key, value)
+    if (key === 'temperature') onChangeTemperature?.(Number(value))
+    if (key === 'maxTokens') onChangeMaxTokens?.(Number(value))
+  }
+
+  // Capability shorthands.
+  const fields = capability?.fields
+  const acceptsFiles = capability?.attachments
+  const acceptAttr = acceptsFiles ? buildAcceptAttribute(acceptsFiles) : ''
+  const acceptedTypesLabel = acceptsFiles ? summarizeAcceptedFiles(acceptsFiles) : ''
+  const showSystemPrompt = capability?.kind !== 'image' && capability?.kind !== 'video' && capability?.kind !== 'audio'
+
   return (
     <div style={{
-      position: 'absolute', top: 0, right: 0, bottom: 0, width: 320,
+      position: 'absolute', top: 0, right: 0, bottom: 0, width: 340,
       background: p.surface,
       borderLeft: `1px solid ${p.hairline}`,
       padding: '20px 22px',
@@ -1860,7 +1909,7 @@ function ConfigDrawer({
       animation: 'anthologySlideIn .22s ease',
       zIndex: 5,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <span style={{ fontFamily: serif, fontSize: 17, fontStyle: 'italic' }}>Configure</span>
           <span style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.14em', textTransform: 'uppercase' }}>⌘.</span>
@@ -1868,66 +1917,301 @@ function ConfigDrawer({
         <button onClick={onClose} style={iconBtn(p)} title="Close">{I.close}</button>
       </div>
 
-      <Section p={p} mono={mono} title="System prompt">
-        <textarea
-          value={systemPrompt ?? ''}
-          onChange={e => onChangeSystemPrompt?.(e.target.value)}
-          placeholder="You are a thoughtful editor…"
-          style={{
-            fontFamily: serif, fontSize: 13.5, fontStyle: 'italic', lineHeight: 1.55,
-            padding: '10px 12px', border: `1px solid ${p.hairlineSoft}`, borderRadius: 2,
-            color: p.inkSoft, background: p.bg,
-            width: '100%', minHeight: 84, resize: 'vertical', outline: 'none',
-            boxSizing: 'border-box',
-          }}
-        />
-      </Section>
-
-      <Section p={p} mono={mono} title="Parameters">
-        <Param p={p} mono={mono} k="temperature" v={temperature?.toFixed(2) ?? '—'}>
-          <input
-            type="range" min={0} max={2} step={0.1}
-            value={temperature ?? 0.7}
-            onChange={e => onChangeTemperature?.(parseFloat(e.target.value))}
-            style={{ width: 120, accentColor: p.ink }}
-          />
-        </Param>
-        <Param p={p} mono={mono} k="top-p" v={topP?.toFixed(2) ?? '0.95'} />
-        <Param p={p} mono={mono} k="max tokens" v={maxTokens?.toLocaleString() ?? '—'}>
-          <input
-            type="range" min={256} max={8192} step={256}
-            value={maxTokens ?? 2048}
-            onChange={e => onChangeMaxTokens?.(parseInt(e.target.value))}
-            style={{ width: 120, accentColor: p.ink }}
-          />
-        </Param>
-      </Section>
-
-      <Section p={p} mono={mono} title="Tools">
-        {(toolsState ?? [
-          { label: 'Web search', on: true },
-          { label: 'Code execute', on: true },
-          { label: 'File search', on: true },
-          { label: 'Image input', on: false },
-        ]).map(t => (
-          <Toggle key={t.label} p={p} label={t.label} on={t.on} onClick={() => onToggleTool?.(t.label)} />
-        ))}
-      </Section>
-
-      <Section p={p} mono={mono} title="Knowledge">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {(knowledgeDocs ?? []).map((d, i) => (
-            <Doc key={i} p={p} mono={mono} name={d.name} />
-          ))}
-          {(knowledgeDocs ?? []).length === 0 && (
-            <div style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>
-              no documents attached
+      {/* Capability summary — tells the user which model these knobs control
+          and what its native input/output story is. Keeps the drawer honest:
+          if the model doesn't support a knob, we don't render it. */}
+      {capability && (
+        <div style={{
+          marginBottom: 18,
+          padding: '10px 12px',
+          border: `1px solid ${p.hairlineSoft}`,
+          background: p.bg,
+          borderRadius: 2,
+          fontFamily: mono,
+          fontSize: 11,
+          color: p.inkSoft,
+          lineHeight: 1.55,
+          letterSpacing: '0.02em',
+        }}>
+          <div style={{ color: p.ink, marginBottom: 2 }}>{capability.label}</div>
+          <div style={{ fontSize: 10.5, color: p.inkMuted, letterSpacing: '0.04em' }}>
+            {capability.provider} · {capability.kind}
+            {capability.contextWindow ? ` · ${(capability.contextWindow / 1000).toFixed(0)}k ctx` : ''}
+          </div>
+          {capability.description && (
+            <div style={{ marginTop: 6, fontFamily: serif, fontStyle: 'italic', fontSize: 12, color: p.inkSoft, letterSpacing: 0 }}>
+              {capability.description}
             </div>
           )}
         </div>
-      </Section>
+      )}
+
+      {showSystemPrompt && (
+        <Section p={p} mono={mono} title="System prompt">
+          <textarea
+            value={systemPrompt ?? ''}
+            onChange={e => onChangeSystemPrompt?.(e.target.value)}
+            placeholder="You are a thoughtful editor…"
+            style={{
+              fontFamily: serif, fontSize: 13.5, fontStyle: 'italic', lineHeight: 1.55,
+              padding: '10px 12px', border: `1px solid ${p.hairlineSoft}`, borderRadius: 2,
+              color: p.inkSoft, background: p.bg,
+              width: '100%', minHeight: 84, resize: 'vertical', outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+        </Section>
+      )}
+
+      {/* Parameters — driven by the capability's `fields` map. Each spec
+          knows its own range/options/label, so adding a new knob is a
+          one-line edit in lib/ai-capabilities.ts. */}
+      {fields ? (
+        <Section p={p} mono={mono} title="Parameters">
+          {renderCapabilityFields({ p, mono, capability, fields, readParam, writeParam })}
+        </Section>
+      ) : (
+        // Conservative fallback for callers that don't pass a capability yet
+        // — keeps the drawer useful in legacy text-only contexts.
+        <Section p={p} mono={mono} title="Parameters">
+          <Param p={p} mono={mono} k="temperature" v={(temperature ?? 0.7).toFixed(2)}>
+            <input
+              type="range" min={0} max={2} step={0.1}
+              value={temperature ?? 0.7}
+              onChange={e => onChangeTemperature?.(parseFloat(e.target.value))}
+              style={{ width: 130, accentColor: p.ink }}
+            />
+          </Param>
+          {topP !== undefined && <Param p={p} mono={mono} k="top-p" v={topP.toFixed(2)} />}
+          <Param p={p} mono={mono} k="max tokens" v={(maxTokens ?? 2048).toLocaleString()}>
+            <input
+              type="range" min={256} max={8192} step={256}
+              value={maxTokens ?? 2048}
+              onChange={e => onChangeMaxTokens?.(parseInt(e.target.value))}
+              style={{ width: 130, accentColor: p.ink }}
+            />
+          </Param>
+        </Section>
+      )}
+
+      {/* Tool toggles — only render the slots the capability actually
+          supports. Models without function-calling don't get a "tools"
+          section at all. */}
+      {capability?.kind === 'text' && (capability as TextCapability).toolUse && (
+        <Section p={p} mono={mono} title="Tools">
+          {(toolsState ?? [
+            { label: 'Web search', on: true },
+            { label: 'Code execute', on: true },
+            { label: 'File search', on: true },
+          ]).map(t => (
+            <Toggle key={t.label} p={p} label={t.label} on={t.on} onClick={() => onToggleTool?.(t.label)} />
+          ))}
+        </Section>
+      )}
+
+      {/* Document attachment — wired via the page's onAttach handler so the
+          attached files ride along with the next message. We surface what
+          the model actually accepts so users don't try to upload, e.g., a
+          PDF to an audio-only TTS model. */}
+      {acceptsFiles && acceptAttr && (
+        <Section p={p} mono={mono} title="Documents">
+          <input
+            ref={docInputRef}
+            type="file"
+            accept={acceptAttr}
+            multiple={acceptsFiles.maxFiles !== 1}
+            style={{ display: 'none' }}
+            onChange={e => {
+              const files = e.target.files
+              if (files && files.length > 0) onAttach?.(files)
+              if (e.target) e.target.value = ''
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => docInputRef.current?.click()}
+            disabled={!onAttach}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px',
+              border: `1px solid ${p.hairlineSoft}`,
+              background: p.bg,
+              color: onAttach ? p.ink : p.inkMuted,
+              fontFamily: mono, fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase',
+              cursor: onAttach ? 'pointer' : 'not-allowed',
+              borderRadius: 2,
+              width: '100%', justifyContent: 'center',
+            }}
+          >
+            {I.attach}
+            <span>attach files</span>
+          </button>
+          <div style={{
+            marginTop: 8,
+            fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.03em',
+            lineHeight: 1.55,
+          }}>
+            <span style={{ textTransform: 'uppercase', letterSpacing: '0.14em' }}>accepts</span>
+            <br />
+            {acceptedTypesLabel}
+          </div>
+          {attachments && attachments.length > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {attachments.map(a => (
+                <div
+                  key={a.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '6px 10px',
+                    border: `1px solid ${p.hairlineSoft}`,
+                    borderRadius: 2,
+                    background: p.bg,
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <span style={{ color: p.inkSoft, display: 'inline-flex' }}>{I.doc}</span>
+                    <span style={{
+                      fontFamily: mono, fontSize: 11, color: p.ink,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{a.name}</span>
+                  </div>
+                  {onRemoveAttachment && (
+                    <button
+                      onClick={() => onRemoveAttachment(a.id)}
+                      style={{
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        color: p.inkMuted, padding: 2, display: 'inline-flex',
+                      }}
+                      title="Remove"
+                    >
+                      {I.close}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
+
+      {/* Knowledge docs — these are the persistent project-attached
+          documents (separate from per-message attachments). */}
+      {knowledgeDocs && knowledgeDocs.length > 0 && (
+        <Section p={p} mono={mono} title="Knowledge">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {knowledgeDocs.map((d, i) => (
+              <Doc key={i} p={p} mono={mono} name={d.name} />
+            ))}
+          </div>
+        </Section>
+      )}
     </div>
   )
+}
+
+/** Render the parameter rows declared by a capability's `fields` map. Lives
+ *  next to ConfigDrawer because it's tightly coupled to the drawer's layout
+ *  and styling primitives (Param/Toggle). */
+function renderCapabilityFields({
+  p, mono, capability, fields, readParam, writeParam,
+}: {
+  p: Palette; mono: string; capability: Capability | undefined
+  fields: NonNullable<Capability['fields']>
+  readParam: <T,>(key: string, fallback: T) => T
+  writeParam: (key: string, value: unknown) => void
+}) {
+  const out: ReactNode[] = []
+  for (const [key, raw] of Object.entries(fields)) {
+    if (!raw) continue
+    const f = raw
+
+    if (f.type === 'range') {
+      const v = readParam<number>(key, f.default)
+      const decimals = f.step < 1 ? 2 : 0
+      out.push(
+        <Param key={key} p={p} mono={mono} k={f.label} v={v.toFixed(decimals) + (f.suffix ?? '')}>
+          <input
+            type="range"
+            min={f.min} max={f.max} step={f.step}
+            value={v}
+            onChange={e => writeParam(key, parseFloat(e.target.value))}
+            style={{ width: 130, accentColor: p.ink }}
+          />
+        </Param>
+      )
+    } else if (f.type === 'integer') {
+      const v = readParam<number>(key, f.default)
+      out.push(
+        <Param key={key} p={p} mono={mono} k={f.label} v={v.toLocaleString() + (f.suffix ?? '')}>
+          <input
+            type="range"
+            min={f.min} max={f.max} step={f.step ?? 1}
+            value={v}
+            onChange={e => writeParam(key, parseInt(e.target.value, 10))}
+            style={{ width: 130, accentColor: p.ink }}
+          />
+        </Param>
+      )
+    } else if (f.type === 'select') {
+      const v = readParam<string>(key, f.default)
+      out.push(
+        <Param key={key} p={p} mono={mono} k={f.label} v="">
+          <select
+            value={v}
+            onChange={e => writeParam(key, e.target.value)}
+            style={{
+              fontFamily: mono, fontSize: 11, color: p.ink, background: p.bg,
+              border: `1px solid ${p.hairlineSoft}`, borderRadius: 2,
+              padding: '4px 8px', minWidth: 110, outline: 'none',
+            }}
+          >
+            {f.options.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </Param>
+      )
+    } else if (f.type === 'toggle') {
+      const v = readParam<boolean>(key, f.default)
+      out.push(
+        <Toggle key={key} p={p} label={f.label} on={v} onClick={() => writeParam(key, !v)} />
+      )
+    } else if (f.type === 'text') {
+      const v = readParam<string>(key, f.default ?? '')
+      out.push(
+        <div key={key} style={{ padding: '6px 0', borderBottom: `1px solid ${p.hairlineSoft}` }}>
+          <div style={{
+            fontFamily: mono, fontSize: 9.5, letterSpacing: '0.16em', textTransform: 'uppercase',
+            color: p.inkMuted, marginBottom: 4,
+          }}>{f.label}</div>
+          <input
+            type="text"
+            value={v}
+            placeholder={f.placeholder}
+            onChange={e => writeParam(key, e.target.value)}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              fontFamily: mono, fontSize: 11.5, color: p.ink, background: p.bg,
+              border: `1px solid ${p.hairlineSoft}`, borderRadius: 2,
+              padding: '6px 10px', outline: 'none',
+            }}
+          />
+        </div>
+      )
+    }
+  }
+
+  // Show empty-state only if the capability legitimately has no
+  // configurable parameters (e.g. an image-edit-only model with fixed defaults).
+  if (out.length === 0) {
+    return (
+      <div style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>
+        {capability?.label ?? 'this model'} has no user-configurable parameters
+      </div>
+    )
+  }
+  return out
 }
 
 function Section({ p, mono, title, children }: { p: Palette; mono: string; title: string; children: ReactNode }) {
