@@ -260,7 +260,6 @@ export default function TextPage() {
     },
   }))
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const cmdkGroups = useMemo(() => ([
     {
       label: 'jump to',
@@ -291,6 +290,8 @@ export default function TextPage() {
         { label: 'Open settings', hint: '⌘,', onSelect: () => router.push('/admin') },
       ],
     },
+    // handleNewChat is defined below in component scope and is stable for this surface.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   ]), [recentChats, router])
 
   function handleNewChat() {
