@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Newsreader } from "next/font/google";
 import "./globals.css";
+import CookieConsent from "@/components/cookie-consent/CookieConsent";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -44,6 +45,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} font-sans antialiased text-ink bg-bg selection:bg-accent/25`}
       >
         {children}
+        <CookieConsent />
       </body>
     </html>
   );

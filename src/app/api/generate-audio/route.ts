@@ -12,6 +12,9 @@
  * the fake 7-minute melody you saw.
  */
 
+import { assertBudget } from '@/lib/projects/server'
+import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
+
 export const maxDuration = 60
 
 interface AudioMapEntry {
@@ -137,16 +140,32 @@ async function generateWithGeminiTts(
 }
 
 export async function POST(request: Request) {
-  let body: { prompt?: string; model?: string; apiKey?: string; voice?: string }
+  let body: {
+    prompt?: string; model?: string; apiKey?: string; voice?: string;
+    projectId?: string | null; chatId?: string | null;
+  }
   try {
     body = await request.json()
   } catch {
     return Response.json({ success: false, error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { prompt, model: requestedModelId = 'gemini-tts', apiKey: clientApiKey, voice } = body
+  const {
+    prompt, model: requestedModelId = 'gemini-tts',
+    apiKey: clientApiKey, voice, projectId, chatId,
+  } = body
   if (!prompt || !prompt.trim()) {
     return Response.json({ success: false, error: 'Prompt is required' }, { status: 400 })
+  }
+
+  const caller = await getCallerForLogging()
+  if (projectId && caller) {
+    try {
+      await assertBudget({ projectId, userId: caller.userId })
+    } catch (e) {
+      const err = e as Error & { status?: number }
+      return Response.json({ success: false, error: err.message }, { status: err.status ?? 402 })
+    }
   }
 
   const mapped = AUDIO_MODEL_MAP[requestedModelId]
@@ -188,6 +207,19 @@ export async function POST(request: Request) {
         voice || mapped.voice || 'Kore',
         key,
       )
+      if (caller) {
+        void recordUsage({
+          userId: caller.userId,
+          domain: caller.domain,
+          provider: 'google',
+          model: requestedModelId,
+          modality: 'audio',
+          chatType: 'audio',
+          durationSec,
+          projectId: projectId ?? null,
+          chatId: chatId ?? null,
+        })
+      }
       return Response.json({
         success: true,
         url: dataUrl,

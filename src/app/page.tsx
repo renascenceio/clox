@@ -20,6 +20,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState, useRef, useCallback } from 'react'
+import CookieSettingsLink from '@/components/cookie-consent/CookieSettingsLink'
 
 // ---------------------------------------------------------------------------
 // Hero — typewriter composer
@@ -609,7 +610,7 @@ export default function LandingPage() {
           </Link>
           <nav className="hidden flex-1 items-center gap-6 text-[13.5px] text-ink-soft md:flex">
             <a href="#modes" className="hover:text-ink">Modes</a>
-            <a href="#surfaces" className="hover:text-ink">Command surfaces</a>
+            <a href="#surfaces" className="hover:text-ink">Commands</a>
             <a href="#pricing" className="hover:text-ink">Pricing</a>
             <Link href="/skills" className="hover:text-ink">Skills</Link>
             <Link href="/admin" className="hover:text-ink">Admin</Link>
@@ -869,7 +870,12 @@ export default function LandingPage() {
             <a href="#" className="hover:text-surface">Manifesto</a>
             <a href="#" className="hover:text-surface">Changelog</a>
             <a href="#" className="hover:text-surface">Status</a>
-            <a href="#" className="hover:text-surface">Privacy</a>
+            <Link href="/privacy" className="hover:text-surface">Privacy</Link>
+            <Link href="/cookies" className="hover:text-surface">Cookies</Link>
+            <Link href="/terms" className="hover:text-surface">Terms</Link>
+            <CookieSettingsLink className="tracking-[0.04em] hover:text-surface">
+              Cookie settings
+            </CookieSettingsLink>
             <Link href="/skills" className="hover:text-surface">Design system</Link>
           </div>
         </div>
