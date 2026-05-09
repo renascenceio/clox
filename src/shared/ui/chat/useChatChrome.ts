@@ -23,7 +23,10 @@ import {
 import type { AppLanguage, RailNavItem } from './ChatWorkspace'
 import { createClient } from '@/lib/supabase/client'
 
-export type ActiveRail = 'home' | 'projects' | 'chats' | 'history' | 'gallery'
+export type ActiveRail =
+  | 'home' | 'projects' | 'chats' | 'history' | 'gallery'
+  // Surfaces opened from the avatar dropdown (no rail-nav highlight).
+  | 'skills' | 'settings' | 'admin'
 
 export function useChatChrome(active: ActiveRail) {
   const router = useRouter()
