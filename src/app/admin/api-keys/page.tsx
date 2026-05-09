@@ -298,8 +298,13 @@ export default function ModelsAdminPage() {
                           <KeyEditor
                             initial={apiKeys[provider.id] ?? ''}
                             secretInitial={provider.requiresSecret ? (apiSecrets[provider.id] ?? '') : undefined}
-                            keyLabel={provider.requiresSecret ? 'Access Key' : 'API Key'}
-                            secretLabel="Secret Key"
+                            // Per-provider labels win when set (e.g. Moonshot
+                            // labels its second field "User ID" rather than
+                            // "Secret Key"). Otherwise fall back to the
+                            // standard Access Key / Secret Key pairing
+                            // most dual-credential providers use.
+                            keyLabel={provider.keyLabel ?? (provider.requiresSecret ? 'Access Key' : 'API Key')}
+                            secretLabel={provider.secretLabel ?? 'Secret Key'}
                             onSave={(v, s) => handleSaveKey(provider.id, v, s)}
                             onCancel={() => setEditingProvider(null)}
                           />
@@ -328,11 +333,11 @@ export default function ModelsAdminPage() {
                                     : aiGatewayCapable
                                       ? 'Using AI Gateway (optional override)'
                                       : provider.requiresSecret
-                                        ? 'No access key configured'
+                                        ? `No ${(provider.keyLabel ?? 'access key').toLowerCase()} configured`
                                         : 'No key configured'
                                 }
                                 className="flex-1 h-9 px-2.5 bg-bg border border-hairline-soft rounded-sharp font-mono text-[11.5px] text-ink placeholder:text-ink-muted outline-none"
-                                aria-label={`${provider.name} ${provider.requiresSecret ? 'access' : 'api'} key`}
+                                aria-label={`${provider.name} ${(provider.keyLabel ?? (provider.requiresSecret ? 'access key' : 'api key')).toLowerCase()}`}
                               />
                               <AdminBtn onClick={() => setEditingProvider(provider.id)}>
                                 {hasLocalKey ? 'Edit' : provider.requiresSecret ? 'Add keys' : 'Add key'}
@@ -362,9 +367,9 @@ export default function ModelsAdminPage() {
                                     : ''
                                 }
                                 readOnly
-                                placeholder="No secret key configured"
+                                placeholder={`No ${(provider.secretLabel ?? 'secret key').toLowerCase()} configured`}
                                 className="h-9 px-2.5 bg-bg border border-hairline-soft rounded-sharp font-mono text-[11.5px] text-ink placeholder:text-ink-muted outline-none"
-                                aria-label={`${provider.name} secret key`}
+                                aria-label={`${provider.name} ${(provider.secretLabel ?? 'secret key').toLowerCase()}`}
                               />
                             )}
                           </div>

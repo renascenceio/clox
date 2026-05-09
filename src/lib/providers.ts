@@ -12,8 +12,18 @@ export interface ProviderEntry {
   categories: ProviderCategory[]
   /** Hint about how keys are obtained / where to get one */
   docsUrl?: string
-  /** If true, the provider requires an extra secret (e.g. Azure region or API secret) */
+  /** If true, the provider requires a second credential. The form renders
+   *  two fields when this is set; the second field's label defaults to
+   *  "Secret Key" but can be overridden via `secretLabel` for providers
+   *  whose second credential isn't really a "secret" (e.g. Moonshot's
+   *  User ID, Azure's Region, Play.ht's User ID). */
   requiresSecret?: boolean
+  /** Override for the primary credential field label. Defaults to "API Key"
+   *  (or "Access Key" automatically when `requiresSecret` is true). */
+  keyLabel?: string
+  /** Override for the secondary credential field label. Defaults to
+   *  "Secret Key" when `requiresSecret` is true. */
+  secretLabel?: string
 }
 
 export const PROVIDERS: ProviderEntry[] = [
@@ -24,7 +34,12 @@ export const PROVIDERS: ProviderEntry[] = [
   { id: 'mistral', name: 'Mistral AI', envKey: 'MISTRAL_API_KEY', categories: ['text'], docsUrl: 'https://console.mistral.ai/api-keys' },
   { id: 'xai', name: 'xAI Grok', envKey: 'XAI_API_KEY', categories: ['text'], docsUrl: 'https://console.x.ai' },
   { id: 'deepseek', name: 'DeepSeek', envKey: 'DEEPSEEK_API_KEY', categories: ['text'], docsUrl: 'https://platform.deepseek.com/api_keys' },
-  { id: 'moonshot', name: 'Moonshot Kimi', envKey: 'MOONSHOT_API_KEY', categories: ['text'], docsUrl: 'https://platform.moonshot.cn/console/api-keys' },
+  // Moonshot Kimi authenticates against Kimi Open Platform with an API
+  // key plus a User ID. The User ID isn't a secret per se, but the
+  // provider's `/v1/chat/completions` endpoint expects it in the
+  // `X-Msh-User-Id` header, so we collect both halves here and the
+  // chat route wires them up downstream.
+  { id: 'moonshot', name: 'Moonshot Kimi', envKey: 'MOONSHOT_API_KEY', categories: ['text'], requiresSecret: true, keyLabel: 'API Key', secretLabel: 'User ID', docsUrl: 'https://platform.moonshot.cn/console/api-keys' },
   { id: 'alibaba', name: 'Alibaba Qwen', envKey: 'DASHSCOPE_API_KEY', categories: ['text', 'image'], docsUrl: 'https://bailian.console.aliyun.com/?apiKey=1' },
   { id: 'cohere', name: 'Cohere', envKey: 'COHERE_API_KEY', categories: ['text'], docsUrl: 'https://dashboard.cohere.com/api-keys' },
   { id: 'perplexity', name: 'Perplexity', envKey: 'PERPLEXITY_API_KEY', categories: ['text'], docsUrl: 'https://www.perplexity.ai/settings/api' },
