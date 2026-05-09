@@ -8,5 +8,7 @@ import { redirect } from 'next/navigation'
  * forwards to `/text` with the voice modality preselected.
  */
 export default function LegacyAudioRedirect() {
-  redirect('/text?mode=voice')
+  // Forward to the unified chat surface. Modality is selected from the
+  // in-composer slash menu — there is no longer a per-modality URL.
+  redirect('/text')
 }

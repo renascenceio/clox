@@ -8,5 +8,7 @@ import { redirect } from 'next/navigation'
  * occasional handwritten URL still land on the right composer.
  */
 export default function LegacyImageRedirect() {
-  redirect('/text?mode=image')
+  // Forward to the unified chat surface. Modality is selected from the
+  // in-composer slash menu — there is no longer a per-modality URL.
+  redirect('/text')
 }
