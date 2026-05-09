@@ -212,12 +212,13 @@ const DOC_CODE_MIMES = [
   '.sql', '.graphql', '.gql', '.proto',
 ]
 
-const ACCEPT_IMAGES: AcceptedFiles = {
-  mimeTypes: IMG_MIMES,
-  humanLabel: 'PNG, JPEG, WebP, GIF — up to 8 MB each',
-  maxFiles: 10,
-  maxBytesEach: 8 * 1024 * 1024,
-}
+// `ACCEPT_IMAGES` was previously a standalone preset, but every text model
+// that takes images already takes documents too (`ACCEPT_IMAGES_AND_DOCS`),
+// and every reference-only image surface uses the dedicated
+// `ACCEPT_REFERENCE_IMAGE` / `ACCEPT_VIDEO_START_FRAME` presets defined
+// further down. `IMG_MIMES` remains as the single source of truth — it's
+// composed into the multimodal supersets above. Removing the standalone
+// preset clears the no-unused-vars lint failure on the production build.
 
 // Default document bundle for chat models. Covers everything a text model
 // can consume without server-side extraction: PDFs, plain prose, structured
