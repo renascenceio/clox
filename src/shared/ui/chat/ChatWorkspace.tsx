@@ -1554,9 +1554,11 @@ function SkillsMenu({
   }, [onClose])
 
   // Stable group order so the menu doesn't shuffle as the user scrolls
-  // through skills. Unknown / missing groups fall under "other".
-  const groupOrder = ['reasoning', 'tone', 'format', 'craft', 'media', 'other'] as const
+  // through skills. Unknown / missing groups fall under "other". Defined
+  // inside the memo so React's exhaustive-deps lint stays satisfied
+  // without us having to pull a constant tuple onto the dep array.
   const grouped = useMemo(() => {
+    const groupOrder = ['reasoning', 'tone', 'format', 'craft', 'media', 'other'] as const
     const map = new Map<string, SkillOption[]>()
     for (const s of skills) {
       const g = s.group ?? 'other'
