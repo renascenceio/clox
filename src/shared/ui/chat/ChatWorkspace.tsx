@@ -1048,17 +1048,95 @@ function Messages({
   userInitial: string
   userName: string
 }) {
-  const endRef = useRef<HTMLDivElement | null>(null)
+  // Sticky-to-bottom scrolling. The previous implementation called
+  // `endRef.current.scrollIntoView({ behavior: 'smooth' })` on every
+  // change to `[transcript.length, isStreaming]`, which had three
+  // bad failure modes once a transcript got long:
+  //
+  //  1. `scrollIntoView` walks UP from the target to find the nearest
+  //     scrollable ancestor. With our outer page also scrollable on
+  //     some viewports, both the inner messages list AND the document
+  //     scrolled, doubling the distance and feel.
+  //  2. `behavior: 'smooth'` animates over ~300ms regardless of
+  //     distance. After a long generation the bottom can be thousands
+  //     of pixels below the user's view, so the smooth animation
+  //     "feels" like an endless slow scroll when stream ends.
+  //  3. The deps only fire on `transcript.length` changes, which DON'T
+  //     trigger during streaming (the array length is stable once the
+  //     assistant message is appended; only its content grows). So
+  //     during streaming the user's view falls progressively behind,
+  //     and the catch-up at end-of-stream is the long animation
+  //     described in (2).
+  //
+  // The new implementation owns its own scroll container ref, watches
+  // it with a ResizeObserver so content growth is detected directly,
+  // and only auto-scrolls when the user is already near the bottom.
+  // Scrolls are instant during streaming (so the tail tracks at any
+  // speed without animation pile-up) and instant on new-message
+  // append for the same reason. If the user has scrolled up to read
+  // history we leave them alone — they explicitly opted out.
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  /** Stickiness flag — true when the user's viewport is "close
+   *  enough" to the bottom that auto-scroll should keep them pinned.
+   *  We treat anything within ~80px as "at the bottom" so a one-line
+   *  scroll-up doesn't immediately disable autoscroll. */
+  const stickRef = useRef(true)
+
+  // Track scroll position to flip stickiness. We don't use React
+  // state because we don't need to re-render on every scroll event —
+  // the flag is read by the auto-scroll effect on demand.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      stickRef.current = distanceFromBottom <= 80
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // Auto-scroll on new messages or when streaming starts/stops. We
+  // use the imperative scroll API on our explicit container (NOT
+  // scrollIntoView) so we never accidentally scroll a parent. Behaviour
+  // is `auto` (instant) — smooth animation across long distances was
+  // the source of the "endless scroll" feel.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || !stickRef.current) return
+    el.scrollTop = el.scrollHeight
   }, [transcript.length, isStreaming])
 
+  // Track content growth during streaming. ResizeObserver fires once
+  // per layout pass when the inner content height changes, which is
+  // exactly what we want for tail-following without polling. The
+  // observer is only active while streaming so we don't pay for it
+  // when the chat is idle.
+  useEffect(() => {
+    if (!isStreaming) return
+    const el = scrollRef.current
+    if (!el) return
+    const inner = el.firstElementChild as HTMLElement | null
+    if (!inner) return
+    const ro = new ResizeObserver(() => {
+      if (!stickRef.current) return
+      el.scrollTop = el.scrollHeight
+    })
+    ro.observe(inner)
+    return () => ro.disconnect()
+  }, [isStreaming])
+
   return (
-    <div style={{
+    <div ref={scrollRef} style={{
       flex: 1, overflow: 'auto',
       padding: '24px 56px 18px',
       fontFamily: SANS_STACK,
       color: p.ink,
+      // Anchor the inner content at the top of the scroll container
+      // so the browser doesn't try to be clever about anchoring during
+      // resize. Combined with our explicit scrollTop writes this gives
+      // us deterministic control over the viewport.
+      overflowAnchor: 'none',
     }}>
       <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
         {transcript.length === 0 && !isStreaming && (
@@ -1080,7 +1158,6 @@ function Messages({
         ))}
 
         {isStreaming && <ThinkingIndicator p={p} mono={mono} serif={serif} />}
-        <div ref={endRef} />
       </div>
     </div>
   )
