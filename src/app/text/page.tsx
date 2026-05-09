@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 
 import ChatWorkspace, {
+  type Attachment,
   type ModeOption,
   type ModelOption,
   type RailNavItem,
@@ -193,18 +194,66 @@ export default function TextPage() {
     }
   }, [activeChatId, setMessages])
 
+  /* ----- attachments ------------------------------------------------- */
+  // The page owns the attachment list; ChatWorkspace just renders it. We
+  // serialise files to data URLs so they survive re-renders cleanly and can
+  // be passed straight to useChat's `experimental_attachments`.
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+
+  // Hard cap so a stray drag of a 50 MB PSD doesn't kill the request body.
+  const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024 // 8 MB per file
+
+  async function handleAttach(files: FileList) {
+    const next: Attachment[] = []
+    for (const file of Array.from(files)) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        console.warn('[v0] attachment too large, skipping:', file.name, file.size)
+        window.alert(`"${file.name}" is too large (max 8 MB).`)
+        continue
+      }
+      try {
+        const dataUrl = await fileToDataUrl(file)
+        next.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: file.name,
+          contentType: file.type || 'application/octet-stream',
+          size: file.size,
+          dataUrl,
+        })
+      } catch (err) {
+        console.error('[v0] failed to read attachment:', file.name, err)
+      }
+    }
+    if (next.length > 0) setAttachments(curr => [...curr, ...next])
+  }
+
+  function handleRemoveAttachment(id: string) {
+    setAttachments(curr => curr.filter(a => a.id !== id))
+  }
+
   /* ----- send ------------------------------------------------------- */
   function handleSend() {
     const promptText = (input || '').trim()
-    if (!promptText) return
-    const c = ensureActiveChat('text', promptText, selectedModel.name)
+    if (!promptText && attachments.length === 0) return
+    const c = ensureActiveChat('text', promptText || '(attachment)', selectedModel.name)
     if (c.id !== activeChatId) {
       setActiveChatIdState(c.id)
       persistActiveChatId('text', c.id)
     } else {
       touchChat(c.id, { model: selectedModel.name })
     }
-    handleSubmit?.(new Event('submit') as unknown as React.FormEvent<HTMLFormElement>)
+    // useChat's `experimental_attachments` accepts an array of
+    // `{ name, contentType, url }` where url is a data URL. The server
+    // route inflates these into multimodal message parts before streaming.
+    const expAttachments = attachments.length > 0
+      ? attachments.map(a => ({ name: a.name, contentType: a.contentType, url: a.dataUrl }))
+      : undefined
+    handleSubmit?.(
+      new Event('submit') as unknown as React.FormEvent<HTMLFormElement>,
+      expAttachments ? { experimental_attachments: expAttachments } : undefined,
+    )
+    // Clear after handing off; the user-message bubble will keep its own copy.
+    setAttachments([])
   }
 
   /* ----- compose props for ChatWorkspace ---------------------------- */
@@ -225,11 +274,55 @@ export default function TextPage() {
       const created: number = m.createdAt ? new Date(m.createdAt).getTime() : Date.now()
       const time = timestamp(created)
       if (m.role === 'user') {
+        // useChat stores attachments on the message under `experimental_attachments`.
+        // Render any image attachments inline above the text so the user can
+        // see what they sent.
+        const msgAttachments: Array<{ name?: string; contentType?: string; url?: string }> =
+          Array.isArray(m.experimental_attachments) ? m.experimental_attachments : []
+        const text = String(m.content ?? '')
         return {
           id: m.id ?? `u-${i}`,
           who: 'you' as const,
           time,
-          body: <span style={{ whiteSpace: 'pre-wrap' }}>{String(m.content ?? '')}</span>,
+          body: (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {msgAttachments.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {msgAttachments.map((a, ai) => {
+                    const isImg = (a.contentType ?? '').startsWith('image/')
+                    if (isImg && a.url) {
+                      // eslint-disable-next-line @next/next/no-img-element
+                      return (
+                        <img
+                          key={`${m.id ?? i}-att-${ai}`}
+                          src={a.url}
+                          alt={a.name ?? 'attachment'}
+                          style={{
+                            maxWidth: 220, maxHeight: 220, borderRadius: 2,
+                            display: 'block', objectFit: 'cover',
+                          }}
+                        />
+                      )
+                    }
+                    return (
+                      <span
+                        key={`${m.id ?? i}-att-${ai}`}
+                        style={{
+                          padding: '4px 8px',
+                          background: 'rgba(255,255,255,0.12)',
+                          borderRadius: 2,
+                          fontSize: 11,
+                        }}
+                      >
+                        {a.name ?? 'attachment'}
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+              {text && <span style={{ whiteSpace: 'pre-wrap' }}>{text}</span>}
+            </div>
+          ),
         }
       }
       return {
@@ -466,6 +559,9 @@ export default function TextPage() {
         inputValue={input}
         onInputChange={setInput}
         onSend={handleSend}
+        attachments={attachments}
+        onAttach={handleAttach}
+        onRemoveAttachment={handleRemoveAttachment}
         toolsCount={0}
         cmdkGroups={cmdkGroups}
         systemPrompt={systemPrompt}
@@ -478,4 +574,17 @@ export default function TextPage() {
       />
     </div>
   )
+}
+
+/* =====================================================================
+   Helpers
+   ===================================================================== */
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error ?? new Error('FileReader error'))
+    reader.readAsDataURL(file)
+  })
 }
