@@ -41,6 +41,54 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="bg-bg" data-theme="pearl">
+      <head>
+        {/*
+          Pre-paint theme bootstrap — runs synchronously before the first
+          paint so we never render the wrong palette and then "flip" it
+          after hydration. Without this, dark-mode users would see a
+          fraction of a second of light theme on every reload, and worse
+          — Tailwind tokens like `text-ink` only update when the
+          `.dark` class or `data-theme="onyx"` attribute is applied,
+          while the rest of the app uses inline-styled palettes keyed
+          off `localStorage`. The mismatch is what produced "dark text
+          on dark background after reload" until you toggled the theme
+          again.
+          The script is tiny and dependency-free on purpose: any failure
+          here would block hydration. We keep it idempotent so future
+          calls to `setStoredPalette` overwrite cleanly.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                try {
+                  var key = localStorage.getItem('clox-palette');
+                  // Honour the legacy ThemeToggle which only knows 'theme'.
+                  if (!key) {
+                    var legacy = localStorage.getItem('theme');
+                    if (legacy === 'dark') key = 'dark';
+                  }
+                  if (!key) return;
+                  var html = document.documentElement;
+                  // The CSS in globals.css reacts to two signals:
+                  // (a) the .dark class for the dark palette,
+                  // (b) [data-theme='onyx'|'pearl-light'|...] for alternates.
+                  var attrMap = {
+                    dark: 'onyx',
+                    pearlLight: 'pearl-light',
+                    pearlNeutral: 'pearl-neutral',
+                  };
+                  var attr = attrMap[key] || key;
+                  html.setAttribute('data-theme', attr);
+                  html.setAttribute('data-palette', key);
+                  if (key === 'dark') html.classList.add('dark');
+                  else html.classList.remove('dark');
+                } catch (_) { /* localStorage may be blocked — fall back to SSR default */ }
+              })();
+            `,
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} font-sans antialiased text-ink bg-bg selection:bg-accent/25`}
       >

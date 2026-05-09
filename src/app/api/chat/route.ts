@@ -17,6 +17,56 @@ interface IncomingMessage {
   experimental_attachments?: IncomingAttachment[]
 }
 
+// Cap inlined text at 80KB per attachment so a 5MB log file doesn't
+// blow out the model's context window or our token budget. The cap is
+// generous enough to fit a normal CSV / markdown / source file but
+// strict enough to protect against pathological uploads. We always
+// note the truncation in the inlined block so the model can ask for
+// more if it matters.
+const INLINE_TEXT_CAP_BYTES = 80 * 1024
+
+/**
+ * Decode a `data:` URL containing UTF-8 text. Returns null for binary
+ * payloads or malformed URLs. We deliberately accept only the data-url
+ * shape useChat produces; remote URLs would need a separate fetch and
+ * we prefer to keep the route side-effect-free.
+ */
+function decodeDataUrlAsText(url: string): string | null {
+  if (!url.startsWith('data:')) return null
+  const comma = url.indexOf(',')
+  if (comma === -1) return null
+  const meta = url.slice(5, comma) // e.g. "text/csv;base64"
+  const payload = url.slice(comma + 1)
+  try {
+    if (meta.includes(';base64')) {
+      // Buffer is the standard Node global in API routes; atob would also
+      // work but Buffer handles the decode-to-utf8 step in one call.
+      const buf = Buffer.from(payload, 'base64')
+      if (buf.byteLength > INLINE_TEXT_CAP_BYTES) {
+        return buf.subarray(0, INLINE_TEXT_CAP_BYTES).toString('utf8') + '\n…[truncated]'
+      }
+      return buf.toString('utf8')
+    }
+    return decodeURIComponent(payload)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * True for content-types whose payload is plain text and worth inlining
+ * into the prompt so the model can actually read the file. We err on
+ * the side of inclusion: anything starting with `text/`, plus a short
+ * allowlist of structured-text formats (JSON, CSV, YAML, XML, …) where
+ * the type is `application/*` but the bytes are still UTF-8.
+ */
+function isInlineableTextType(ct: string): boolean {
+  if (!ct) return false
+  if (ct.startsWith('text/')) return true
+  return /^application\/(json|xml|x-yaml|yaml|csv|x-csv|x-ndjson|x-sh|javascript|typescript)$/i
+    .test(ct)
+}
+
 /** Convert a useChat message with `experimental_attachments` into the
  *  multimodal `content: ContentPart[]` shape that streamText expects. */
 function inflateAttachments(raw: unknown): unknown {
@@ -35,9 +85,31 @@ function inflateAttachments(raw: unknown): unknown {
     if (ct.startsWith('image/')) {
       // streamText accepts both data URLs and remote URLs in the `image` field.
       parts.push({ type: 'image', image: att.url })
+    } else if (isInlineableTextType(ct)) {
+      // Inline the decoded text so the model can actually read CSVs,
+      // JSON files, source code, markdown notes, etc. Wrap each one in
+      // a fenced block tagged with the filename + content-type so the
+      // model can refer to it by name in its answer.
+      const decoded = decodeDataUrlAsText(att.url)
+      if (decoded == null) {
+        parts.push({
+          type: 'text',
+          text: `[Attachment: ${att.name ?? 'file'} (${ct}) — could not decode]`,
+        })
+        continue
+      }
+      const name = att.name ?? 'file'
+      parts.push({
+        type: 'text',
+        text: [
+          `Attached file: ${name} (${ct})`,
+          '```',
+          decoded,
+          '```',
+        ].join('\n'),
+      })
     } else {
-      // Reference non-image attachments inline so the model knows they exist
-      // even when it cannot decode the bytes itself.
+      // Binary / unknown — reference it by name only.
       parts.push({
         type: 'text',
         text: `[Attachment: ${att.name ?? 'file'} (${ct || 'application/octet-stream'})]`,

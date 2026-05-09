@@ -4,6 +4,7 @@ import { useChat } from '@ai-sdk/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
+import { CodeArtifact } from '@/shared/ui/components/CodeArtifact'
 
 import ChatWorkspace, {
   type Attachment,
@@ -27,6 +28,7 @@ import { getCapability, type Capability } from '@/lib/ai-capabilities'
 import {
   getSkillsForModality,
   buildSkillsPromptPrefix,
+  buildSkillsInstructions,
   dbSkillsToOptions,
   buildDbSkillsBlock,
   type SkillModality,
@@ -86,11 +88,16 @@ export default function TextPage() {
   const enabledAudioModels = useAvailableModels(AUDIO_MODELS)
 
   /* ----- theme ------------------------------------------------------- */
+  // Initial paint comes from the blocking script in `layout.tsx`, which
+  // already applied `data-theme` + `.dark` synchronously. Here we just
+  // mirror the value into React state so the inline-styled palette
+  // regions (which read this `theme` variable) match what's already on
+  // the html element. We deliberately do NOT touch the DOM attributes
+  // here — those are owned by `setStoredPalette` to avoid double writes.
   const [theme, setTheme] = useState<PaletteKey>('pearl')
   useEffect(() => {
     const stored = getStoredPalette('pearl')
     setTheme(stored)
-    document.documentElement.dataset.palette = stored
   }, [])
 
   /* ----- modality + model + active chat ----------------------------
@@ -170,17 +177,21 @@ export default function TextPage() {
   /* ----- skills ------------------------------------------------------
      Two layered sources, one picker:
 
-       1. TEXT MODE — the curated catalogue stored in Supabase
-          (`public.skills` + `public.user_skills`). Same source the
-          /skills page uses. The `useUserSkills` hook subscribes to it,
-          so toggling here and toggling there always agree, and toggles
-          survive reloads / device-changes through the database (no
-          localStorage drift).
+       1. TEXT MODE — the curated DB catalogue (`public.skills` +
+          `public.user_skills`) PLUS the in-code registry of behavioural
+          modifiers ("Step-by-step", "Concise", "Cite sources" …).
+          Previously the picker showed only the DB rows; if the seed
+          migration hadn't run for a given Supabase project, or RLS
+          hid the rows for an unauthenticated browser, the user saw
+          "0 skills" with no way to recover. Layering the registry
+          underneath means there is always a sensible baseline of
+          options, while the curated DB catalogue is still the place
+          power-users go to add their own.
 
-       2. MEDIA MODES (image / video / audio) — the in-code registry in
-          `lib/skills-registry.ts`. Those are media-style overlays
-          ("Cinematic", "Editorial", "Audiobook" …) that we don't store
-          per-user; selection is kept in component state only. */
+       2. MEDIA MODES (image / video / audio) — the in-code registry
+          only. Those are stylistic overlays ("Cinematic", "Editorial",
+          "Audiobook" …) that we don't store per-user; selection is kept
+          in component state for the lifetime of the page. */
   const dbSkills = useUserSkills()
 
   // Media-mode (image/video/audio) skill selections live only in memory
@@ -189,19 +200,47 @@ export default function TextPage() {
   const [imageSkillIds, setImageSkillIds] = useState<string[]>([])
   const [videoSkillIds, setVideoSkillIds] = useState<string[]>([])
   const [audioSkillIds, setAudioSkillIds] = useState<string[]>([])
+  // Text-mode registry-skill selections. We keep these alongside the DB
+  // selections (which round-trip through Supabase) so switching to a
+  // skill like "Concise" doesn't wait on a network call, and so users
+  // who aren't signed in still get behavioural modifiers.
+  const [textRegistrySkillIds, setTextRegistrySkillIds] = useState<string[]>([])
+
+  // Helper: is this id one of the in-registry text skills?
+  const textRegistryIds = useMemo(
+    () => new Set(getSkillsForModality('text').map(s => s.id)),
+    [],
+  )
 
   const activeSkillIds =
     modality === 'image' ? imageSkillIds :
     modality === 'video' ? videoSkillIds :
     modality === 'audio' ? audioSkillIds :
-    dbSkills.activeIds // text mode
+    // Text mode: union of DB-active rows and registry selections.
+    [...dbSkills.activeIds, ...textRegistrySkillIds]
 
   // The picker only offers skills declared for the active modality.
-  // Text mode pulls from the DB catalogue; media modes use the in-code
-  // registry for stylistic overlays.
+  // For text mode we concatenate the registry options *and* the DB
+  // catalogue so the picker is never empty — the registry alone gives
+  // ~10 useful behavioural overlays even before any DB seed has run.
   const availableSkills = useMemo(() => {
     if (modality === 'text') {
-      return dbSkillsToOptions(dbSkills.skills)
+      const registry = getSkillsForModality('text').map(s => ({
+        id: s.id,
+        label: s.label,
+        description: s.description,
+        group: s.group,
+      }))
+      const dbRows = dbSkillsToOptions(dbSkills.skills)
+      // De-dupe by id in case a DB row happens to share an id with the
+      // registry (we'd prefer the DB row's wording in that case since
+      // it's closer to what the user explicitly curated).
+      const seen = new Set<string>()
+      return [...dbRows, ...registry].filter(opt => {
+        if (seen.has(opt.id)) return false
+        seen.add(opt.id)
+        return true
+      })
     }
     return getSkillsForModality(modality as SkillModality)
       .map(s => ({ id: s.id, label: s.label, description: s.description, group: s.group }))
@@ -209,9 +248,16 @@ export default function TextPage() {
 
   const handleToggleSkill = (id: string) => {
     if (modality === 'text') {
-      // Round-trips through Supabase so the /skills page reflects the
-      // change (and vice-versa) without any extra wiring.
-      void dbSkills.toggle(id)
+      // Route to the right backing store: registry skills are local
+      // component state, DB skills round-trip through Supabase so
+      // changes are reflected on the /skills page (and vice-versa).
+      if (textRegistryIds.has(id)) {
+        setTextRegistrySkillIds(curr =>
+          curr.includes(id) ? curr.filter(x => x !== id) : [...curr, id],
+        )
+      } else {
+        void dbSkills.toggle(id)
+      }
       return
     }
     const current = activeSkillIds
@@ -222,6 +268,8 @@ export default function TextPage() {
   }
   const handleClearSkills = () => {
     if (modality === 'text') {
+      // Wipe BOTH layers so "Clear all" actually clears all.
+      setTextRegistrySkillIds([])
       void dbSkills.clearAll()
       return
     }
@@ -305,19 +353,24 @@ export default function TextPage() {
     setCurrentApiKey(key)
   }, [selectedTextModel.provider])
 
-  // Merge active library skills into the system prompt for every text
-  // request. Each DB skill carries its own full `system_prompt`, so we
-  // concatenate them under a clearly delimited header — that lets the
-  // model treat the user's own systemPrompt and the library skills as
-  // equally weighted instructions rather than nested asides.
+  // Merge BOTH skill layers into the system prompt for every text
+  // request:
+  //   • DB rows carry their own full multi-paragraph system_prompt, so
+  //     they go through `buildDbSkillsBlock` which concatenates them
+  //     under a clearly delimited header.
+  //   • Registry skills are short directives ("Be concise", "Cite
+  //     sources", …) — `buildSkillsInstructions` renders them as a
+  //     bulleted list. Putting them before the DB block keeps the
+  //     concise-style overlays visible in case they conflict with a
+  //     longer DB prompt — the model tends to honour the most
+  //     recently emphasised constraint.
   const composedSystemPrompt = useMemo(() => {
-    const activeRows = dbSkills.skills.filter(s => dbSkills.activeIds.includes(s.id))
-    const skillsBlock = buildDbSkillsBlock(activeRows)
-    if (!skillsBlock) return systemPrompt
-    return systemPrompt
-      ? `${systemPrompt.trim()}\n\n${skillsBlock}`
-      : skillsBlock
-  }, [systemPrompt, dbSkills.skills, dbSkills.activeIds])
+    const activeRows  = dbSkills.skills.filter(s => dbSkills.activeIds.includes(s.id))
+    const dbBlock     = buildDbSkillsBlock(activeRows)
+    const registryBlk = buildSkillsInstructions(textRegistrySkillIds)
+    const blocks = [systemPrompt.trim(), registryBlk, dbBlock].filter(Boolean)
+    return blocks.join('\n\n')
+  }, [systemPrompt, dbSkills.skills, dbSkills.activeIds, textRegistrySkillIds])
 
   /* ----- per-message model byline ------------------------------------
      Each assistant message must show the model that *actually* produced
@@ -717,9 +770,25 @@ export default function TextPage() {
       } else if (mediaKind === 'audio' && mediaUrl) {
         body = <audio src={mediaUrl} controls style={{ width: 320 }} />
       } else {
+        // Render assistant text as markdown, but route every fenced
+        // code block through `CodeArtifact` so the user can copy /
+        // download / preview anything the model generates (HTML pages,
+        // CSVs, JSON payloads, scripts, …). Inline `<code>` (single-
+        // backtick) is left alone — only display blocks become
+        // artifacts.
         body = (
           <div className="prose prose-sm max-w-none prose-p:my-2 prose-p:leading-[1.6]">
-            <ReactMarkdown>{String(m.content ?? '')}</ReactMarkdown>
+            <ReactMarkdown
+              components={{
+                code: CodeArtifact,
+                // Strip the default <pre> wrapper because CodeArtifact
+                // ships its own framed container; nesting another
+                // <pre> would double-pad and disable horizontal scroll.
+                pre: ({ children }) => <>{children}</>,
+              }}
+            >
+              {String(m.content ?? '')}
+            </ReactMarkdown>
           </div>
         )
       }

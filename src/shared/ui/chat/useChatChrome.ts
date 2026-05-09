@@ -47,12 +47,18 @@ const DEFAULT_USER: ChromeUser = {
 export function useChatChrome(active: ActiveRail) {
   const router = useRouter()
 
-  /* ---------- theme ---------- */
+  /* ---------- theme ----------
+     The pre-paint script in `layout.tsx` already applied the right
+     attributes to <html> before render, so this effect only needs to
+     mirror the stored value into local React state. `setStoredPalette`
+     is the single owner of every DOM mutation (data-theme, data-palette,
+     .dark class, localStorage), so we never end up with the React state,
+     CSS variables, and inline palette out of sync.
+  */
   const [theme, setTheme] = useState<PaletteKey>('pearl')
   useEffect(() => {
     const stored = getStoredPalette('pearl')
     setTheme(stored)
-    document.documentElement.dataset.palette = stored
   }, [])
   function handleThemeChange(next: PaletteKey) {
     setTheme(next)
