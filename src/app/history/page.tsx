@@ -5,7 +5,20 @@ import { useEffect, useMemo, useState } from 'react'
 import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
 import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
 import { PALETTES } from '@/shared/ui/chat/palettes'
-import { listChats, type Chat, type Modality } from '@/lib/chat-store'
+import {
+  // Switched from `listChats` → `listActiveChats` so the History view
+  // shows the same set of chats the sidebar shows: archived chats are
+  // hidden here and live on /archives. Without this, the Archive
+  // action below would soft-archive a chat but leave it visible in
+  // History, defeating the action.
+  listActiveChats,
+  archiveChat,
+  permanentlyDeleteChat,
+  renameChat,
+  type Chat,
+  type Modality,
+} from '@/lib/chat-store'
+import RowActionsMenu, { RowActionIcons } from '@/shared/ui/components/RowActionsMenu'
 
 const MODALITY_LABEL: Record<Modality, string> = {
   text:  'chat',
@@ -48,9 +61,14 @@ export default function HistoryPage() {
   const serif = `'Newsreader', Georgia, serif`
 
   const [chats, setChats] = useState<Chat[]>([])
+  // Inline rename state — keyed by chat id so only the row being
+  // edited shows an input. Same pattern the sidebar uses.
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+
   useEffect(() => {
-    setChats(listChats().sort((a, b) => b.createdAt - a.createdAt))
-    function refresh() { setChats(listChats().sort((a, b) => b.createdAt - a.createdAt)) }
+    const refresh = () => setChats(listActiveChats().sort((a, b) => b.createdAt - a.createdAt))
+    refresh()
     window.addEventListener('storage', refresh)
     window.addEventListener('clox-chats-changed', refresh)
     return () => {
@@ -58,6 +76,43 @@ export default function HistoryPage() {
       window.removeEventListener('clox-chats-changed', refresh)
     }
   }, [])
+
+  function handleArchive(id: string) {
+    archiveChat(id)
+    // archiveChat fires `clox-chats-changed` via saveChats; the
+    // listener above re-runs `listActiveChats()` so the row drops
+    // out of the view automatically. We still call setChats here
+    // for the rare case where the event listener hasn't attached
+    // yet (StrictMode double-mount, fast clicks during boot).
+    setChats(listActiveChats().sort((a, b) => b.createdAt - a.createdAt))
+  }
+
+  function handleDelete(id: string) {
+    if (!confirm('Delete this chat forever? This cannot be undone — the history bucket will be removed too.')) return
+    permanentlyDeleteChat(id)
+    setChats(listActiveChats().sort((a, b) => b.createdAt - a.createdAt))
+  }
+
+  function startRename(id: string, currentTitle: string) {
+    setEditingId(id)
+    setEditingTitle(currentTitle)
+  }
+
+  function commitRename() {
+    if (!editingId) return
+    const v = editingTitle.trim()
+    // Empty rename = cancel rather than wiping the title — saves the
+    // user from a misclick that erases all context for the chat.
+    if (v && v.length > 0) renameChat(editingId, v)
+    setEditingId(null)
+    setEditingTitle('')
+    setChats(listActiveChats().sort((a, b) => b.createdAt - a.createdAt))
+  }
+
+  function cancelRename() {
+    setEditingId(null)
+    setEditingTitle('')
+  }
 
   const [filter, setFilter] = useState<'all' | Modality>('all')
   const [query, setQuery] = useState('')
@@ -198,16 +253,69 @@ export default function HistoryPage() {
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: `1px solid ${p.hairlineSoft}` }}>
                   {items.map(c => {
                     const mod: Modality = c.modality ?? 'text'
+                    const isEditing = editingId === c.id
                     return (
-                      <li key={c.id} style={{ borderBottom: `1px solid ${p.hairlineSoft}` }}>
+                      <li
+                        key={c.id}
+                        // `position: relative` is required because
+                        // RowActionsMenu positions its popover absolutely
+                        // against the nearest positioned ancestor.
+                        // Padding-right reserves space for the menu so
+                        // it can sit alongside the timestamp without
+                        // overlapping the title text on narrow widths.
+                        style={{
+                          position: 'relative',
+                          borderBottom: `1px solid ${p.hairlineSoft}`,
+                        }}
+                        className="group"
+                      >
+                        {/* The action menu sits above the row button
+                            with z-index so its clicks don't bubble
+                            into `open(c)`. RowActionsMenu itself
+                            stops propagation on its trigger.
+
+                            The trigger fades in on row hover via the
+                            `.group:hover` selector + Tailwind's
+                            `group-hover` utilities so the row stays
+                            visually quiet at rest, matching the
+                            editorial Anthology palette. */}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            right: 8,
+                            zIndex: 2,
+                          }}
+                          className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+                        >
+                          <RowActionsMenu
+                            title="Chat actions"
+                            side="bottom-right"
+                            items={[
+                              { key: 'open',    label: 'Open',    icon: RowActionIcons.open,    onSelect: () => open(c) },
+                              { key: 'rename',  label: 'Rename',  icon: RowActionIcons.rename,  onSelect: () => startRename(c.id, c.title) },
+                              { key: 'archive', label: 'Archive', icon: RowActionIcons.archive, onSelect: () => handleArchive(c.id) },
+                              { key: 'delete',  label: 'Delete forever', tone: 'destructive' as const, icon: RowActionIcons.delete, onSelect: () => handleDelete(c.id) },
+                            ]}
+                          />
+                        </div>
+
                         <button
-                          onClick={() => open(c)}
+                          // While inline-editing the title we disable
+                          // the row's click-to-open so the user can
+                          // interact with the input without being
+                          // navigated away mid-edit.
+                          onClick={() => { if (!isEditing) open(c) }}
+                          // Reserve right padding for the absolutely
+                          // positioned menu so it never overlaps the
+                          // timestamp/title on narrow viewports.
                           style={{
                             display: 'grid', gridTemplateColumns: '92px 1fr auto',
                             gap: 18, alignItems: 'center',
-                            width: '100%', padding: '14px 8px',
+                            width: '100%', padding: '14px 40px 14px 8px',
                             background: 'transparent', border: 'none', textAlign: 'left',
-                            cursor: 'pointer', color: p.ink,
+                            cursor: isEditing ? 'default' : 'pointer', color: p.ink,
                             transition: 'background .15s',
                           }}
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = p.surfaceAlt }}
@@ -219,11 +327,35 @@ export default function HistoryPage() {
                           }}>{MODALITY_LABEL[mod]}</span>
 
                           <span style={{ minWidth: 0 }}>
-                            <span style={{
-                              display: 'block',
-                              fontFamily: serif, fontSize: 15, lineHeight: 1.4,
-                              overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-                            }}>{c.title || 'Untitled'}</span>
+                            {isEditing ? (
+                              <input
+                                autoFocus
+                                value={editingTitle}
+                                onChange={e => setEditingTitle(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter')   { e.preventDefault(); commitRename() }
+                                  if (e.key === 'Escape')  { e.preventDefault(); cancelRename() }
+                                }}
+                                onBlur={commitRename}
+                                // stopPropagation so clicks inside
+                                // the input don't trigger the row's
+                                // `onClick` (which would navigate).
+                                onClick={e => e.stopPropagation()}
+                                style={{
+                                  display: 'block', width: '100%',
+                                  fontFamily: serif, fontSize: 15, lineHeight: 1.4,
+                                  background: 'transparent',
+                                  border: 'none', borderBottom: `1px solid ${p.ink}`,
+                                  outline: 'none', color: p.ink, padding: '0 0 2px',
+                                }}
+                              />
+                            ) : (
+                              <span style={{
+                                display: 'block',
+                                fontFamily: serif, fontSize: 15, lineHeight: 1.4,
+                                overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                              }}>{c.title || 'Untitled'}</span>
+                            )}
                             <span style={{
                               display: 'block',
                               fontFamily: mono, fontSize: 10.5, color: p.inkMuted,
