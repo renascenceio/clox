@@ -28,6 +28,12 @@ export interface Chat {
   modality?: Modality
   folderId?: string
   projectId?: string
+  /** Soft-archive flag. Archived chats are hidden from the sidebar/recent
+   *  surfaces but remain accessible from the /archives page. Distinct from
+   *  the deleted-items bucket, which is for soft-deletion (and where "Delete
+   *  forever" lives). */
+  archived?: boolean
+  archivedAt?: number
 }
 
 const CHATS_KEY = 'clox_chats'
@@ -214,4 +220,108 @@ export function saveHistory<T>(modality: Modality, chatId: string, items: T[]): 
 export function deleteHistory(modality: Modality, chatId: string): void {
   if (typeof window === 'undefined') return
   localStorage.removeItem(historyKey(modality, chatId))
+}
+
+// ————————————————————————————————————————————————————————————————————————————
+// Archive / soft-delete
+//
+// Archive ≠ delete. Archive moves a chat / generation out of the active
+// surfaces (sidebar, recent, gallery default tab) and onto the /archives
+// page, where the user can restore or permanently delete. Soft-delete (the
+// `deleted-items` bucket touched by ChatSidebar) is a separate, narrower
+// concept and is being retired in favour of this archive flow.
+// ————————————————————————————————————————————————————————————————————————————
+
+export function archiveChat(id: string): void {
+  saveChats(
+    listChats().map(c =>
+      c.id === id ? { ...c, archived: true, archivedAt: Date.now() } : c,
+    ),
+  )
+}
+
+export function unarchiveChat(id: string): void {
+  saveChats(
+    listChats().map(c =>
+      c.id === id ? { ...c, archived: false, archivedAt: undefined } : c,
+    ),
+  )
+}
+
+/** Active chats — what sidebars and recent lists should show by default. */
+export function listActiveChats(): Chat[] {
+  return listChats().filter(c => !c.archived)
+}
+
+/** Archived chats — the /archives page reads from here. */
+export function listArchivedChats(): Chat[] {
+  return listChats().filter(c => c.archived)
+}
+
+/** Permanent removal — drops the chat record AND its history bucket. */
+export function permanentlyDeleteChat(id: string): void {
+  const chat = getChatById(id)
+  if (chat) deleteHistory(chat.modality ?? 'text', chat.id)
+  saveChats(listChats().filter(c => c.id !== id))
+}
+
+// ————————————————————————————————————————————————————————————————————————————
+// Per-generation flags
+//
+// Generations (image/video/audio results) live as plain objects inside each
+// chat's history array. We don't have a top-level generations table, so the
+// archive flag rides along on the history record under a dedicated key —
+// `_archived` — that doesn't collide with any provider's response shape.
+// ————————————————————————————————————————————————————————————————————————————
+
+export interface ArchivableGeneration {
+  id?: string
+  url?: string
+  /** When true, this generation is hidden from the gallery and surfaced on
+   *  the /archives page. */
+  _archived?: boolean
+  _archivedAt?: number
+}
+
+/** Flip a single generation's archive flag. Matches by `id` first, then by
+ *  `url` as a fallback for older items that pre-date stable ids. */
+export function setGenerationArchived(
+  modality: Modality,
+  chatId: string,
+  match: { id?: string; url?: string },
+  archived: boolean,
+): void {
+  const items = loadHistory<ArchivableGeneration>(modality, chatId)
+  let changed = false
+  const next = items.map(it => {
+    const matches = (match.id && it.id && it.id === match.id) ||
+                    (match.url && it.url && it.url === match.url)
+    if (!matches) return it
+    changed = true
+    return { ...it, _archived: archived, _archivedAt: archived ? Date.now() : undefined }
+  })
+  if (!changed) return
+  saveHistory(modality, chatId, next)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('clox-chats-changed'))
+  }
+}
+
+/** Permanent removal of a single generation. */
+export function permanentlyDeleteGeneration(
+  modality: Modality,
+  chatId: string,
+  match: { id?: string; url?: string },
+): void {
+  const items = loadHistory<ArchivableGeneration>(modality, chatId)
+  const next = items.filter(it => {
+    const matches = (match.id && it.id && it.id === match.id) ||
+                    (match.url && it.url && it.url === match.url)
+    return !matches
+  })
+  if (next.length === items.length) return
+  saveHistory(modality, chatId, next)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('clox-chats-changed'))
+  }
 }

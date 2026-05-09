@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import AppLayout from '@/shared/ui/layout/AppLayout'
 import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
+import RowActionsMenu, { RowActionIcons } from '@/shared/ui/components/RowActionsMenu'
 
 // ---------------------------------------------------------------------------
 // /projects — index of all projects the signed-in user owns or belongs to.
@@ -68,6 +69,49 @@ export default function ProjectsIndexPage() {
     if (filter === 'archived') return p.archived_at !== null
     return p.archived_at === null
   })
+
+  // Mutators used by the per-row three-dots menu. We optimistically update
+  // the local list and then reconcile with `load()` once the API confirms.
+  // Permission errors fall back to a refetch so the row's state never lies.
+  const archiveProject = useCallback(async (id: string) => {
+    setProjects(prev =>
+      prev?.map(p => p.id === id ? { ...p, archived_at: new Date().toISOString() } : p) ?? prev,
+    )
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ archived: true }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`)
+      window.dispatchEvent(new CustomEvent('clox-projects-changed'))
+    } catch (e) { setError((e as Error).message); load() }
+  }, [load])
+
+  const unarchiveProject = useCallback(async (id: string) => {
+    setProjects(prev =>
+      prev?.map(p => p.id === id ? { ...p, archived_at: null } : p) ?? prev,
+    )
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ archived: false }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`)
+      window.dispatchEvent(new CustomEvent('clox-projects-changed'))
+    } catch (e) { setError((e as Error).message); load() }
+  }, [load])
+
+  const deleteProject = useCallback(async (id: string) => {
+    if (!window.confirm('Permanently delete this project? Its chats stay; only the project record (members, budget, settings) is removed.')) return
+    setProjects(prev => prev?.filter(p => p.id !== id) ?? prev)
+    try {
+      const res = await fetch(`/api/projects/${id}?hard=1`, { method: 'DELETE' })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`)
+      window.dispatchEvent(new CustomEvent('clox-projects-changed'))
+    } catch (e) { setError((e as Error).message); load() }
+  }, [load])
 
   return (
     <AppLayout sidebar={<ChatSidebar />}>
@@ -158,7 +202,14 @@ export default function ProjectsIndexPage() {
           {filtered.length > 0 && (
             <div className="border-t border-hairline">
               {filtered.map((p, idx) => (
-                <ProjectRow key={p.id} project={p} idx={idx + 1} />
+                <ProjectRow
+                  key={p.id}
+                  project={p}
+                  idx={idx + 1}
+                  onArchive={() => archiveProject(p.id)}
+                  onUnarchive={() => unarchiveProject(p.id)}
+                  onDelete={() => deleteProject(p.id)}
+                />
               ))}
             </div>
           )}
@@ -181,19 +232,55 @@ export default function ProjectsIndexPage() {
 // Single project row in the index.
 // ---------------------------------------------------------------------------
 
-function ProjectRow({ project: p, idx }: { project: ProjectRow; idx: number }) {
+function ProjectRow({
+  project: p,
+  idx,
+  onArchive,
+  onUnarchive,
+  onDelete,
+}: {
+  project: ProjectRow
+  idx: number
+  onArchive?: () => void
+  onUnarchive?: () => void
+  onDelete?: () => void
+}) {
   const pct = p.credit_budget_usd && p.credit_budget_usd > 0
     ? Math.min(100, (p.credit_spent_usd / p.credit_budget_usd) * 100)
     : null
   const overBudget = pct !== null && pct >= 100
   const nearBudget = pct !== null && pct >= 90 && !overBudget
+  const archived = !!p.archived_at
+  const canMutate = p.my_role === 'owner' || p.my_role === 'admin'
+  const canDelete = p.my_role === 'owner'
 
   return (
-    <Link
-      href={`/projects/${p.id}`}
-      className="group block border-b border-hairline hover:bg-rail-soft/40 transition-colors"
-    >
-      <div className="grid grid-cols-[40px_1fr_auto] gap-6 px-2 py-5 items-center">
+    <div className="relative border-b border-hairline group hover:bg-rail-soft/40 transition-colors">
+      {/* Menu sits absolutely above the link so its clicks don't navigate. */}
+      {canMutate && (
+        <div className="absolute top-1/2 -translate-y-1/2 right-2 z-10">
+          <RowActionsMenu
+            title="Project actions"
+            side="bottom-right"
+            items={[
+              { key: 'open', label: 'Open', icon: RowActionIcons.open, onSelect: () => { window.location.href = `/projects/${p.id}` } },
+              archived
+                ? { key: 'unarchive', label: 'Unarchive', icon: RowActionIcons.unarchive, onSelect: () => onUnarchive?.() }
+                : { key: 'archive',   label: 'Archive',   icon: RowActionIcons.archive,   onSelect: () => onArchive?.() },
+              ...(canDelete ? [{
+                key: 'delete', label: 'Delete forever',
+                icon: RowActionIcons.delete, tone: 'destructive' as const,
+                onSelect: () => onDelete?.(),
+              }] : []),
+            ]}
+          />
+        </div>
+      )}
+      <Link
+        href={`/projects/${p.id}`}
+        className="block"
+      >
+      <div className={`grid grid-cols-[40px_1fr_auto] gap-6 px-2 py-5 items-center ${canMutate ? 'pr-12' : ''}`}>
         {/* index number */}
         <div className="font-mono text-[10.5px] tracking-[0.08em] text-ink-muted tabular-nums">
           {String(idx).padStart(2, '0')}
@@ -273,7 +360,8 @@ function ProjectRow({ project: p, idx }: { project: ProjectRow; idx: number }) {
           )}
         </div>
       </div>
-    </Link>
+      </Link>
+    </div>
   )
 }
 

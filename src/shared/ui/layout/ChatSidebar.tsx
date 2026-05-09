@@ -8,7 +8,9 @@ import {
   Modality,
   listChats as listChatsFromStore,
   saveChats as saveChatsToStore,
+  archiveChat as archiveChatInStore,
 } from '@/lib/chat-store'
+import RowActionsMenu, { RowActionIcons } from '@/shared/ui/components/RowActionsMenu'
 
 /** Lightweight shape of a DB project as it shows up in the sidebar list. */
 interface DbProject {
@@ -50,6 +52,36 @@ interface ChatSidebarProps {
 
 const FOLDERS_KEY = 'clox_folders'
 
+/**
+ * DB projects cache — module-level + sessionStorage. The sidebar mounts on
+ * every navigation, but `/api/projects` only changes when the user creates,
+ * archives, or accepts an invite. We hold the result and refresh once per
+ * session (and on the explicit `clox-projects-changed` / `clox-chats-synced`
+ * events). This is the second-largest source of nav-time latency after the
+ * profile fetch in AppLayout.
+ */
+const DB_PROJECTS_CACHE_KEY = 'clox.cache.dbProjects.v1'
+let dbProjectsMemo: DbProject[] | null = null
+let dbProjectsFetchedThisSession = false
+
+function readCachedDbProjects(): DbProject[] | null {
+  if (dbProjectsMemo) return dbProjectsMemo
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(DB_PROJECTS_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as DbProject[]
+    dbProjectsMemo = parsed
+    return parsed
+  } catch { return null }
+}
+function writeCachedDbProjects(list: DbProject[]) {
+  dbProjectsMemo = list
+  if (typeof window !== 'undefined') {
+    try { window.sessionStorage.setItem(DB_PROJECTS_CACHE_KEY, JSON.stringify(list)) } catch { /* fine */ }
+  }
+}
+
 export default function ChatSidebar({ activeChatId, onChatSelect, modality }: ChatSidebarProps) {
   // The search input + new-menu now live in AppLayout's left rail. Search state
   // is intentionally kept (always '' here) so the existing filter pipeline
@@ -69,22 +101,29 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
   })
 
   // DB projects (canonical source for shared/multi-device project membership).
-  // Populated from /api/projects on mount and refreshed when other surfaces
-  // dispatch `clox-projects-changed`.
-  const [dbProjects, setDbProjects] = useState<DbProject[]>([])
+  // Initial state hydrates from the cache so the rail draws projects on the
+  // very first render. We then refetch only when (a) it's the first time this
+  // session, or (b) something else explicitly tells us the list changed.
+  const [dbProjects, setDbProjects] = useState<DbProject[]>(
+    () => (readCachedDbProjects() ?? []).filter(p => !p.archived_at),
+  )
   const loadDbProjects = useCallback(async () => {
     try {
       const res = await fetch('/api/projects?include=archived', { cache: 'no-store' })
       if (!res.ok) return
       const body = await res.json().catch(() => ({}))
       const list = (body.projects ?? []) as DbProject[]
-      // Show only active projects in the sidebar; archived ones are accessible
-      // from the /projects index.
+      writeCachedDbProjects(list)
       setDbProjects(list.filter(p => !p.archived_at))
-    } catch { /* offline — leave the list empty, /projects still works */ }
+    } catch { /* offline — leave the cached value in place */ }
   }, [])
   useEffect(() => {
-    void loadDbProjects()
+    if (!dbProjectsFetchedThisSession) {
+      dbProjectsFetchedThisSession = true
+      void loadDbProjects()
+    }
+    // Imperative refresh hooks — these intentionally bypass the
+    // once-per-session guard because the caller has signalled real change.
     const refresh = () => { void loadDbProjects() }
     window.addEventListener('clox-projects-changed', refresh)
     window.addEventListener('clox-chats-synced', refresh)
@@ -243,11 +282,19 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
   const getChatsByProject = (projectId: string) => 
     chats.filter(c => c.projectId === projectId && c.type === 'chat')
 
+  // Hide archived chats from the rail entirely — they live on /archives.
+  const visibleChats = chats.filter(c => !c.archived)
+
   // When `modality` is provided, only show chats belonging to that workspace.
   // Legacy chats with no stored modality are treated as 'text' (see chat-store).
   const chatsForModality = modality
-    ? chats.filter(c => (c.modality ?? 'text') === modality)
-    : chats
+    ? visibleChats.filter(c => (c.modality ?? 'text') === modality)
+    : visibleChats
+
+  const handleArchiveChat = (id: string) => {
+    archiveChatInStore(id)
+    setChats(listChatsFromStore())
+  }
 
   // Filter chats by search - exclude chats in folders or projects
   const filteredChats = chatsForModality.filter(c =>
@@ -298,6 +345,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                     onSaveEdit={() => handleRename(chat.id, editingTitle, 'chat')}
                     onCancelEdit={() => setEditingId(null)}
                     onDelete={() => handleDeleteChat(chat.id)}
+                    onArchive={() => handleArchiveChat(chat.id)}
                     onClick={() => onChatSelect?.(chat.id)}
                     projects={[
                       ...dbProjects.map(p => ({ id: p.id, title: p.title })),
@@ -411,6 +459,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                             onSaveEdit={() => handleRename(chat.id, editingTitle, 'chat')}
                             onCancelEdit={() => setEditingId(null)}
                             onDelete={() => handleDeleteChat(chat.id)}
+                            onArchive={() => handleArchiveChat(chat.id)}
                             onClick={() => onChatSelect?.(chat.id)}
                           />
                         ))}
@@ -486,6 +535,7 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
                             onSaveEdit={() => handleRename(chat.id, editingTitle, 'chat')}
                             onCancelEdit={() => setEditingId(null)}
                             onDelete={() => handleDeleteChat(chat.id)}
+                            onArchive={() => handleArchiveChat(chat.id)}
                             onClick={() => onChatSelect?.(chat.id)}
                           />
                         ))}
@@ -622,6 +672,9 @@ interface SidebarItemProps {
   onSaveEdit?: () => void
   onCancelEdit?: () => void
   onDelete?: () => void
+  /** When provided, the row gets an "Archive" menu entry. Archive is the
+   *  preferred way to clear clutter — Delete is destructive. */
+  onArchive?: () => void
   onClick?: () => void
   projects?: { id: string; title: string }[]
   onMoveToProject?: (projectId: string | undefined) => void
@@ -639,6 +692,7 @@ export function SidebarItem({
   onSaveEdit,
   onCancelEdit,
   onDelete,
+  onArchive,
   onClick,
   projects,
   onMoveToProject,
@@ -714,24 +768,18 @@ export function SidebarItem({
               )}
             </div>
           )}
-          <button 
-            onClick={(e) => { e.stopPropagation(); onStartEdit?.(); }}
-            className="w-5 h-5 rounded-md hover:bg-surface-tertiary dark:hover:bg-surface flex items-center justify-center text-xs text-label-secondary transition-colors"
-            title="Rename"
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-            </svg>
-          </button>
-          <button 
-            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-            className="w-5 h-5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 flex items-center justify-center text-xs text-label-secondary hover:text-red-500 transition-colors"
-            title="Delete"
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
+          <RowActionsMenu
+            title="Row actions"
+            side="bottom-right"
+            items={[
+              { key: 'rename', label: 'Rename',  icon: RowActionIcons.rename,  onSelect: () => onStartEdit?.() },
+              ...(onArchive ? [{
+                key: 'archive', label: 'Archive', icon: RowActionIcons.archive,
+                onSelect: () => onArchive(),
+              }] : []),
+              { key: 'delete', label: 'Delete', tone: 'destructive' as const, icon: RowActionIcons.delete, onSelect: () => onDelete?.() },
+            ]}
+          />
         </div>
       )}
       {active && (
