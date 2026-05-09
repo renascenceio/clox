@@ -125,6 +125,36 @@ async function generateWithGeminiImage(
   })
   if (!res.ok) {
     const errText = await res.text()
+    // Reshape Google's verbose JSON quota error into something a user can
+    // actually act on. The free tier is `limit: 0` for the image preview
+    // models, so a 429 here almost always means "your project doesn't
+    // have paid access to this preview model" rather than rate limiting
+    // in the usual sense.
+    if (res.status === 429) {
+      let retryHint = ''
+      try {
+        const json = JSON.parse(errText)
+        const retry = json?.error?.details?.find(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (d: any) => d?.['@type']?.includes?.('RetryInfo'),
+        )?.retryDelay
+        if (retry) retryHint = ` (retry in ${retry})`
+      } catch { /* ignore */ }
+      throw new Error(
+        `Google rate-limited ${modelId}${retryHint}. ` +
+        `The Gemini image preview models (Nano Banana 2 / Pro) require a paid Google AI Studio plan — ` +
+        `free tier is limit-0 for those. Either enable billing at aistudio.google.com/app/billing, ` +
+        `or pick a different model: Nano Banana (gemini-2.5-flash-image) on the same key, ` +
+        `or DALL-E 3 / Stable Diffusion 3.5 / FLUX with their own key.`,
+      )
+    }
+    if (res.status === 403) {
+      throw new Error(
+        `Google denied access to ${modelId} (403). Your API key likely doesn't have permission for this model. ` +
+        `Try Nano Banana (gemini-2.5-flash-image) instead, or check that your Google Cloud project has the ` +
+        `Generative Language API enabled.`,
+      )
+    }
     throw new Error(`Gemini image API ${res.status}: ${errText}`)
   }
   const json = await res.json()

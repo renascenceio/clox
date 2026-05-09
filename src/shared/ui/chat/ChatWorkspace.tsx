@@ -64,6 +64,11 @@ export interface ModelOption {
   label: string
   tag: string
   short: string
+  /** True when the user hasn't configured this model's provider yet
+   *  (no env var, no AI Gateway, no local key). The picker still shows
+   *  the model so users can discover what's available, but renders a
+   *  muted "needs api key" affordance and a Configure shortcut. */
+  disconnected?: boolean
 }
 
 export interface ModeOption {
@@ -1477,21 +1482,38 @@ function ModelMenu({ p, mono, serif, models, model, setModel, left = 12 }: {
       padding: '6px 0', zIndex: 10, maxHeight: 320, overflow: 'auto',
     }}>
       <div style={{ padding: '8px 14px 4px', fontFamily: mono, fontSize: 9.5, letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted }}>select model</div>
-      {models.map(m => (
-        <button key={m.id} onClick={() => setModel(m.id)} style={{
-          display: 'block', width: '100%', textAlign: 'left',
-          padding: '8px 14px',
-          background: model === m.id ? p.surfaceAlt : 'transparent',
-          border: 'none', cursor: 'pointer', color: p.ink,
-          fontFamily: SANS_STACK,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-            <span style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 14 }}>{m.label}</span>
-            {model === m.id && <span style={{ fontFamily: mono, fontSize: 10, color: p.accent }}>active</span>}
-          </div>
-          <div style={{ fontFamily: mono, fontSize: 10.5, color: p.inkMuted, marginTop: 2, letterSpacing: '0.04em' }}>{m.tag}</div>
-        </button>
-      ))}
+      {models.map(m => {
+        // Disconnected models stay clickable so users can read the
+        // "needs api key" affordance and pick one anyway — submitting
+        // surfaces the route's missing-key error which directs them to
+        // Super Admin → API Keys. We mute the label so the connected
+        // ones read as the obvious default.
+        const muted = Boolean(m.disconnected)
+        return (
+          <button key={m.id} onClick={() => setModel(m.id)} style={{
+            display: 'block', width: '100%', textAlign: 'left',
+            padding: '8px 14px',
+            background: model === m.id ? p.surfaceAlt : 'transparent',
+            border: 'none', cursor: 'pointer',
+            color: muted ? p.inkMuted : p.ink,
+            fontFamily: SANS_STACK,
+            opacity: muted ? 0.78 : 1,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+              <span style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 14 }}>{m.label}</span>
+              {model === m.id && <span style={{ fontFamily: mono, fontSize: 10, color: p.accent }}>active</span>}
+            </div>
+            <div style={{
+              fontFamily: mono, fontSize: 10.5,
+              // Tag colour leans on the same accent for "needs api key"
+              // so the call-to-action reads in two beats: spot the row,
+              // see why it's muted.
+              color: muted ? p.accent : p.inkMuted,
+              marginTop: 2, letterSpacing: '0.04em',
+            }}>{m.tag}</div>
+          </button>
+        )
+      })}
     </div>
   )
 }

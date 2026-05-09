@@ -259,23 +259,39 @@ export default function TextPage() {
     localStorage.setItem(`chat-settings-${activeChatId}`, JSON.stringify(settings))
   }, [activeChatId, selectedModel.id, systemPrompt, temperature, maxTokens])
 
-  // Keep the per-modality selection valid against what the admin has
-  // enabled. Each modality has its own registry, so we run four guards.
+  // Keep the per-modality selection sensible against what's actually
+  // configured. `useAvailableModels` now returns all models with a
+  // `connected` flag, so we default to the first *connected* model
+  // whenever the current pick is disconnected — that way users land
+  // on a model that will work, while still being able to manually
+  // pick a disconnected one and discover the "needs api key" hint.
   useEffect(() => {
     if (enabledTextModels.length === 0) return
-    if (!enabledTextModels.find(m => m.id === selectedTextModel.id)) setSelectedTextModel(enabledTextModels[0])
+    const current = enabledTextModels.find(m => m.id === selectedTextModel.id)
+    if (current?.connected) return
+    const firstConnected = enabledTextModels.find(m => m.connected)
+    if (firstConnected) setSelectedTextModel(firstConnected)
   }, [enabledTextModels, selectedTextModel.id])
   useEffect(() => {
     if (enabledImageModels.length === 0) return
-    if (!enabledImageModels.find(m => m.id === selectedImageModel.id)) setSelectedImageModel(enabledImageModels[0])
+    const current = enabledImageModels.find(m => m.id === selectedImageModel.id)
+    if (current?.connected) return
+    const firstConnected = enabledImageModels.find(m => m.connected)
+    if (firstConnected) setSelectedImageModel(firstConnected)
   }, [enabledImageModels, selectedImageModel.id])
   useEffect(() => {
     if (enabledVideoModels.length === 0) return
-    if (!enabledVideoModels.find(m => m.id === selectedVideoModel.id)) setSelectedVideoModel(enabledVideoModels[0])
+    const current = enabledVideoModels.find(m => m.id === selectedVideoModel.id)
+    if (current?.connected) return
+    const firstConnected = enabledVideoModels.find(m => m.connected)
+    if (firstConnected) setSelectedVideoModel(firstConnected)
   }, [enabledVideoModels, selectedVideoModel.id])
   useEffect(() => {
     if (enabledAudioModels.length === 0) return
-    if (!enabledAudioModels.find(m => m.id === selectedAudioModel.id)) setSelectedAudioModel(enabledAudioModels[0])
+    const current = enabledAudioModels.find(m => m.id === selectedAudioModel.id)
+    if (current?.connected) return
+    const firstConnected = enabledAudioModels.find(m => m.connected)
+    if (firstConnected) setSelectedAudioModel(firstConnected)
   }, [enabledAudioModels, selectedAudioModel.id])
 
   /* ----- chat hook (text-only path) --------------------------------
@@ -553,12 +569,21 @@ export default function TextPage() {
     modality === 'audio' ? enabledAudioModels : enabledTextModels
 
   const models: ModelOption[] = useMemo(
-    () => activeRegistry.map(m => ({
-      id: m.id,
-      label: `${m.brandName ?? m.provider} ${m.version || m.name}`,
-      tag: modelTagFor(m.provider, m.brandName),
-      short: shortName(m.version, m.name),
-    })),
+    () => activeRegistry.map(m => {
+      // `useAvailableModels` now returns every model with a `connected`
+      // flag so the picker can show provider models the user hasn't
+      // configured yet (e.g. Moonshot/Kling/Kimi) instead of hiding them
+      // outright. Disconnected models swap their provider tag for a
+      // "needs api key" affordance the menu renders in muted style.
+      const connected = (m as typeof m & { connected?: boolean }).connected ?? true
+      return {
+        id: m.id,
+        label: `${m.brandName ?? m.provider} ${m.version || m.name}`,
+        tag: connected ? modelTagFor(m.provider, m.brandName) : 'needs api key',
+        short: shortName(m.version, m.name),
+        disconnected: !connected,
+      }
+    }),
     [activeRegistry],
   )
 
