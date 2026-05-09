@@ -72,6 +72,17 @@ export interface ModeOption {
   hint: string
 }
 
+/** A user-selectable skill — behavioural modifier stacked on top of the
+ *  model's normal behaviour. Multiple skills can be active at once. The
+ *  registry that produces these lives at `lib/skills-registry.ts`. */
+export interface SkillOption {
+  id: string
+  label: string
+  description: string
+  /** Optional grouping for the picker (e.g. "tone", "reasoning"). */
+  group?: string
+}
+
 export interface CommandPaletteGroup {
   label: string
   items: Array<{
@@ -157,6 +168,15 @@ export interface ChatWorkspaceProps {
   modes: ModeOption[]
   modeId: string
   onChangeMode: (id: string) => void
+
+  /** Skills available for the current modality. Rendered as a multi-select
+   *  chip in the composer, immediately after the model chip. The page is
+   *  responsible for merging the selected skill instructions into the
+   *  outgoing system prompt / generation prompt before send. */
+  skills?: SkillOption[]
+  selectedSkillIds?: string[]
+  onToggleSkill?: (id: string) => void
+  onClearSkills?: () => void
 
   // transcript
   transcript: TranscriptMessage[]
@@ -245,6 +265,10 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     modes,
     modeId,
     onChangeMode,
+    skills,
+    selectedSkillIds,
+    onToggleSkill,
+    onClearSkills,
     transcript,
     isStreaming,
     inputValue,
@@ -278,7 +302,11 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
   const mono = MONO_STACK
   const serif = SERIF_STACK
 
-  const [openMenu, setOpenMenu] = useState<'mode' | 'model' | null>(null)
+  // 'skills' is included so the multi-select picker shares the same
+  // mutual-exclusion model as the mode/model dropdowns. Picking a skill
+  // does not auto-close (it's multi-select); clicking the chip again or
+  // any other chip closes it.
+  const [openMenu, setOpenMenu] = useState<'mode' | 'model' | 'skills' | null>(null)
   const [configOpen, setConfigOpen] = useState(initialConfigOpen)
   const [cmdkOpen, setCmdkOpen] = useState(initialCmdkOpen)
 
@@ -392,6 +420,10 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
             setModel={onChangeModel}
             mode={modeId}
             setMode={onChangeMode}
+            skills={skills}
+            selectedSkillIds={selectedSkillIds}
+            onToggleSkill={onToggleSkill}
+            onClearSkills={onClearSkills}
             openMenu={openMenu}
             setOpenMenu={setOpenMenu}
             inputValue={inputValue}
@@ -414,6 +446,10 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
             setModel={onChangeModel}
             mode={modeId}
             setMode={onChangeMode}
+            skills={skills}
+            selectedSkillIds={selectedSkillIds}
+            onToggleSkill={onToggleSkill}
+            onClearSkills={onClearSkills}
             inputValue={inputValue}
             onInputChange={onInputChange}
             onSend={onSend}
@@ -1094,7 +1130,9 @@ function AiMsg({
    ===================================================================== */
 
 function ComposerChip({
-  p, mono, serif, models, modes, model, setModel, mode, setMode, openMenu, setOpenMenu,
+  p, mono, serif, models, modes, model, setModel, mode, setMode,
+  skills, selectedSkillIds, onToggleSkill, onClearSkills,
+  openMenu, setOpenMenu,
   inputValue, onInputChange, onSend, toolsCount, tokenEstimate,
   attachments, onAttach, onRemoveAttachment,
 }: {
@@ -1107,8 +1145,12 @@ function ComposerChip({
   setModel: (id: string) => void
   mode: string
   setMode: (id: string) => void
-  openMenu: 'mode' | 'model' | null
-  setOpenMenu: (v: 'mode' | 'model' | null) => void
+  skills?: SkillOption[]
+  selectedSkillIds?: string[]
+  onToggleSkill?: (id: string) => void
+  onClearSkills?: () => void
+  openMenu: 'mode' | 'model' | 'skills' | null
+  setOpenMenu: (v: 'mode' | 'model' | 'skills' | null) => void
   inputValue: string
   onInputChange: (v: string) => void
   onSend: () => void
@@ -1170,6 +1212,27 @@ function ComposerChip({
               <span style={{ color: p.ink }}>{modelLabel}</span>
               <span style={{ marginLeft: 4, display: 'inline-flex' }}>{I.caret}</span>
             </Chip>
+            {/* Skills — multi-select. Sits immediately after the model chip
+                because skills are a per-request behavioural overlay on top
+                of whichever model is active. The label shows the count when
+                ≥1 are selected, otherwise reads "none" so the chip never
+                vanishes (consistency with mode/model). */}
+            {skills && skills.length > 0 && (
+              <Chip
+                p={p}
+                mono={mono}
+                active={openMenu === 'skills' || (selectedSkillIds?.length ?? 0) > 0}
+                onClick={() => setOpenMenu(openMenu === 'skills' ? null : 'skills')}
+              >
+                <span style={{ color: p.inkMuted, marginRight: 6 }}>skills</span>
+                <span style={{ color: p.ink }}>
+                  {(selectedSkillIds?.length ?? 0) === 0
+                    ? 'none'
+                    : `${selectedSkillIds!.length} active`}
+                </span>
+                <span style={{ marginLeft: 4, display: 'inline-flex' }}>{I.caret}</span>
+              </Chip>
+            )}
             <Chip p={p} mono={mono}>
               <span style={{ color: p.inkMuted, marginRight: 6 }}>tools</span>
               <span style={{ color: p.ink }}>{toolsCount}</span>
@@ -1258,6 +1321,19 @@ function ComposerChip({
           )}
           {openMenu === 'mode' && (
             <ModeMenu p={p} mono={mono} modes={modes} mode={mode} setMode={id => { setMode(id); setOpenMenu(null) }} left={12} />
+          )}
+          {openMenu === 'skills' && skills && (
+            <SkillsMenu
+              p={p}
+              mono={mono}
+              serif={serif}
+              skills={skills}
+              selectedSkillIds={selectedSkillIds ?? []}
+              onToggleSkill={id => onToggleSkill?.(id)}
+              onClearSkills={() => onClearSkills?.()}
+              onClose={() => setOpenMenu(null)}
+              left={130}
+            />
           )}
 
           {/* Slash palette — opens when the user types `/` as the first
@@ -1451,12 +1527,166 @@ function ModeMenu({ p, mono, modes, mode, setMode, left = 12 }: {
   )
 }
 
+/* ---------------------------------------------------------------------
+   SkillsMenu — multi-select dropdown for the Skills chip.
+   Skills are grouped by `group` for scanability. Clicking a row toggles
+   its membership; the menu stays open. Click-outside / Escape closes.
+   --------------------------------------------------------------------- */
+
+function SkillsMenu({
+  p, mono, serif, skills, selectedSkillIds, onToggleSkill, onClearSkills, onClose, left = 12,
+}: {
+  p: Palette; mono: string; serif: string
+  skills: SkillOption[]
+  selectedSkillIds: string[]
+  onToggleSkill: (id: string) => void
+  onClearSkills: () => void
+  onClose: () => void
+  left?: number
+}) {
+  // Close on Escape; click-outside is handled via a backdrop click target
+  // to keep the implementation self-contained and avoid stomping on the
+  // chip toggle's own click handler.
+  useEffect(() => {
+    function key(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [onClose])
+
+  // Stable group order so the menu doesn't shuffle as the user scrolls
+  // through skills. Unknown / missing groups fall under "other".
+  const groupOrder = ['reasoning', 'tone', 'format', 'craft', 'media', 'other'] as const
+  const grouped = useMemo(() => {
+    const map = new Map<string, SkillOption[]>()
+    for (const s of skills) {
+      const g = s.group ?? 'other'
+      const arr = map.get(g) ?? []
+      arr.push(s)
+      map.set(g, arr)
+    }
+    return groupOrder
+      .map(g => ({ group: g, items: map.get(g) ?? [] }))
+      .filter(g => g.items.length > 0)
+  }, [skills])
+
+  const selected = new Set(selectedSkillIds)
+
+  return (
+    <>
+      {/* Click-outside backdrop. Transparent and behind the menu but in
+          front of the rest of the composer so the user can dismiss by
+          clicking anywhere off the panel. */}
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 9, background: 'transparent',
+        }}
+      />
+      <div
+        role="listbox"
+        aria-multiselectable="true"
+        style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', left,
+          width: 320, maxHeight: 400, overflow: 'auto',
+          background: p.surface,
+          border: `1px solid ${p.hairline}`, borderRadius: 3,
+          boxShadow: `0 12px 40px ${p.bg === '#14130E' ? 'rgba(0,0,0,.45)' : 'rgba(22,20,16,.10)'}`,
+          padding: '6px 0', zIndex: 10,
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 14px 6px',
+        }}>
+          <span style={{
+            fontFamily: mono, fontSize: 9.5, letterSpacing: '0.18em',
+            textTransform: 'uppercase', color: p.inkMuted,
+          }}>
+            skills · {selected.size} active
+          </span>
+          {selected.size > 0 && (
+            <button
+              onClick={onClearSkills}
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                fontFamily: mono, fontSize: 10, letterSpacing: '0.06em',
+                color: p.inkMuted, textTransform: 'uppercase', padding: 0,
+              }}
+            >clear</button>
+          )}
+        </div>
+
+        {grouped.map(({ group, items }) => (
+          <div key={group}>
+            <div style={{
+              padding: '6px 14px 2px',
+              fontFamily: mono, fontSize: 9, letterSpacing: '0.18em',
+              textTransform: 'uppercase', color: p.inkMuted, opacity: 0.7,
+            }}>{group}</div>
+            {items.map(s => {
+              const on = selected.has(s.id)
+              return (
+                <button
+                  key={s.id}
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => onToggleSkill(s.id)}
+                  style={{
+                    display: 'flex', width: '100%', textAlign: 'left',
+                    padding: '8px 14px', gap: 10, alignItems: 'flex-start',
+                    background: on ? p.surfaceAlt : 'transparent',
+                    border: 'none', cursor: 'pointer', color: p.ink,
+                    fontFamily: SANS_STACK,
+                  }}
+                >
+                  {/* Custom checkbox — square hairline tick to match the
+                      editorial aesthetic. Filled when active. */}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      flex: '0 0 auto',
+                      width: 13, height: 13, marginTop: 2,
+                      border: `1px solid ${on ? p.ink : p.hairline}`,
+                      background: on ? p.ink : 'transparent',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: 1,
+                    }}
+                  >
+                    {on && (
+                      <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                        <path d="M1 4.5L3.5 7L8 1.5" stroke={p.bg} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8,
+                    }}>
+                      <span style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 13.5 }}>{s.label}</span>
+                      {on && <span style={{ fontFamily: mono, fontSize: 9.5, color: p.accent, letterSpacing: '0.06em' }}>on</span>}
+                    </div>
+                    <div style={{
+                      fontFamily: mono, fontSize: 10.5, color: p.inkMuted,
+                      marginTop: 2, letterSpacing: '0.02em', lineHeight: 1.45,
+                    }}>{s.description}</div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
 /* =====================================================================
    Composer · variant B: slash composer
    ===================================================================== */
 
 function ComposerSlash({
   p, mono, serif, models, modes, model, setModel, mode, setMode,
+  skills, selectedSkillIds, onToggleSkill, onClearSkills,
   inputValue, onInputChange, onSend, tokenEstimate, initialPaletteOpen,
   attachments, onAttach, onRemoveAttachment,
 }: {
@@ -1464,6 +1694,10 @@ function ComposerSlash({
   models: ModelOption[]; modes: ModeOption[]
   model: string; setModel: (id: string) => void
   mode: string; setMode: (id: string) => void
+  skills?: SkillOption[]
+  selectedSkillIds?: string[]
+  onToggleSkill?: (id: string) => void
+  onClearSkills?: () => void
   inputValue: string; onInputChange: (v: string) => void; onSend: () => void
   tokenEstimate?: { tokens: number; cost: string } | null
   initialPaletteOpen?: boolean
@@ -1471,6 +1705,11 @@ function ComposerSlash({
   onAttach?: (files: FileList) => void
   onRemoveAttachment?: (id: string) => void
 }) {
+  // The slash composer surfaces skills via a small inline pill in the
+  // top status line + a section in the slash palette. We intentionally
+  // don't crowd the bottom action row with another button — the chip
+  // composer is the primary editing surface for skills.
+  const [showSkillsMenu, setShowSkillsMenu] = useState(false)
   const [showPalette, setShowPalette] = useState(initialPaletteOpen ?? false)
   const taRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -1501,9 +1740,40 @@ function ComposerSlash({
           fontFamily: mono, fontSize: 10.5, color: p.inkMuted, letterSpacing: '0.06em',
           marginBottom: 8, padding: '0 4px',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
             <span style={{ color: p.ink }}>{modeLabel}</span><span>·</span>
             <span style={{ color: p.ink }}>{modelLabel}</span><span>·</span>
+            {skills && skills.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowSkillsMenu(v => !v)}
+                  style={{
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    fontFamily: mono, fontSize: 10.5, letterSpacing: '0.06em',
+                    color: (selectedSkillIds?.length ?? 0) > 0 ? p.ink : p.inkMuted,
+                    padding: 0, display: 'inline-flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  {(selectedSkillIds?.length ?? 0) === 0
+                    ? '0 skills'
+                    : `${selectedSkillIds!.length} skill${selectedSkillIds!.length === 1 ? '' : 's'}`}
+                  <span style={{ display: 'inline-flex' }}>{I.caret}</span>
+                </button>
+                <span>·</span>
+                {showSkillsMenu && (
+                  <SkillsMenu
+                    p={p} mono={mono} serif={serif}
+                    skills={skills}
+                    selectedSkillIds={selectedSkillIds ?? []}
+                    onToggleSkill={id => onToggleSkill?.(id)}
+                    onClearSkills={() => onClearSkills?.()}
+                    onClose={() => setShowSkillsMenu(false)}
+                    left={0}
+                  />
+                )}
+              </>
+            )}
             <span>{0} tools</span>
           </div>
           <span>type&nbsp;<kbd style={kbdStyle(p, mono)}>/</kbd>&nbsp;to change</span>

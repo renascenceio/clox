@@ -99,8 +99,9 @@ export default function HistoryPage() {
   function open(c: Chat) {
     const mod: Modality = c.modality ?? 'text'
     if (typeof window !== 'undefined') localStorage.setItem(`activeChatId:${mod}`, c.id)
-    const route = mod === 'text' ? '/text' : mod === 'image' ? '/image' : mod === 'video' ? '/video' : '/audio'
-    chrome.router.push(route)
+    // Every modality lives on /text now; differ only by the `mode` query.
+    const mode = mod === 'text' ? 'chat' : mod === 'audio' ? 'voice' : mod
+    chrome.router.push(`/text?mode=${mode}`)
   }
 
   return (

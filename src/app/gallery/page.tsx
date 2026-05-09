@@ -154,7 +154,10 @@ export default function GalleryPage() {
     if (typeof window !== 'undefined') {
       localStorage.setItem(`activeChatId:${it.kind}`, it.chatId)
     }
-    chrome.router.push(it.kind === 'image' ? '/image' : it.kind === 'video' ? '/video' : '/audio')
+    // The /image, /video, /audio routes are now thin server-side redirects
+    // to /text?mode=…; route there directly so the user gets a single hop.
+    const mode = it.kind === 'image' ? 'image' : it.kind === 'video' ? 'video' : 'voice'
+    chrome.router.push(`/text?mode=${mode}`)
   }
   function archiveItem(it: GalleryItem) {
     setGenerationArchived(it.kind, it.chatId, { id: it.itemId, url: it.url }, true)
@@ -319,7 +322,7 @@ function GenerationsBody({
           Nothing here yet
         </div>
         <div style={{ fontSize: 13, color: p.inkMuted, marginBottom: 18 }}>
-          Generate something on the <a href="/image" style={{ color: p.accent }}>image</a>, <a href="/video" style={{ color: p.accent }}>video</a> or <a href="/audio" style={{ color: p.accent }}>voice</a> surfaces and it will collect here.
+          Generate something in <a href="/text?mode=image" style={{ color: p.accent }}>image</a>, <a href="/text?mode=video" style={{ color: p.accent }}>video</a>, or <a href="/text?mode=voice" style={{ color: p.accent }}>voice</a> mode and it will collect here.
         </div>
       </div>
     )

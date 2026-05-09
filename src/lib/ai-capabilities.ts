@@ -159,41 +159,107 @@ const STOP_SEQUENCES: TextField = {
 }
 
 // File-type bundles ---------------------------------------------------------
+//
+// Each bundle is composed from smaller named groups (images / docs / data /
+// markup / code) so the Gemini multimodal superset and the per-modality
+// reference-image presets stay DRY and the human labels stay readable.
+//
+// On `mimeTypes`: the field doubles as the file picker's `accept` attribute,
+// which accepts both real MIME types and bare extensions ("application/json",
+// ".ts"). For formats where browsers don't reliably set a MIME type — which
+// is the rule rather than the exception for code files — we list the
+// extension instead so the picker actually shows the file.
+
+const IMG_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+
+// Plain prose / tabular text. Rendered as the "Text" group in the label.
+const DOC_TEXT_MIMES = [
+  'application/pdf',
+  'text/plain', '.txt',
+  'text/markdown', '.md', '.markdown',
+  'text/csv', '.csv',
+  'text/tab-separated-values', '.tsv',
+]
+
+// Structured data formats — JSON, YAML, TOML, INI, env files. Universally
+// consumed by frontier text models because they're just text under the hood.
+const DOC_DATA_MIMES = [
+  'application/json', '.json',
+  'application/x-yaml', 'text/yaml', '.yaml', '.yml',
+  'application/toml', '.toml',
+  '.ini', '.cfg', '.env', '.properties',
+  'application/x-ndjson', '.ndjson', '.jsonl',
+]
+
+// Markup. HTML, XML, and SVG (which is XML) are ingested as text by every
+// modern model; CSS is included for design / theming work.
+const DOC_MARKUP_MIMES = [
+  'text/html', '.html', '.htm',
+  'application/xml', 'text/xml', '.xml',
+  'image/svg+xml', '.svg',
+  'text/css', '.css',
+]
+
+// Code. Source files are routinely consumed for review, refactoring, and
+// debugging. Listed as extensions because browser MIME detection here is
+// notoriously unreliable (e.g. .ts is often reported as `video/mp2t`).
+const DOC_CODE_MIMES = [
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+  '.py', '.rb', '.go', '.rs', '.java', '.kt', '.swift',
+  '.c', '.h', '.cpp', '.hpp', '.cc', '.cs',
+  '.php', '.lua', '.pl', '.r',
+  '.sh', '.bash', '.zsh', '.ps1',
+  '.sql', '.graphql', '.gql', '.proto',
+]
 
 const ACCEPT_IMAGES: AcceptedFiles = {
-  mimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
+  mimeTypes: IMG_MIMES,
   humanLabel: 'PNG, JPEG, WebP, GIF — up to 8 MB each',
   maxFiles: 10,
   maxBytesEach: 8 * 1024 * 1024,
 }
 
+// Default document bundle for chat models. Covers everything a text model
+// can consume without server-side extraction: PDFs, plain prose, structured
+// data (JSON / YAML / TOML / INI), markup (HTML / XML / SVG / CSS), and
+// source code in the languages users most commonly drop in.
 const ACCEPT_DOCUMENTS: AcceptedFiles = {
-  mimeTypes: ['application/pdf', 'text/plain', 'text/markdown', 'text/csv'],
-  humanLabel: 'PDF, plain text, Markdown, CSV — up to 8 MB each',
-  maxFiles: 5,
+  mimeTypes: [
+    ...DOC_TEXT_MIMES,
+    ...DOC_DATA_MIMES,
+    ...DOC_MARKUP_MIMES,
+    ...DOC_CODE_MIMES,
+  ],
+  humanLabel:
+    'Text (PDF, TXT, MD, CSV, TSV) · Data (JSON, YAML, TOML, INI) · Markup (HTML, XML, SVG, CSS) · Code (TS, JS, Python, Go, Rust, Java, C/C++, SQL, GraphQL, shell, …) — up to 8 MB each',
+  maxFiles: 8,
   maxBytesEach: 8 * 1024 * 1024,
 }
 
 const ACCEPT_IMAGES_AND_DOCS: AcceptedFiles = {
-  mimeTypes: [
-    ...ACCEPT_IMAGES.mimeTypes,
-    ...ACCEPT_DOCUMENTS.mimeTypes,
-  ],
-  humanLabel: 'Images (PNG/JPEG/WebP/GIF) and documents (PDF, text, Markdown, CSV) — up to 8 MB each',
+  mimeTypes: [...IMG_MIMES, ...ACCEPT_DOCUMENTS.mimeTypes],
+  humanLabel:
+    'Images (PNG/JPEG/WebP/GIF) plus documents — text (PDF/TXT/MD/CSV), data (JSON/YAML/TOML), markup (HTML/XML/SVG/CSS), and code (TS/JS/Python/Go/Rust/Java/C/SQL/…) — up to 8 MB each',
   maxFiles: 10,
   maxBytesEach: 8 * 1024 * 1024,
 }
 
 const ACCEPT_GEMINI_MULTIMODAL: AcceptedFiles = {
-  // Gemini accepts images, PDFs, audio (mp3/wav/aiff/aac/ogg/flac), video
-  // (mp4/mpeg/mov/avi/x-flv/mpg/webm/wmv/3gp), text, and code files.
+  // Gemini's content API natively accepts images, PDFs, audio (mp3/wav/
+  // aiff/aac/ogg/flac), video (mp4/mpeg/mov/avi/x-flv/mpg/webm/wmv/3gp),
+  // plus the full document spectrum above. We pass everything through as
+  // typed parts and Gemini routes by MIME.
   mimeTypes: [
     'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
-    'application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'text/html',
+    ...DOC_TEXT_MIMES,
+    ...DOC_DATA_MIMES,
+    ...DOC_MARKUP_MIMES,
+    ...DOC_CODE_MIMES,
     'audio/mpeg', 'audio/wav', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac',
     'video/mp4', 'video/mpeg', 'video/quicktime', 'video/webm',
   ],
-  humanLabel: 'Images, PDFs, plain text, Markdown, audio (MP3/WAV/OGG/FLAC), and video (MP4/WebM/MOV) — up to 20 MB each',
+  humanLabel:
+    'Images, audio (MP3/WAV/OGG/FLAC), video (MP4/WebM/MOV), plus documents (PDF/TXT/MD/CSV), data (JSON/YAML/TOML), markup (HTML/XML/SVG/CSS) and code (TS/JS/Python/Go/Rust/Java/C/SQL/…) — up to 20 MB each',
   maxFiles: 16,
   maxBytesEach: 20 * 1024 * 1024,
 }

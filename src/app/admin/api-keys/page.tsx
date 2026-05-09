@@ -277,7 +277,7 @@ export default function ModelsAdminPage() {
                       <div className="border-t border-hairline-soft pt-3">
                         {editingProvider === provider.id ? (
                           <KeyEditor
-                            initial={apiKeys[provider.id]}
+                            initial={apiKeys[provider.id] ?? ''}
                             onSave={v => handleSaveKey(provider.id, v)}
                             onCancel={() => setEditingProvider(null)}
                           />
@@ -286,8 +286,16 @@ export default function ModelsAdminPage() {
                             <input
                               type="password"
                               value={
+                                // `hasLocalKey` comes from `useProviderStatus`,
+                                // which hydrates synchronously, but `apiKeys`
+                                // is populated by a post-paint effect. On the
+                                // first render after reload `apiKeys[provider.id]`
+                                // can be undefined while `hasLocalKey` is already
+                                // true, so we read the length defensively and
+                                // fall back to a fixed-length mask. Once the
+                                // effect runs the real length comes through.
                                 hasLocalKey
-                                  ? '\u2022'.repeat(Math.min(apiKeys[provider.id].length, 32))
+                                  ? '\u2022'.repeat(Math.min(apiKeys[provider.id]?.length ?? 12, 32))
                                   : ''
                               }
                               readOnly
