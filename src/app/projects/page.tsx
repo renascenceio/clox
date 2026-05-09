@@ -152,9 +152,15 @@ export default function ProjectsIndexPage() {
   // The page body stays exactly as it was — only the chrome around it
   // changes. Wrapping it in `bodySlot` reuses the same scrollable content
   // region every library surface uses, so the vertical rhythm matches.
+  // Inner padding + max-width MUST match the rest of the ChatWorkspace
+  // surfaces (`/history`, `/gallery`, `/skills`, `/settings`). Those pages
+  // use an inline `padding: '28px 56px 64px'` with a content cap around
+  // 1140px — switching /projects to the same values is what aligns the
+  // top-of-page rhythm and the side gutters across the whole library.
+  // The previous Tailwind `px-8 py-12 max-w-[1100px]` was just close
+  // enough to look "off" without obviously being wrong.
   const body = (
-    <div className="min-h-full bg-bg">
-      <div className="max-w-[1100px] mx-auto px-8 py-12">
+    <div style={{ padding: '28px 56px 64px', maxWidth: 1140, margin: '0 auto' }}>
 
           {/* eyebrow + heading */}
           <div className="border-b border-hairline pb-6 mb-8">
@@ -251,17 +257,16 @@ export default function ProjectsIndexPage() {
               ))}
             </div>
           )}
-        </div>
 
-        <AnimatePresence>
-          {showNew && (
-            <NewProjectSheet
-              onClose={() => setShowNew(false)}
-              onCreated={() => { setShowNew(false); load() }}
-            />
-          )}
-        </AnimatePresence>
-      </div>
+      <AnimatePresence>
+        {showNew && (
+          <NewProjectSheet
+            onClose={() => setShowNew(false)}
+            onCreated={() => { setShowNew(false); load() }}
+          />
+        )}
+      </AnimatePresence>
+    </div>
   )
 
   return (
