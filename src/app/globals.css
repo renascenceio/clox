@@ -428,3 +428,15 @@ body {
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(250%); }
 }
+
+/* Editorial long-form prose used on /privacy, /terms, /cookies. Kept narrow
+ * and intentional — paragraph rhythm, list indentation, and emphasis only. */
+.legal-prose p { margin-top: 0.85em; margin-bottom: 0.85em; }
+.legal-prose p:first-child { margin-top: 0; }
+.legal-prose p:last-child { margin-bottom: 0; }
+.legal-prose ul { margin: 1em 0; padding-left: 1.25em; list-style: disc; }
+.legal-prose ul ul { margin: 0.4em 0; }
+.legal-prose li { margin: 0.4em 0; }
+.legal-prose strong { font-weight: 600; color: rgb(var(--ink-rgb)); }
+.legal-prose a { color: rgb(var(--ink-rgb)); }
+.legal-prose table { border-collapse: collapse; width: 100%; }
