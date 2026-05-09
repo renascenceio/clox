@@ -4,11 +4,11 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createMistral } from '@ai-sdk/mistral'
 import { createXai } from '@ai-sdk/xai'
 import { createCohere } from '@ai-sdk/cohere'
-// We intentionally don't narrow the return type of resolveLanguageModel: the
-// @ai-sdk packages in this project are a mix of LanguageModelV1 (openai,
-// anthropic, google, mistral) and LanguageModelV3 (xai, cohere). AI SDK 4's
-// `streamText` accepts both at runtime; typing the return as `unknown` keeps
-// TS quiet without lying about the shape.
+// All @ai-sdk/* providers are pinned to their v1 line so they implement
+// LanguageModelV1, which is what `ai@4.x`'s `streamText` requires. xai and
+// cohere were briefly bumped to v3, which uses LanguageModelV2 and crashes
+// streamText with "Unsupported model version" 400s. Keep them on ^1.x until
+// `ai` itself is upgraded to v5+ and streamText callers are reworked.
 
 // NB: the `provider` union here is the superset of what the UI can send. The
 // resolveLanguageModel helper below decides what's actually runnable based on

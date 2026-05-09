@@ -88,6 +88,8 @@ export interface TranscriptMessage {
   isPullquote?: boolean
 }
 
+export type AppLanguage = 'en' | 'ru'
+
 export interface ChatWorkspaceProps {
   // theming
   theme: PaletteKey
@@ -99,8 +101,18 @@ export interface ChatWorkspaceProps {
   brandVersion?: string
 
   // user (rail footer)
-  user: { initial: string; name: string; plan: string }
+  user: { initial: string; name: string; plan: string; email?: string }
+  /** Legacy: opens platform settings. Kept for back-compat — clicking "Settings"
+   *  in the avatar dropdown still calls this so existing pages don't break. */
   onOpenSettings?: () => void
+  /** Avatar-dropdown specific actions. When provided, the rail footer renders
+   *  a clickable avatar that opens the menu shown in the design reference. */
+  language?: AppLanguage
+  onChangeLanguage?: (l: AppLanguage) => void
+  onOpenSuperAdmin?: () => void
+  onOpenSkills?: () => void
+  onSignOut?: () => void
+  onDeleteAccount?: () => void
 
   // rail
   nav: RailNavItem[]
@@ -113,6 +125,11 @@ export interface ChatWorkspaceProps {
   breadcrumb: string
   title: string
   onShare?: () => void
+
+  /** When provided, replaces the messages + composer area with custom content.
+   *  Used by /history and /gallery to share the rail + topstrip chrome without
+   *  rendering a chat composer. */
+  bodySlot?: ReactNode
 
   // model + mode
   models: ModelOption[]
@@ -162,10 +179,18 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
   const {
     theme,
     variant = 'chip',
+    onChangeTheme,
     brandName = 'Clox',
     brandVersion = '0.4',
     user,
     onOpenSettings,
+    language = 'en',
+    onChangeLanguage,
+    onOpenSuperAdmin,
+    onOpenSkills,
+    onSignOut,
+    onDeleteAccount,
+    bodySlot,
     nav,
     recent,
     onSeeAllRecent,
@@ -258,6 +283,14 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
         onNewChat={onNewChat}
         onOpenSettings={onOpenSettings}
         onSeeAllRecent={onSeeAllRecent}
+        theme={theme}
+        onChangeTheme={onChangeTheme}
+        language={language}
+        onChangeLanguage={onChangeLanguage}
+        onOpenSuperAdmin={onOpenSuperAdmin}
+        onOpenSkills={onOpenSkills}
+        onSignOut={onSignOut}
+        onDeleteAccount={onDeleteAccount}
         onOpenCmdK={() => {
           setCmdkOpen(true)
           onOpenCmdK?.()
@@ -286,6 +319,12 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
           onShare={onShare}
         />
 
+        {bodySlot ? (
+          <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: p.bg }}>
+            {bodySlot}
+          </div>
+        ) : (
+        <>
         <Messages
           p={p}
           mono={mono}
@@ -332,6 +371,8 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
             tokenEstimate={tokenEstimate}
             initialPaletteOpen={initialPaletteOpen}
           />
+        )}
+        </>
         )}
       </main>
 
@@ -380,6 +421,9 @@ function LeftRail({
   brandName, brandVersion,
   nav, recent, user,
   onNewChat, onOpenSettings, onOpenCmdK, onSeeAllRecent,
+  theme, onChangeTheme,
+  language = 'en', onChangeLanguage,
+  onOpenSuperAdmin, onOpenSkills, onSignOut, onDeleteAccount,
 }: {
   p: Palette
   mono: string
@@ -388,12 +432,21 @@ function LeftRail({
   brandVersion: string
   nav: RailNavItem[]
   recent: RailRecentItem[]
-  user: { initial: string; name: string; plan: string }
+  user: { initial: string; name: string; plan: string; email?: string }
   onNewChat?: () => void
   onOpenSettings?: () => void
   onOpenCmdK?: () => void
   onSeeAllRecent?: () => void
+  theme: PaletteKey
+  onChangeTheme?: (next: PaletteKey) => void
+  language?: AppLanguage
+  onChangeLanguage?: (l: AppLanguage) => void
+  onOpenSuperAdmin?: () => void
+  onOpenSkills?: () => void
+  onSignOut?: () => void
+  onDeleteAccount?: () => void
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
   return (
     <aside style={{
       width: 248, flex: '0 0 248px',
@@ -503,27 +556,236 @@ function LeftRail({
         </div>
       </div>
 
-      {/* footer — user */}
-      <div style={{
-        padding: '10px 14px',
-        borderTop: `1px solid ${p.hairlineSoft}`,
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <div style={{
-          width: 24, height: 24, borderRadius: '50%',
-          background: p.ink, color: p.bg,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: serif, fontStyle: 'italic', fontSize: 12,
-        }}>{user.initial}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, lineHeight: 1.2 }}>{user.name}</div>
-          <div style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>{user.plan}</div>
-        </div>
-        <button title="Settings (⌘,)" onClick={onOpenSettings} style={iconBtn(p)}>
-          {I.settings}
+      {/* footer — user (clickable, opens avatar dropdown) */}
+      <div style={{ position: 'relative' }}>
+        {menuOpen && (
+          <UserMenu
+            p={p}
+            mono={mono}
+            serif={serif}
+            user={user}
+            theme={theme}
+            onChangeTheme={onChangeTheme}
+            language={language}
+            onChangeLanguage={onChangeLanguage}
+            onOpenSettings={onOpenSettings}
+            onOpenSuperAdmin={onOpenSuperAdmin}
+            onOpenSkills={onOpenSkills}
+            onSignOut={onSignOut}
+            onDeleteAccount={onDeleteAccount}
+            onClose={() => setMenuOpen(false)}
+          />
+        )}
+        <button
+          onClick={() => setMenuOpen(v => !v)}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          style={{
+            width: '100%',
+            padding: '10px 14px',
+            borderTop: `1px solid ${p.hairlineSoft}`,
+            background: menuOpen ? p.railSoft : 'transparent',
+            border: 'none', borderTopColor: p.hairlineSoft,
+            display: 'flex', alignItems: 'center', gap: 10,
+            cursor: 'pointer', color: 'inherit', textAlign: 'left',
+            transition: 'background .15s',
+          }}
+        >
+          <div style={{
+            width: 26, height: 26, borderRadius: '50%',
+            background: p.ink, color: p.bg,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: serif, fontStyle: 'italic', fontSize: 13,
+            flex: '0 0 26px',
+          }}>{user.initial}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.2, color: p.ink, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{user.name}</div>
+            <div style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>{user.plan}</div>
+          </div>
+          <span style={{ color: p.inkMuted, transform: menuOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s', display: 'inline-flex' }}>{I.caret}</span>
         </button>
       </div>
     </aside>
+  )
+}
+
+/* =====================================================================
+   User dropdown — avatar menu
+   ===================================================================== */
+
+const NEXT_THEME: Record<PaletteKey, PaletteKey> = {
+  light: 'dark',
+  pearl: 'dark',
+  pearlLight: 'dark',
+  pearlNeutral: 'dark',
+  linen: 'dark',
+  mist: 'dark',
+  slate: 'dark',
+  frost: 'dark',
+  dark: 'pearl',
+}
+
+function UserMenu({
+  p, mono, serif, user,
+  theme, onChangeTheme,
+  language, onChangeLanguage,
+  onOpenSettings, onOpenSuperAdmin, onOpenSkills, onSignOut, onDeleteAccount,
+  onClose,
+}: {
+  p: Palette
+  mono: string
+  serif: string
+  user: { initial: string; name: string; plan: string; email?: string }
+  theme: PaletteKey
+  onChangeTheme?: (next: PaletteKey) => void
+  language: AppLanguage
+  onChangeLanguage?: (l: AppLanguage) => void
+  onOpenSettings?: () => void
+  onOpenSuperAdmin?: () => void
+  onOpenSkills?: () => void
+  onSignOut?: () => void
+  onDeleteAccount?: () => void
+  onClose: () => void
+}) {
+  // Click-outside + Escape close.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    function onDocClick(e: MouseEvent) {
+      const tgt = e.target as HTMLElement
+      if (!tgt.closest?.('[data-clox-user-menu]') && !tgt.closest?.('[aria-haspopup="menu"]')) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDocClick)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDocClick)
+    }
+  }, [onClose])
+
+  const isDark = theme === 'dark'
+
+  return (
+    <div
+      data-clox-user-menu
+      role="menu"
+      style={{
+        position: 'absolute', bottom: 'calc(100% + 6px)', left: 10, right: 10,
+        background: p.surface,
+        border: `1px solid ${p.hairline}`,
+        borderRadius: 4,
+        boxShadow: `0 18px 56px ${isDark ? 'rgba(0,0,0,.55)' : 'rgba(22,20,16,.14)'}`,
+        padding: '6px 0',
+        fontFamily: SANS_STACK,
+        zIndex: 60,
+      }}
+    >
+      <UserMenuRow
+        p={p} icon={I.user} label="Settings"
+        onClick={() => { onOpenSettings?.(); onClose() }}
+      />
+      <UserMenuRow
+        p={p} icon={I.lang} label="Language"
+        right={
+          <div style={{
+            display: 'inline-flex', border: `1px solid ${p.hairline}`,
+            borderRadius: 999, overflow: 'hidden',
+            fontFamily: mono, fontSize: 10.5, letterSpacing: '0.06em',
+          }}>
+            {(['en', 'ru'] as const).map(lng => (
+              <button
+                key={lng}
+                onClick={(e) => { e.stopPropagation(); onChangeLanguage?.(lng) }}
+                style={{
+                  padding: '3px 10px',
+                  background: language === lng ? p.ink : 'transparent',
+                  color: language === lng ? p.bg : p.inkSoft,
+                  border: 'none', cursor: 'pointer',
+                  textTransform: 'uppercase',
+                }}
+              >{lng}</button>
+            ))}
+          </div>
+        }
+      />
+      <UserMenuRow
+        p={p} icon={isDark ? I.sun : I.moon} label="Theme"
+        right={
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onChangeTheme?.(NEXT_THEME[theme] ?? (isDark ? 'pearl' : 'dark'))
+            }}
+            title={isDark ? 'Switch to light' : 'Switch to dark'}
+            style={{
+              width: 26, height: 26, borderRadius: 999,
+              background: isDark ? p.bg : p.ink,
+              color: isDark ? p.ink : p.bg,
+              border: `1px solid ${p.hairline}`,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', padding: 0,
+            }}
+          >{isDark ? I.sun : I.moon}</button>
+        }
+      />
+
+      <div style={{ height: 1, background: p.hairlineSoft, margin: '6px 12px' }} />
+
+      <UserMenuRow
+        p={p} icon={I.shield} label="Super Admin"
+        onClick={() => { onOpenSuperAdmin?.(); onClose() }}
+      />
+      <UserMenuRow
+        p={p} icon={I.bulb} label="Skills"
+        onClick={() => { onOpenSkills?.(); onClose() }}
+      />
+
+      <div style={{ height: 1, background: p.hairlineSoft, margin: '6px 12px' }} />
+
+      <UserMenuRow
+        p={p} icon={I.door} label="Sign out"
+        onClick={() => { onSignOut?.(); onClose() }}
+      />
+      <UserMenuRow
+        p={p} icon={I.trash} label="Delete account" muted
+        onClick={() => { onDeleteAccount?.(); onClose() }}
+      />
+    </div>
+  )
+}
+
+function UserMenuRow({
+  p, icon, label, right, onClick, muted,
+}: {
+  p: Palette
+  icon: ReactNode
+  label: string
+  right?: ReactNode
+  onClick?: () => void
+  muted?: boolean
+}) {
+  const interactive = Boolean(onClick)
+  const Cmp: keyof JSX.IntrinsicElements = interactive ? 'button' : 'div'
+  return (
+    <Cmp
+      role={interactive ? 'menuitem' : undefined}
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        width: '100%', padding: '8px 14px',
+        background: 'transparent',
+        border: 'none', borderRadius: 0,
+        color: muted ? p.inkMuted : p.ink,
+        cursor: interactive ? 'pointer' : 'default',
+        textAlign: 'left',
+        fontSize: 13, fontFamily: SANS_STACK,
+      }}
+      onMouseEnter={interactive ? (e) => { (e.currentTarget as HTMLElement).style.background = p.surfaceAlt } : undefined}
+      onMouseLeave={interactive ? (e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' } : undefined}
+    >
+      <span style={{ display: 'inline-flex', color: muted ? p.inkMuted : p.inkSoft, width: 14, justifyContent: 'center' }}>{icon}</span>
+      <span style={{ flex: 1 }}>{label}</span>
+      {right}
+    </Cmp>
   )
 }
 
@@ -730,12 +992,21 @@ function ComposerChip({
   tokenEstimate?: { tokens: number; cost: string } | null
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null)
+  const [showSlash, setShowSlash] = useState(false)
+
   // auto-grow
   useEffect(() => {
     const ta = taRef.current
     if (!ta) return
     ta.style.height = 'auto'
     ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
+  }, [inputValue])
+
+  // Auto-open the slash palette when the user types `/` as the first character
+  // (mirrors the slash-composer reference). Closing happens on selection or Esc.
+  useEffect(() => {
+    if (inputValue === '/') setShowSlash(true)
+    else if (inputValue.length === 0) setShowSlash(false)
   }, [inputValue])
 
   const modelLabel = models.find(m => m.id === model)?.short ?? model
@@ -750,9 +1021,10 @@ function ComposerChip({
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <div style={{
           background: p.surface,
-          border: `1px solid ${p.hairline}`,
+          border: `1px solid ${showSlash ? p.ink : p.hairline}`,
           borderRadius: 4,
           position: 'relative',
+          transition: 'border-color .15s',
         }}>
           {/* chip row */}
           <div style={{
@@ -826,6 +1098,20 @@ function ComposerChip({
           )}
           {openMenu === 'mode' && (
             <ModeMenu p={p} mono={mono} modes={modes} mode={mode} setMode={id => { setMode(id); setOpenMenu(null) }} left={12} />
+          )}
+
+          {/* Slash palette — opens when the user types `/` as the first
+              character. Picking any item replaces the input and closes. */}
+          {showSlash && (
+            <SlashPalette
+              p={p} mono={mono} serif={serif}
+              models={models} modes={modes}
+              model={model}
+              setModel={id => { setModel(id); setShowSlash(false); onInputChange('') }}
+              mode={mode}
+              setMode={id => { setMode(id); setShowSlash(false); onInputChange('') }}
+              onClose={() => { setShowSlash(false); if (inputValue === '/') onInputChange('') }}
+            />
           )}
         </div>
 
