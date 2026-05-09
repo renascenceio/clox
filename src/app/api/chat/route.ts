@@ -106,12 +106,13 @@ export async function POST(req: Request) {
   })
 
   try {
-    // Pick the best way to actually run this model: client key > env var > AI Gateway.
+    // We always call providers directly via their @ai-sdk/* package
+    // (LanguageModelV1). The AI Gateway path was removed because ai@4
+    // does not accept gateway model strings — it would 400 on every request
+    // with "Unsupported model version. AI SDK 4 only supports models that
+    // implement specification version 'v1'."
     const resolved = resolveLanguageModel(provider, model, apiKey)
-    console.log(
-      '[v0] resolved model via:',
-      typeof resolved === 'string' ? `gateway (${resolved})` : 'provider SDK',
-    )
+    console.log('[v0] resolved model via provider SDK')
 
     // Inflate `experimental_attachments` from useChat into multimodal content
     // parts. Vision-capable models (gpt-4o, claude 3.x, gemini 2.5, etc.) read
@@ -123,8 +124,9 @@ export async function POST(req: Request) {
     const caller = await getCallerForLogging()
 
     const result = streamText({
-      // The AI SDK 4 `model` field accepts either a LanguageModelV1 instance or
-      // a gateway model-id string like `openai/gpt-4o`.
+      // `resolved` is always a LanguageModelV1 instance now (gateway strings
+      // were removed). The cast satisfies the streamText prop type without
+      // pulling the full v1 union into this file.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       model: resolved as any,
       messages: systemPrompt

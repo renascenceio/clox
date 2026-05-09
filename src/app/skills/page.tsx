@@ -1,30 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
 import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
 import { PALETTES, type Palette } from '@/shared/ui/chat/palettes'
 import { listChats } from '@/lib/chat-store'
-
-type Skill = {
-  id: string
-  name: string
-  description: string
-  engine: string
-  source_url: string | null
-  system_prompt: string
-  tags: string[]
-  is_public: boolean
-  created_at: string
-}
-
-type UserSkill = {
-  id: string
-  skill_id: string
-  is_active: boolean
-}
+import { useUserSkills, type DbSkill as Skill } from '@/lib/hooks/useUserSkills'
 
 const BLANK_SKILL = {
   name: '',
@@ -44,10 +27,11 @@ export default function SkillsPage() {
   const chrome = useChatChrome('skills')
   const p = PALETTES[chrome.theme]
 
-  /* ----- skills data --------------------------------------------------- */
-  const [skills, setSkills] = useState<Skill[]>([])
-  const [userSkills, setUserSkills] = useState<UserSkill[]>([])
-  const [loading, setLoading] = useState(true)
+  /* ----- skills data ---------------------------------------------------
+     Single source of truth lives in `useUserSkills` (Supabase-backed).
+     The chat composer's Skills chip uses the same hook, so toggling here
+     and toggling there always agree. */
+  const { skills, activeIds, loading, refresh, toggle } = useUserSkills()
   const [filterEngine, setFilterEngine] = useState<string>('all')
   const [filterTag, setFilterTag] = useState<string>('')
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
@@ -64,55 +48,26 @@ export default function SkillsPage() {
   const [createSaving, setCreateSaving] = useState(false)
   const [createError, setCreateError] = useState('')
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    const [{ data: skillsData }, { data: userSkillsData }, { data: profileData }] = await Promise.all([
-      supabase.from('skills').select('*').order('name'),
-      supabase.from('user_skills').select('*'),
-      user
-        ? supabase.from('profiles').select('role').eq('id', user.id).single()
-        : Promise.resolve({ data: null }),
-    ])
-    setSkills(skillsData || [])
-    setUserSkills(userSkillsData || [])
-    setIsSuperAdmin(profileData?.role === 'super_admin')
-    setLoading(false)
+  // Look up the super-admin flag — we only render the "+ New skill" button
+  // for super_admins. The skills list itself is loaded by the hook.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data } = await supabase
+        .from('profiles').select('role').eq('id', user.id).single()
+      if (!cancelled) setIsSuperAdmin(data?.role === 'super_admin')
+    })()
+    return () => { cancelled = true }
   }, [])
 
-  useEffect(() => { loadData() }, [loadData])
-
-  const isEnabled = (skillId: string) =>
-    userSkills.some(us => us.skill_id === skillId && us.is_active)
+  const isEnabled = (skillId: string) => activeIds.includes(skillId)
 
   async function toggleSkill(skill: Skill) {
     setSaving(skill.id)
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setSaving(null); return }
-
-    const existing = userSkills.find(us => us.skill_id === skill.id)
-    if (existing) {
-      const { error } = await supabase
-        .from('user_skills')
-        .update({ is_active: !existing.is_active })
-        .eq('id', existing.id)
-        .eq('user_id', user.id)
-      if (!error) {
-        setUserSkills(prev => prev.map(us =>
-          us.id === existing.id ? { ...us, is_active: !us.is_active } : us
-        ))
-      }
-    } else {
-      const { data, error } = await supabase
-        .from('user_skills')
-        .insert({ skill_id: skill.id, user_id: user.id, is_active: true })
-        .select()
-        .single()
-      if (!error && data) setUserSkills(prev => [...prev, data])
-    }
+    await toggle(skill.id)
     setSaving(null)
   }
 
@@ -172,7 +127,7 @@ export default function SkillsPage() {
       setNewSkill(BLANK_SKILL)
       setGithubUrl('')
       setShowCreatePanel(false)
-      loadData()
+      refresh()
     }
   }
 
@@ -193,7 +148,7 @@ export default function SkillsPage() {
     }),
     [skills, filterEngine, filterTag]
   )
-  const enabledCount = userSkills.filter(us => us.is_active).length
+  const enabledCount = activeIds.length
 
   /* ----- recent rail (text chats only, like /history) ------------------ */
   const recent: RailRecentItem[] = useMemo(() => {

@@ -89,33 +89,24 @@ const OPENAI_COMPATIBLE_BASES: Partial<Record<AIProvider, string>> = {
 }
 
 /**
- * Which providers can be routed through the Vercel AI Gateway.
+ * Resolution strategy — provider SDK only, NEVER the AI Gateway.
  *
- *   - OpenAI / Anthropic / Google work *zero-config* on Vercel (no AI_GATEWAY_API_KEY required).
- *   - Everything else listed here works through the gateway as long as
- *     AI_GATEWAY_API_KEY is present. The gateway handles auth / billing.
+ * History: we used to fall back to the Vercel AI Gateway by returning a
+ * string like `"openai/gpt-4o"` from this function. That worked on AI SDK 5+
+ * but this project is pinned to ai@4 (LanguageModelV1), and v4's
+ * `streamText` does NOT accept gateway strings — it requires a real
+ * LanguageModel instance. The result was every chat request crashing with
+ * "Unsupported model version. AI SDK 4 only supports models that implement
+ * specification version 'v1'." even though the @ai-sdk/* packages are all
+ * pinned to their v1 line.
  *
- * Keeping this list in one place also means if a provider is added to the
- * gateway later we just append it here.
- */
-const GATEWAY_ZERO_CONFIG: AIProvider[] = ['openai', 'anthropic', 'google']
-const GATEWAY_WITH_KEY: AIProvider[] = [
-  'openai', 'anthropic', 'google',
-  'mistral', 'xai', 'cohere', 'deepseek', 'perplexity',
-]
-
-/**
- * Resolution strategy, in priority order:
+ * The fix is simple: always go direct. Priority is:
  *
- *   1. Explicit client-supplied key → use the provider SDK directly.
- *      (User typed a key into Super Admin — respect that override.)
- *   2. AI Gateway → when available for this provider. The gateway keeps
- *      track of current model IDs, so friendly names like `claude-sonnet-4.6`
- *      or `gemini-2.5-flash` Just Work without us maintaining a map.
- *   3. Server env var → direct provider SDK as a fallback.
+ *   1. Client-supplied API key (typed into Super Admin > API Keys).
+ *   2. Server-side env var for the provider.
  *
- * Returns either a gateway model string (e.g. `openai/gpt-4o`) or a
- * LanguageModel instance from one of the @ai-sdk packages.
+ * If neither is present we throw a clear, actionable error that names the
+ * exact env var(s) the user needs to set.
  */
 export function resolveLanguageModel(
   provider: AIProvider,
@@ -126,34 +117,21 @@ export function resolveLanguageModel(
   const clientKey = clientApiKey?.trim() || undefined
   const envKey = envKeyFor(provider)
 
-  // Gateway is usable when either (a) the provider is zero-config and we're
-  // on Vercel, or (b) AI_GATEWAY_API_KEY is set and the provider is on the
-  // gateway catalog.
-  const gatewayUsable =
-    (GATEWAY_ZERO_CONFIG.includes(provider) && Boolean(process.env.VERCEL)) ||
-    (GATEWAY_WITH_KEY.includes(provider) && Boolean(process.env.AI_GATEWAY_API_KEY))
-
   // Priority 1 — explicit client key overrides everything so the user's
   // Super Admin entry always takes effect.
   if (clientKey) {
     return buildDirectModel(provider, actualModelId, clientKey)
   }
 
-  // Priority 2 — gateway. Preferred over env-var-direct because the gateway
-  // catalog is kept current, avoiding the stale-model-id class of bugs.
-  if (gatewayUsable) {
-    return `${provider}/${actualModelId}`
-  }
-
-  // Priority 3 — env var + direct SDK.
+  // Priority 2 — server env var.
   if (envKey) {
     return buildDirectModel(provider, actualModelId, envKey)
   }
 
   const names = ENV_KEY_MAP[provider].join(' or ')
   throw new Error(
-    `No API key available for ${provider}. Set ${names} in Vercel, ` +
-      `enable the AI Gateway with AI_GATEWAY_API_KEY, or add a key in Super Admin > API Keys.`,
+    `No API key configured for ${provider}. Add one in Super Admin > API Keys, ` +
+      `or set ${names} on the server.`,
   )
 }
 
