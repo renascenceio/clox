@@ -274,3 +274,64 @@ export function buildSkillsPromptPrefix(ids: string[] | undefined | null): strin
   if (resolved.length === 0) return ''
   return resolved.map(s => s.instructions).join(' ') + ' '
 }
+
+/* =====================================================================
+   DB-backed skills (the curated catalogue users manage from /skills).
+   These helpers shape the rows from `public.skills` + `public.user_skills`
+   so the chat composer's Skills chip can render them with the same UI
+   it uses for the in-code registry above. Keeping this here means there's
+   exactly one place that knows how to turn a "skill" — wherever it
+   originated — into a behavioural overlay on the next chat request.
+   ===================================================================== */
+
+/** Minimal row shape we need from `public.skills`. */
+export interface DbSkillLike {
+  id: string
+  name: string
+  description: string | null
+  /** Full system prompt for the skill — this is what the model actually sees. */
+  system_prompt: string
+  /** 'claude' | 'gpt' | 'gemini' | 'all' (per the schema). */
+  engine?: string
+  tags?: string[]
+}
+
+/**
+ * Adapt a DB skill row to the `SkillOption` shape the composer's chip
+ * already understands (label/description/group). We bucket DB skills
+ * under a single "library" group so they don't visually compete with
+ * the in-code registry's tone/format/reasoning groups.
+ */
+export function dbSkillsToOptions(rows: DbSkillLike[]): Array<{
+  id: string
+  label: string
+  description: string
+  group?: string
+}> {
+  return rows.map(s => ({
+    id: s.id,
+    label: s.name,
+    description: s.description?.trim() || (s.tags?.length ? `#${s.tags.join(' #')}` : 'Skill'),
+    // All DB-curated skills go under one group so the picker stays scannable.
+    // We tag the group with the engine so the user can see at a glance which
+    // model family the prompt was tuned for.
+    group: s.engine && s.engine !== 'all' ? `library · ${s.engine}` : 'library',
+  }))
+}
+
+/**
+ * Build a system-prompt block from a set of DB skills the user has
+ * activated. Unlike `buildSkillsInstructions` (which emits a one-line
+ * directive per registry skill), this concatenates the full
+ * `system_prompt` of each DB skill — those prompts are typically multi-
+ * paragraph, GitHub-sourced contexts, so we want them in full.
+ */
+export function buildDbSkillsBlock(rows: DbSkillLike[]): string {
+  if (rows.length === 0) return ''
+  const blocks = rows.map(s => `### ${s.name}\n${s.system_prompt.trim()}`)
+  return [
+    'Active library skills (apply each in addition to your other instructions):',
+    '',
+    ...blocks,
+  ].join('\n')
+}

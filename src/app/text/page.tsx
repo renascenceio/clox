@@ -26,10 +26,12 @@ import { AUDIO_MODELS } from '@/domains/audio-generation/services/audio-models'
 import { getCapability, type Capability } from '@/lib/ai-capabilities'
 import {
   getSkillsForModality,
-  buildSkillsInstructions,
   buildSkillsPromptPrefix,
+  dbSkillsToOptions,
+  buildDbSkillsBlock,
   type SkillModality,
 } from '@/lib/skills-registry'
+import { useUserSkills } from '@/lib/hooks/useUserSkills'
 import { useAvailableModels } from '@/lib/use-available-models'
 import { getAdminSettings, getProviderApiKey } from '@/lib/admin-settings'
 import { createClient } from '@/lib/supabase/client'
@@ -99,15 +101,19 @@ export default function TextPage() {
      server-side redirects that forward here with `?mode=…` set, so a
      direct bookmark or deeplink lands in the right composer instead of
      the deprecated standalone surfaces. */
-  // Read the initial modality from the URL once on mount. We use raw
-  // `window.location.search` rather than `useSearchParams` so we don't need
-  // a Suspense boundary around the page (a requirement Next imposes on
-  // pages that subscribe to search params during static generation).
-  const [modeId, setModeId] = useState<string>(() => {
-    if (typeof window === 'undefined') return 'chat'
+  // Read the initial modality from the URL. We MUST start with the
+  // server-rendered default ('chat') and only swap to the URL value after
+  // mount — otherwise the SSR HTML and the first client render disagree on
+  // every prop downstream of `modeId`, which trips React hydration errors
+  // #418/#423/#425. The `useEffect` below performs the swap exactly once.
+  const [modeId, setModeId] = useState<string>('chat')
+  useEffect(() => {
+    if (typeof window === 'undefined') return
     const m = new URLSearchParams(window.location.search).get('mode')
-    return m === 'image' || m === 'video' || m === 'voice' || m === 'chat' ? m : 'chat'
-  })
+    if (m === 'image' || m === 'video' || m === 'voice' || m === 'chat') {
+      setModeId(m)
+    }
+  }, [])
   const modality: 'text' | 'image' | 'video' | 'audio' =
     modeId === 'image' ? 'image' :
     modeId === 'video' ? 'video' :
@@ -128,14 +134,16 @@ export default function TextPage() {
     modality === 'video' ? selectedVideoModel :
     modality === 'audio' ? selectedAudioModel : selectedTextModel
 
-  const [activeChatId, setActiveChatIdState] = useState<string>(() => {
-    if (typeof window === 'undefined') return 'default-chat'
-    return (
-      getActiveChatId('text') ||
-      localStorage.getItem('activeChatId') ||
-      'default-chat'
-    )
-  })
+  // Same SSR-safety story as `modeId`: start with a stable default that
+  // matches the server render, then hydrate from localStorage after mount.
+  // Reading localStorage in the initial state would produce a different
+  // value on the first client render and trigger hydration mismatch errors.
+  const [activeChatId, setActiveChatIdState] = useState<string>('default-chat')
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const fromStore = getActiveChatId('text') || localStorage.getItem('activeChatId')
+    if (fromStore && fromStore !== 'default-chat') setActiveChatIdState(fromStore)
+  }, [])
 
   // Recent chats — refreshed when the chat store mutates. Scoped to the
   // active modality so flipping into "image" surfaces image threads, etc.
@@ -159,53 +167,68 @@ export default function TextPage() {
   const [temperature, setTemperature] = useState(0.7)
   const [maxTokens, setMaxTokens] = useState(2048)
 
-  /* ----- skills (one set per modality) -----------------------------
-     Skills are behavioural overlays the user can stack on the model
-     (e.g. "concise", "cite sources", "cinematic"). Each modality keeps
-     its own selection so flipping between text/image/video/audio doesn't
-     wipe what the user picked. The selection is persisted to localStorage
-     keyed by modality so it survives reloads. */
-  const skillsStorageKey = (m: SkillModality) => `clox.selectedSkills.${m}`
-  const readPersistedSkills = (m: SkillModality): string[] => {
-    if (typeof window === 'undefined') return []
-    try {
-      const raw = localStorage.getItem(skillsStorageKey(m))
-      const parsed = raw ? JSON.parse(raw) : []
-      return Array.isArray(parsed) ? parsed.filter(x => typeof x === 'string') : []
-    } catch { return [] }
-  }
-  const [textSkillIds,  setTextSkillIds]  = useState<string[]>(() => readPersistedSkills('text'))
-  const [imageSkillIds, setImageSkillIds] = useState<string[]>(() => readPersistedSkills('image'))
-  const [videoSkillIds, setVideoSkillIds] = useState<string[]>(() => readPersistedSkills('video'))
-  const [audioSkillIds, setAudioSkillIds] = useState<string[]>(() => readPersistedSkills('audio'))
+  /* ----- skills ------------------------------------------------------
+     Two layered sources, one picker:
+
+       1. TEXT MODE — the curated catalogue stored in Supabase
+          (`public.skills` + `public.user_skills`). Same source the
+          /skills page uses. The `useUserSkills` hook subscribes to it,
+          so toggling here and toggling there always agree, and toggles
+          survive reloads / device-changes through the database (no
+          localStorage drift).
+
+       2. MEDIA MODES (image / video / audio) — the in-code registry in
+          `lib/skills-registry.ts`. Those are media-style overlays
+          ("Cinematic", "Editorial", "Audiobook" …) that we don't store
+          per-user; selection is kept in component state only. */
+  const dbSkills = useUserSkills()
+
+  // Media-mode (image/video/audio) skill selections live only in memory
+  // for the lifetime of the page — the picker for these modalities is a
+  // tone palette, not something users curate.
+  const [imageSkillIds, setImageSkillIds] = useState<string[]>([])
+  const [videoSkillIds, setVideoSkillIds] = useState<string[]>([])
+  const [audioSkillIds, setAudioSkillIds] = useState<string[]>([])
 
   const activeSkillIds =
     modality === 'image' ? imageSkillIds :
     modality === 'video' ? videoSkillIds :
-    modality === 'audio' ? audioSkillIds : textSkillIds
+    modality === 'audio' ? audioSkillIds :
+    dbSkills.activeIds // text mode
 
   // The picker only offers skills declared for the active modality.
+  // Text mode pulls from the DB catalogue; media modes use the in-code
+  // registry for stylistic overlays.
   const availableSkills = useMemo(() => {
+    if (modality === 'text') {
+      return dbSkillsToOptions(dbSkills.skills)
+    }
     return getSkillsForModality(modality as SkillModality)
       .map(s => ({ id: s.id, label: s.label, description: s.description, group: s.group }))
-  }, [modality])
+  }, [modality, dbSkills.skills])
 
-  function setSkillIdsFor(m: 'text' | 'image' | 'video' | 'audio', next: string[]) {
-    const setter =
-      m === 'image' ? setImageSkillIds :
-      m === 'video' ? setVideoSkillIds :
-      m === 'audio' ? setAudioSkillIds : setTextSkillIds
-    setter(next)
-    if (typeof window !== 'undefined') {
-      try { localStorage.setItem(skillsStorageKey(m), JSON.stringify(next)) } catch { /* quota */ }
-    }
-  }
   const handleToggleSkill = (id: string) => {
+    if (modality === 'text') {
+      // Round-trips through Supabase so the /skills page reflects the
+      // change (and vice-versa) without any extra wiring.
+      void dbSkills.toggle(id)
+      return
+    }
     const current = activeSkillIds
     const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id]
-    setSkillIdsFor(modality, next)
+    if (modality === 'image') setImageSkillIds(next)
+    else if (modality === 'video') setVideoSkillIds(next)
+    else if (modality === 'audio') setAudioSkillIds(next)
   }
-  const handleClearSkills = () => setSkillIdsFor(modality, [])
+  const handleClearSkills = () => {
+    if (modality === 'text') {
+      void dbSkills.clearAll()
+      return
+    }
+    if (modality === 'image') setImageSkillIds([])
+    else if (modality === 'video') setVideoSkillIds([])
+    else if (modality === 'audio') setAudioSkillIds([])
+  }
 
   // Load chat-specific settings when activeChatId changes.
   useEffect(() => {
@@ -266,17 +289,19 @@ export default function TextPage() {
     setCurrentApiKey(key)
   }, [selectedTextModel.provider])
 
-  // Merge skill instructions into the system prompt for every text request.
-  // The skills block is wrapped with delimiters by `buildSkillsInstructions`
-  // so it stays distinct from the user's own system prompt in the model's
-  // context. Empty `textSkillIds` -> empty string -> no overhead.
+  // Merge active library skills into the system prompt for every text
+  // request. Each DB skill carries its own full `system_prompt`, so we
+  // concatenate them under a clearly delimited header — that lets the
+  // model treat the user's own systemPrompt and the library skills as
+  // equally weighted instructions rather than nested asides.
   const composedSystemPrompt = useMemo(() => {
-    const skillsBlock = buildSkillsInstructions(textSkillIds)
+    const activeRows = dbSkills.skills.filter(s => dbSkills.activeIds.includes(s.id))
+    const skillsBlock = buildDbSkillsBlock(activeRows)
     if (!skillsBlock) return systemPrompt
     return systemPrompt
       ? `${systemPrompt.trim()}\n\n${skillsBlock}`
       : skillsBlock
-  }, [systemPrompt, textSkillIds])
+  }, [systemPrompt, dbSkills.skills, dbSkills.activeIds])
 
   const chat = useChat({
     id: activeChatId,
