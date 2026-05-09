@@ -48,13 +48,15 @@ const LANG_EXT: Record<string, string> = {
   go: 'go', rs: 'rs', rust: 'rs', java: 'java', kt: 'kt',
   c: 'c', h: 'h', cpp: 'cpp', cs: 'cs', php: 'php', swift: 'swift',
   txt: 'txt', text: 'txt', diff: 'diff', patch: 'patch',
-  // Document specs — the *body* of the block is JSON/markdown that
-  // this component compiles into a real .docx / .pptx / .pdf at
-  // download time. These aren't proper "languages" but using them as
-  // language tags keeps the model's emit format ergonomic ("```pptx
-  // {…outline…}" reads naturally) and tells the toolbar which
-  // converter to offer.
-  pptx: 'pptx', docx: 'docx', latex: 'tex', tex: 'tex',
+  // Document specs — the *body* of the block is JSON/markdown/html
+  // that this component compiles into a real .docx / .pptx / .pdf
+  // binary at download time. These aren't proper "languages" but
+  // using them as language tags lets the toolbar label match the
+  // user's intent: when someone asks for "a PDF" the model emits
+  // ```pdf and the artifact reads "pdf · 124 lines" with the PDF
+  // export as the primary toolbar action, instead of "markdown" with
+  // PDF buried in a row of secondary buttons.
+  pptx: 'pptx', docx: 'docx', pdf: 'pdf', latex: 'tex', tex: 'tex',
 }
 
 /** Languages we know how to render in the inline preview pane. */
@@ -63,29 +65,44 @@ const PREVIEWABLE = new Set([
   'csv', 'tsv',
   'json',
   'md', 'markdown',
-  // pptx outlines preview as a rendered slide list; docx specs
+  // pptx outlines preview as a rendered slide list; docx + pdf specs
   // preview as their formatted body so the user can see what they
   // are about to download.
-  'pptx', 'docx',
+  'pptx', 'docx', 'pdf',
 ])
 
 /** Languages that should also offer an "Excel" download option. */
 const TABULAR = new Set(['csv', 'tsv'])
 
 /** Languages that get a "docx" download option. We accept Markdown
- *  (the natural way to express a document) and HTML (richer layout). */
-const DOCX_SOURCE = new Set(['markdown', 'md', 'html', 'docx'])
+ *  (the natural way to express a document), HTML (richer layout),
+ *  the dedicated `docx` tag, AND `pdf` so the user can switch
+ *  formats post-hoc if they change their mind. */
+const DOCX_SOURCE = new Set(['markdown', 'md', 'html', 'docx', 'pdf'])
 
 /** Languages that get a "pdf" download option. PDF is generated from
  *  the rendered HTML in the preview iframe, so any language that has
- *  an HTML-style preview qualifies. */
-const PDF_SOURCE = new Set(['markdown', 'md', 'html', 'svg'])
+ *  an HTML-style preview qualifies — markdown, html, svg, the
+ *  dedicated `pdf` tag, and `docx` (post-hoc switch). */
+const PDF_SOURCE = new Set(['markdown', 'md', 'html', 'svg', 'pdf', 'docx'])
 
 /** Languages that get a "pptx" download option. We only know how to
  *  build a deck from the structured `pptx` outline; HTML→PPTX is far
  *  less reliable so we leave it to the user to ask the model for the
  *  outline form when they want a real deck. */
 const PPTX_SOURCE = new Set(['pptx'])
+
+/** For each fence language, which export is the user's PRIMARY intent?
+ *  Surfacing this lets the toolbar promote the matching button so
+ *  users don't have to guess "wait, how do I download this as the
+ *  thing I asked for?". */
+const PRIMARY_EXPORT: Record<string, 'pdf' | 'docx' | 'pptx' | 'excel' | null> = {
+  pdf: 'pdf',
+  docx: 'docx',
+  pptx: 'pptx',
+  csv: 'excel',
+  tsv: 'excel',
+}
 
 /** Pull the language hint off the className react-markdown emits. */
 function readLang(className?: string): string {
@@ -170,15 +187,31 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
   // Auto-open preview for visual languages so the user gets the
   // rendered output by default rather than the raw markup. They can
   // still toggle to "code" if they want to read the source.
-  const [showPreview, setShowPreview] = useState(
+  const previewByDefault =
     lang === 'html' || lang === 'svg' || lang === 'markdown' || lang === 'md' ||
-    lang === 'pptx' || lang === 'docx',
-  )
+    lang === 'pptx' || lang === 'docx' || lang === 'pdf'
+  const [showPreview, setShowPreview] = useState(previewByDefault)
   // While a binary export is being assembled (docx / pdf / pptx) we
   // disable the buttons and label them with the in-flight verb so the
   // user gets feedback for the 200-800ms the conversion typically
   // takes on a moderately sized doc.
   const [busy, setBusy] = useState<'' | 'docx' | 'pdf' | 'pptx'>('')
+  // Defensive reset: if React reuses this component instance across
+  // messages with different fence languages (which can happen when
+  // ReactMarkdown's reconciliation lines up two assistant messages
+  // by position), the previous instance's `showPreview` / `busy`
+  // state would otherwise leak into the new artifact and the user
+  // would see, e.g., a `pdf` artifact with a stale "building docx…"
+  // busy indicator. We re-derive defaults whenever `lang` changes.
+  const prevLangRef = useRef(lang)
+  useEffect(() => {
+    if (prevLangRef.current !== lang) {
+      prevLangRef.current = lang
+      setShowPreview(previewByDefault)
+      setCopied(false)
+      setBusy('')
+    }
+  }, [lang, previewByDefault])
   const previewable = PREVIEWABLE.has(lang)
   const tabular = TABULAR.has(lang)
   const canDocx = DOCX_SOURCE.has(lang)
@@ -192,26 +225,58 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null)
 
   /**
-   * Open the rendered artifact in a new browser tab. Always available
-   * as an escape hatch: if the inline preview ever looks wrong (slow
-   * external scripts, sandbox edge cases, browser-specific iframe
-   * quirks), the user can click "open" and view the same content as a
-   * real, full-window page. We use Blob URLs rather than data: URLs
-   * because Blob URLs survive popup blockers and don't hit the URL-
-   * length ceiling that bites for large generated pages.
+   * Open the rendered artifact in a real, named browser tab.
+   *
+   * Why this routes through `/preview?id=…&kind=…` instead of
+   * `URL.createObjectURL(blob)`:
+   *   - The URL bar shows `/preview?id=…&kind=html` — recognizable as
+   *     HTML, on our own origin. Users were getting confused by the
+   *     opaque `blob:https://…/uuid` form (which works, but doesn't
+   *     read as "this is an HTML page").
+   *   - The new tab is same-origin so its sandboxed iframe inherits
+   *     normal browser policies (no third-party-context heuristics).
+   *   - sessionStorage payload is read-once and survives popup
+   *     blockers more reliably than blob URL navigation.
+   *
+   * The receiving route lives at `app/preview/page.tsx`.
    */
   function handleOpenExternally() {
     try {
+      // Same body-shape decision as the PDF/DOCX exporters: for the
+      // `pdf` and `docx` fence tags the body could be either markdown
+      // or HTML, so we sniff before deciding whether to run mdToHtml.
+      // Without this, opening a markdown-bodied `pdf` artifact in a
+      // new tab would show literal "# Heading" text.
+      const isMarkdownTag = lang === 'markdown' || lang === 'md'
+      const isDocTag = lang === 'pdf' || lang === 'docx'
       const html =
-        lang === 'markdown' || lang === 'md' ? wrapInPreviewScaffold(mdToHtml(code)) :
+        isMarkdownTag ? wrapInPreviewScaffold(mdToHtml(code)) :
         lang === 'svg' ? svgToFullHtml(code) :
         lang === 'xml' ? xmlToFullHtml(code) :
+        isDocTag
+          ? (isHtmlBody(code) ? wrapInPreviewScaffold(code) : wrapInPreviewScaffold(mdToHtml(code))) :
         wrapInPreviewScaffold(code)
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      // Revoke after a minute — long enough for the new tab to load,
-      // short enough that we don't leak object URLs across a session.
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      const id =
+        // crypto.randomUUID is available in every modern browser; the
+        // fallback covers older Safari and the rare environment where
+        // crypto is missing entirely.
+        (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+          ? crypto.randomUUID()
+          : `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const titleHint =
+        lang === 'svg' ? 'svg-artifact'
+        : lang === 'markdown' || lang === 'md' ? 'markdown-artifact'
+        : lang === 'xml' ? 'xml-artifact'
+        : 'page.html'
+      sessionStorage.setItem(`clox.preview.${id}`, JSON.stringify({
+        kind: lang || 'html',
+        title: titleHint,
+        html,
+      }))
+      const url = `/preview?id=${encodeURIComponent(id)}&kind=${encodeURIComponent(lang || 'html')}&title=${encodeURIComponent(titleHint)}`
+      // `noopener` would prevent the new tab from accessing
+      // `window.opener` — which is exactly what we want for the
+      // sandboxed preview. We still get the new-tab UX.
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (e) {
       console.error('[v0] open externally failed', e)
@@ -407,9 +472,22 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
         import('html2canvas'),
       ])
       const html2canvas = html2canvasMod.default
+      // Materialise the artifact body as a styled HTML document so
+      // html2canvas can rasterise it. The branching here matters:
+      //   • markdown / md  — always run mdToHtml, then wrap.
+      //   • svg            — wrap in svgToFullHtml (centred canvas).
+      //   • pdf / docx     — author chose either body shape; detect
+      //                      it and route through mdToHtml when the
+      //                      body is markdown, otherwise pass through.
+      //                      Without this branch the markdown body
+      //                      is treated as raw HTML and the PDF
+      //                      shows literal "# Heading" text.
+      //   • html / fallback — treat as HTML and ensure full doc.
       const html =
-        lang === 'markdown' || lang === 'md' ? mdToHtml(code) :
+        (lang === 'markdown' || lang === 'md') ? ensureFullHtml(mdToHtml(code)) :
         lang === 'svg' ? svgToFullHtml(code) :
+        (lang === 'pdf' || lang === 'docx')
+          ? (isHtmlBody(code) ? ensureFullHtml(code) : ensureFullHtml(mdToHtml(code))) :
         ensureFullHtml(code)
 
       // Off-screen iframe at A4 content width. We keep it visible
@@ -482,6 +560,27 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
   const lineCount = useMemo(() => code.split('\n').length, [code])
   const langLabel = lang || 'text'
 
+  /** Which export is the "primary" one for this artifact's language?
+   *  Used to promote that toolbar button to the front and bold it,
+   *  so when the user asked for a PDF and the model emitted ```pdf,
+   *  the PDF download is the obvious next step rather than just one
+   *  of several look-alike buttons. */
+  const primary = PRIMARY_EXPORT[lang] ?? null
+
+  // Map each primary kind to its handler/label so we can render once
+  // up-front and skip duplicating the same button in the secondary
+  // row. `null` primary means there's no format-specific export
+  // beyond the generic "download" — we leave the existing layout.
+  const primaryAction = (() => {
+    switch (primary) {
+      case 'pdf':   return { label: busy === 'pdf'  ? 'rendering…' : 'download pdf',   onClick: handleDownloadPdf,   busy: busy === 'pdf'  }
+      case 'docx':  return { label: busy === 'docx' ? 'building…'  : 'download docx',  onClick: handleDownloadDocx,  busy: busy === 'docx' }
+      case 'pptx':  return { label: busy === 'pptx' ? 'building…'  : 'download pptx',  onClick: handleDownloadPptx,  busy: busy === 'pptx' }
+      case 'excel': return { label: 'download excel', onClick: handleDownloadExcel, busy: false }
+      default: return null
+    }
+  })()
+
   return (
     <div
       className="my-3 overflow-hidden border"
@@ -507,6 +606,19 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
           {langLabel} · {lineCount} {lineCount === 1 ? 'line' : 'lines'}
         </span>
         <div className="flex items-center gap-1">
+          {/* PRIMARY action goes first and is visually emphasised so
+              the deliverable the user actually asked for is the
+              obvious next step. We then suppress the duplicate of
+              this same export from the secondary row below. */}
+          {primaryAction && (
+            <ToolbarButton
+              onClick={primaryAction.onClick}
+              disabled={primaryAction.busy}
+              emphasised
+            >
+              {primaryAction.label}
+            </ToolbarButton>
+          )}
           {previewable && (
             <ToolbarButton
               onClick={() => setShowPreview(s => !s)}
@@ -518,9 +630,12 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
           {/* "open" — render in a real new tab. Always available for
               HTML-style content as an escape hatch from the sandboxed
               inline iframe (which can be cramped, throttled, or
-              affected by aggressive browser sandboxing in dev). */}
+              affected by aggressive browser sandboxing in dev). The
+              `pdf` and `docx` tags also benefit because their preview
+              IS HTML under the hood. */}
           {(lang === 'html' || lang === 'svg' || lang === 'xml' ||
-            lang === 'markdown' || lang === 'md') && (
+            lang === 'markdown' || lang === 'md' ||
+            lang === 'pdf' || lang === 'docx') && (
             <ToolbarButton onClick={handleOpenExternally}>
               open
             </ToolbarButton>
@@ -529,14 +644,17 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
             {copied ? 'copied' : 'copy'}
           </ToolbarButton>
           <ToolbarButton onClick={handleDownload}>
-            download
+            source
           </ToolbarButton>
-          {tabular && (
+          {/* Secondary export buttons — only render when DIFFERENT
+              from the primary, otherwise we'd show the same option
+              twice. */}
+          {tabular && primary !== 'excel' && (
             <ToolbarButton onClick={handleDownloadExcel}>
               excel
             </ToolbarButton>
           )}
-          {canDocx && (
+          {canDocx && primary !== 'docx' && (
             <ToolbarButton
               onClick={handleDownloadDocx}
               disabled={busy === 'docx'}
@@ -544,7 +662,7 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
               {busy === 'docx' ? 'building…' : 'docx'}
             </ToolbarButton>
           )}
-          {canPptx && (
+          {canPptx && primary !== 'pptx' && (
             <ToolbarButton
               onClick={handleDownloadPptx}
               disabled={busy === 'pptx'}
@@ -552,7 +670,7 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
               {busy === 'pptx' ? 'building…' : 'pptx'}
             </ToolbarButton>
           )}
-          {canPdf && (
+          {canPdf && primary !== 'pdf' && (
             <ToolbarButton
               onClick={handleDownloadPdf}
               disabled={busy === 'pdf'}
@@ -584,13 +702,22 @@ function ToolbarButton({
   onClick,
   active,
   disabled,
+  emphasised,
   children,
 }: {
   onClick: () => void
   active?: boolean
   disabled?: boolean
+  /** When true, render with inverted ink fill so the button reads as
+   *  the primary action in the toolbar. We use this exactly once per
+   *  artifact — for the deliverable that matches the user's request
+   *  (e.g. "download pdf" on a `pdf`-tagged artifact). */
+  emphasised?: boolean
   children: React.ReactNode
 }) {
+  const fill = emphasised
+    ? { background: 'rgb(var(--ink-rgb))', color: 'rgb(var(--surface-rgb))' }
+    : { background: active ? 'rgb(var(--ink-rgb) / 0.06)' : 'transparent', color: 'rgb(var(--ink-soft-rgb))' }
   return (
     <button
       type="button"
@@ -599,13 +726,13 @@ function ToolbarButton({
       className="px-2 py-0.5 transition-colors"
       style={{
         // Hairline border, no shadow — matches the editorial system.
-        border: '1px solid var(--hairline-soft)',
+        border: emphasised ? '1px solid rgb(var(--ink-rgb))' : '1px solid var(--hairline-soft)',
         borderRadius: 2,
-        background: active ? 'rgb(var(--ink-rgb) / 0.06)' : 'transparent',
-        color: 'rgb(var(--ink-soft-rgb))',
+        ...fill,
         fontFamily: 'var(--font-geist-mono), ui-monospace, monospace',
         fontSize: 10.5,
         letterSpacing: '0.04em',
+        fontWeight: emphasised ? 600 : 400,
         cursor: disabled ? 'wait' : 'pointer',
         opacity: disabled ? 0.55 : 1,
       }}
@@ -646,10 +773,13 @@ function PreviewPane({
   if (lang === 'pptx') {
     return <PptxPreview code={code} />
   }
-  if (lang === 'docx') {
-    // docx specs are rendered through the markdown previewer because
-    // the on-the-wire format is markdown-compatible — every paragraph
-    // and heading round-trips. The download path uses the same parser.
+  if (lang === 'docx' || lang === 'pdf') {
+    // `docx` and `pdf` specs are rendered through the markdown
+    // previewer because the on-the-wire body is markdown-compatible
+    // — every paragraph, heading, list, and table round-trips. The
+    // download path uses the same parser. We accept a raw HTML body
+    // too (some models prefer to author rich documents in HTML); the
+    // markdown→HTML helper is a no-op when the body is already HTML.
     return <MarkdownPreview code={code} iframeRef={iframeRef} />
   }
   // Fallback shouldn't happen given PREVIEWABLE gating, but keep it
@@ -788,7 +918,14 @@ function HtmlPreview({
           height,
           minHeight: 220,
           border: 0,
+          // Force a white canvas for the artifact regardless of the
+          // surrounding page's theme. Without `colorScheme: light` the
+          // browser will pick "dark" if the parent prefers it, which
+          // makes any model-emitted HTML that doesn't set its own
+          // background look invisible (white text on transparent body
+          // → effectively dark canvas with white-on-white content).
           background: '#ffffff',
+          colorScheme: 'light',
           display: 'block',
         }}
       />
@@ -942,7 +1079,17 @@ function MarkdownPreview({
   code: string
   iframeRef?: React.MutableRefObject<HTMLIFrameElement | null>
 }) {
-  const html = useMemo(() => mdToHtml(code), [code])
+  // The PreviewPane routes BOTH `markdown`/`md` and `pdf`/`docx`
+  // through here, because all four can carry markdown bodies. But
+  // `pdf` and `docx` are also allowed to carry an HTML body — in
+  // which case running the markdown parser would mangle structures
+  // it doesn't understand (notably `<table>`, `<style>`, full HTML
+  // documents). Sniff the body and skip mdToHtml when it's already
+  // HTML so the inline preview matches the eventual export.
+  const html = useMemo(
+    () => (isHtmlBody(code) ? code : mdToHtml(code)),
+    [code],
+  )
   return <HtmlPreview code={html} lang="html" iframeRef={iframeRef} />
 }
 
@@ -951,6 +1098,45 @@ function escapeHtml(s: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+}
+
+/**
+ * Heuristic: does this body look like HTML rather than markdown?
+ *
+ * For `pdf` and `docx` artifacts the model can author EITHER format
+ * (a markdown report, or a richer HTML page). The export pipeline
+ * needs to know which one it has so it can route the body through
+ * the right converter — markdown→HTML→PDF for markdown, or pass-
+ * through→PDF for HTML; markdown→docx-runs for markdown, or
+ * htmlToMarkdownLite→docx-runs for HTML.
+ *
+ * Detection rules, ordered most-specific first:
+ *   1. A `<!doctype>` / `<html>` / `<head>` / `<body>` opener is
+ *      definitive — that's a complete HTML document.
+ *   2. ≥ 3 distinct HTML element tags (`<div>`, `<p>`, `<table>`,
+ *      `<h1>`, etc.) at the start of a line strongly implies HTML.
+ *      This catches "fragment" HTML the model emits without the
+ *      `<html>` wrapper.
+ *   3. Otherwise we treat the body as markdown — even if it has
+ *      occasional inline `<br>` or `<a>` tags (markdown allows
+ *      embedded HTML so this is the safe default).
+ */
+function isHtmlBody(body: string): boolean {
+  const head = body.slice(0, 2000)
+  if (/<!doctype\s/i.test(head)) return true
+  if (/<\s*(html|head|body)[\s>]/i.test(head)) return true
+  // Count distinct block-level HTML tags appearing at line starts.
+  // Markdown bodies routinely contain a stray `<br>` or `<a>` inline,
+  // but they don't start lines with `<div>`, `<table>`, `<section>`,
+  // etc. — so the line-start anchor is what gives us a clean signal.
+  const blockTags = new Set<string>()
+  const blockTagRe = /^\s*<\s*(div|p|table|thead|tbody|tr|td|th|ul|ol|li|h[1-6]|section|article|header|footer|nav|main|aside|form|button|input|label|figure|pre|blockquote|hr)\b/gim
+  let m: RegExpExecArray | null
+  while ((m = blockTagRe.exec(head)) !== null) {
+    blockTags.add(m[1].toLowerCase())
+    if (blockTags.size >= 3) return true
+  }
+  return false
 }
 
 /**
@@ -1192,9 +1378,19 @@ function buildDocxChildren(docx: typeof import('docx'), source: string, lang: st
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const children: any[] = []
 
-  const md =
-    lang === 'html' ? htmlToMarkdownLite(source) :
-    source
+  // Normalise the source to markdown so the rest of the function only
+  // has to handle one shape. Three input cases:
+  //   • lang=html         — explicit HTML, run the lite converter.
+  //   • lang=pdf|docx     — author chose either shape; if the body
+  //                         smells like HTML, convert to markdown,
+  //                         otherwise pass through as markdown.
+  //                         Without this branch a `pdf` artifact
+  //                         with an HTML body would dump literal
+  //                         <p>/<h1>/<table> tags into the .docx.
+  //   • lang=md|markdown  — already markdown, pass through.
+  const looksHtml =
+    lang === 'html' || ((lang === 'pdf' || lang === 'docx') && isHtmlBody(source))
+  const md = looksHtml ? htmlToMarkdownLite(source) : source
 
   const lines = md.split(/\r?\n/)
   let inFence = false
