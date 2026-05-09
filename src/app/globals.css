@@ -421,3 +421,10 @@ body {
 .landing-wave-bar {
   animation: landingWave 1.4s ease-in-out infinite;
 }
+
+/* Landing-page video render scrubber — moves a thin accent line beneath the
+ * "live" frame in the Video stage filmstrip. */
+@keyframes landingScrub {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
