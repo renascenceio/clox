@@ -562,8 +562,6 @@ function LeftRail({
           <UserMenu
             p={p}
             mono={mono}
-            serif={serif}
-            user={user}
             theme={theme}
             onChangeTheme={onChangeTheme}
             language={language}
