@@ -2,297 +2,323 @@ import { Metadata } from "next"
 import Link from "next/link"
 
 export const metadata: Metadata = {
-  title: "Clox Studio – AI Aggregator Portal",
-  description: "Generate text, images, video, and audio with 50+ AI models in one unified workspace.",
+  title: "Clox — One studio. Every model.",
+  description:
+    "An editorial workspace for text, image, video and audio across every major AI model. Calm by default. Configurable on demand.",
   openGraph: {
     images: ["https://picsum.photos/seed/clox-og/1200/630"],
   },
 }
 
+// ---------------------------------------------------------------------------
+// Editorial landing page — Pearl theme, hairlines over fills, accent dot only.
+// Pure server component. No client interactivity beyond <Link/>.
+// ---------------------------------------------------------------------------
+
+const MODES: Array<{
+  href: string
+  eyebrow: string
+  title: string
+  blurb: string
+  count: string
+}> = [
+  {
+    href: "/text",
+    eyebrow: "01 — text",
+    title: "Write, reason, decide.",
+    blurb:
+      "GPT-5, Claude Opus 4.6, Gemini 3 Flash, DeepSeek V4, Qwen 3.5 — the most capable language models, side by side.",
+    count: "30+ models",
+  },
+  {
+    href: "/image",
+    eyebrow: "02 — image",
+    title: "Compose, illustrate, iterate.",
+    blurb:
+      "Nano Banana, Imagen 4, DALL-E 4, Midjourney v7, Stable Diffusion XL — photoreal and editorial in one composer.",
+    count: "20+ models",
+  },
+  {
+    href: "/video",
+    eyebrow: "03 — video",
+    title: "Frame, cut, render.",
+    blurb:
+      "Sora, Runway Gen-4, Kling 2.0, Luma Dream Machine — cinematic motion with director-grade controls.",
+    count: "15+ models",
+  },
+  {
+    href: "/audio",
+    eyebrow: "04 — audio",
+    title: "Speak, score, sing.",
+    blurb:
+      "Gemini TTS, ElevenLabs, Suno v4, Udio — voice that breathes, music that arrives finished.",
+    count: "15+ models",
+  },
+]
+
+const PRINCIPLES: Array<{ label: string; title: string; body: string }> = [
+  {
+    label: "P / 01",
+    title: "Editorial calm.",
+    body: "A page first, an interface second. Pearl background, Onyx ink, hairline rules. No glow. No noise.",
+  },
+  {
+    label: "P / 02",
+    title: "Density that breathes.",
+    body: "Productivity tools tend to shout. Clox uses a 4-point grid, generous line height, and a single accent so the work is what you see.",
+  },
+  {
+    label: "P / 03",
+    title: "Configuration on demand.",
+    body: "The composer holds the next turn. ⌘K jumps. ⌘. opens the drawer. Controls appear when you reach for them, never before.",
+  },
+  {
+    label: "P / 04",
+    title: "Authorship unambiguous.",
+    body: "Your turn is an ink block on the right. The model's turn is a serif mark, a Terracotta byline, and a card. You always know who is speaking.",
+  },
+  {
+    label: "P / 05",
+    title: "Every model in one place.",
+    body: "Western and Chinese frontier models — OpenAI, Anthropic, Google, DeepSeek, Qwen, Kimi, GLM — under a single composer.",
+  },
+  {
+    label: "P / 06",
+    title: "Yours to organise.",
+    body: "Threads, projects, folders. A search that actually finds things. Exports that travel anywhere your work needs to go.",
+  },
+]
+
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-surface-secondary via-white to-surface-secondary text-label-primary font-sans selection:bg-mint/20">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 h-20 glass-float z-50 mx-6 mt-6 rounded-hig-2xl shadow-float">
-        <div className="max-w-7xl mx-auto px-8 h-full flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 gradient-mint-teal rounded-hig-lg flex items-center justify-center shadow-mint-glow group-hover:scale-110 transition-transform">
-              <span className="text-white font-bold text-xl">C</span>
-            </div>
-            <span className="font-bold text-2xl tracking-tight">Clox Studio</span>
+    <div className="min-h-screen bg-bg text-ink font-sans selection:bg-accent/25">
+      {/* =====================================================================
+          Top strip — minimal, editorial. Wordmark + nav + launch.
+          ===================================================================== */}
+      <header className="sticky top-0 z-40 bg-bg/80 backdrop-blur border-b border-hairline-soft">
+        <div className="max-w-6xl mx-auto px-8 h-14 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5">
+            <span aria-hidden className="font-serif italic text-2xl text-accent leading-none">
+              C
+            </span>
+            <span className="text-[13px] text-ink tracking-tight">Clox</span>
           </Link>
-          <nav className="hidden md:flex items-center gap-6 text-sm font-semibold">
-            <Link href="#models" className="hover:text-mint-600 transition-colors">Models</Link>
-            <Link href="#features" className="hover:text-apple-teal transition-colors">Features</Link>
+          <nav className="flex items-center gap-7 font-mono text-[11px] tracking-[0.04em] text-ink-soft">
+            <Link href="#modes" className="hover:text-ink transition-colors">
+              modes
+            </Link>
+            <Link href="#principles" className="hover:text-ink transition-colors">
+              principles
+            </Link>
             <Link
               href="/text"
-              className="px-6 py-3 gradient-mint-teal text-white rounded-hig-xl hover:shadow-mint-glow transition-all shadow-mint-glow hover:scale-105 active:scale-95"
+              className="px-3 py-1.5 bg-ink text-bg uppercase hover:bg-ink-soft transition-colors"
             >
-              Launch Studio
+              launch studio
             </Link>
           </nav>
         </div>
       </header>
 
       <main>
-        {/* Hero Section */}
-        <section className="pt-48 pb-32 px-6 relative overflow-hidden">
-          {/*
-            Background blobs: a multi-hue palette of cool colors (mint, teal,
-            blue, indigo, violet, pink) biased toward the mint-green identity.
-            Animated with the custom `blob` keyframes defined in tailwind.config.
-          */}
-          <div className="absolute inset-0 opacity-40 pointer-events-none">
-            <div className="absolute top-10 left-[12%] w-96 h-96 bg-mint-300 rounded-full blur-3xl animate-blob" />
-            <div className="absolute top-40 right-[10%] w-[28rem] h-[28rem] bg-apple-teal-300 rounded-full blur-3xl animate-blob-slow" />
-            <div className="absolute bottom-20 left-[35%] w-80 h-80 bg-indigo-300 rounded-full blur-3xl animate-blob" style={{ animationDelay: '2s' }} />
-            <div className="absolute top-1/2 right-[25%] w-72 h-72 bg-violet-300 rounded-full blur-3xl animate-blob-slow" style={{ animationDelay: '4s' }} />
-            <div className="absolute bottom-0 right-[5%] w-80 h-80 bg-sky-300 rounded-full blur-3xl animate-blob" style={{ animationDelay: '6s' }} />
-          </div>
-
-          <div className="max-w-5xl mx-auto text-center space-y-10 relative z-10">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-mint-50 border border-mint-200 rounded-full text-sm font-semibold text-mint-700 mb-4">
-              <span className="w-2 h-2 bg-mint-500 rounded-full animate-pulse" />
-              80+ AI models, one unified workspace
+        {/* ===================================================================
+            Hero — serif italic statement, mono eyebrow, hairline accent bar.
+            =================================================================== */}
+        <section className="px-8 pt-28 pb-32 border-b border-hairline-soft">
+          <div className="max-w-6xl mx-auto grid grid-cols-12 gap-8">
+            <div className="col-span-12 md:col-span-2 flex md:flex-col gap-4 md:gap-2">
+              <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">
+                vol. i
+              </span>
+              <span className="hidden md:block w-8 h-px bg-ink" />
+              <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">
+                a studio
+              </span>
             </div>
 
-            <h1 className="text-6xl md:text-8xl font-bold tracking-tight leading-[1.05] text-balance">
-              The Complete AI <br />
-              <span className="text-gradient-mint-teal">Creation Studio</span>
-            </h1>
+            <div className="col-span-12 md:col-span-10 space-y-10">
+              <h1 className="font-serif italic text-ink text-pretty leading-[1.02] tracking-[-0.01em] text-[clamp(3rem,7vw,5.75rem)]">
+                One studio. <br />
+                Every model. <br />
+                <span className="text-accent">Quietly assembled.</span>
+              </h1>
 
-            <p className="text-2xl text-label-secondary max-w-3xl mx-auto leading-relaxed text-pretty">
-              Generate text, images, video, and audio with the world&apos;s most powerful AI models—including Chinese AI leaders like DeepSeek, Qwen, and Kimi.
-            </p>
+              <p className="max-w-xl font-sans text-lg text-ink-soft leading-relaxed text-pretty">
+                Clox is an editorial workspace for working with frontier AI. Write a
+                turn, swap models mid-thread, generate an image, score a clip — without
+                ever leaving the page. Calm by default. Configurable on demand.
+              </p>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-5 pt-4">
-              <Link
-                href="/text"
-                className="w-full sm:w-auto px-10 py-5 gradient-mint-teal text-white rounded-hig-2xl text-lg font-bold shadow-float hover:shadow-float-lg hover:scale-105 active:scale-95 transition-all"
-              >
-                Start Creating Free
-              </Link>
-              <Link
-                href="#models"
-                className="w-full sm:w-auto px-10 py-5 glass-float rounded-hig-2xl text-lg font-bold hover:bg-white transition-all"
-              >
-                Explore Models
-              </Link>
-            </div>
-
-            <div className="pt-8 flex items-center justify-center gap-8 text-sm text-label-tertiary">
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 bg-mint-500 rounded-full flex items-center justify-center text-white text-xs font-bold">✓</div>
-                No credit card
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 bg-mint-500 rounded-full flex items-center justify-center text-white text-xs font-bold">✓</div>
-                Free tier included
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 bg-mint-500 rounded-full flex items-center justify-center text-white text-xs font-bold">✓</div>
-                Cancel anytime
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Model Categories Grid */}
-        <section id="models" className="py-24 px-6 max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-5xl font-bold mb-4 text-balance">Four creative modes. <br />Infinite possibilities.</h2>
-            <p className="text-xl text-label-secondary text-pretty">Access the best AI models from every major provider</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Text Generation Card — mint */}
-            <Link href="/text" className="group bg-mint-600 p-10 rounded-hig-3xl border border-mint-700 shadow-float hover:shadow-float-lg transition-all relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-mint-500/20 rounded-full blur-3xl" />
-              <div className="relative z-10">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-mint-700/50 backdrop-blur-sm rounded-full text-xs font-bold text-mint-100 mb-4">
-                  TEXT GENERATION
-                </div>
-                <h3 className="text-4xl font-bold text-white mb-4">Intelligent Writing</h3>
-                <p className="text-mint-100 text-lg leading-relaxed mb-6">
-                  GPT-5, Claude Opus 4.6, Gemini 3 Flash, DeepSeek V4, Qwen 3.5—the most advanced language models.
-                </p>
-                <div className="flex items-center gap-2 text-mint-100 text-sm font-semibold group-hover:gap-3 transition-all">
-                  <span>30+ models available</span>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            </Link>
-
-            {/* Image Generation Card — apple teal */}
-            <Link href="/image" className="group bg-apple-teal-600 p-10 rounded-hig-3xl border border-apple-teal-700 shadow-float hover:shadow-float-lg transition-all relative overflow-hidden">
-              <div className="absolute bottom-0 left-0 w-64 h-64 bg-apple-teal-500/20 rounded-full blur-3xl" />
-              <div className="relative z-10">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-apple-teal-700/50 backdrop-blur-sm rounded-full text-xs font-bold text-apple-teal-100 mb-4">
-                  IMAGE GENERATION
-                </div>
-                <h3 className="text-4xl font-bold text-white mb-4">Visual Creation</h3>
-                <p className="text-apple-teal-100 text-lg leading-relaxed mb-6">
-                  DALL-E 4, Midjourney v7, Stable Diffusion XL, Ideogram 3.0—photorealistic and artistic imagery.
-                </p>
-                <div className="flex items-center gap-2 text-apple-teal-100 text-sm font-semibold group-hover:gap-3 transition-all">
-                  <span>20+ models available</span>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            </Link>
-
-            {/* Video Generation Card — deeper mint */}
-            <Link href="/video" className="group bg-mint-700 p-10 rounded-hig-3xl border border-mint-800 shadow-float hover:shadow-float-lg transition-all relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-64 h-64 bg-mint-600/20 rounded-full blur-3xl" />
-              <div className="relative z-10">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-mint-800/50 backdrop-blur-sm rounded-full text-xs font-bold text-mint-100 mb-4">
-                  VIDEO GENERATION
-                </div>
-                <h3 className="text-4xl font-bold text-white mb-4">Motion &amp; Film</h3>
-                <p className="text-mint-100 text-lg leading-relaxed mb-6">
-                  Sora, Runway Gen-4, Kling 2.0, Luma Dream Machine—cinematic AI video generation.
-                </p>
-                <div className="flex items-center gap-2 text-mint-100 text-sm font-semibold group-hover:gap-3 transition-all">
-                  <span>15+ models available</span>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            </Link>
-
-            {/* Audio Generation Card — deeper apple teal */}
-            <Link href="/audio" className="group bg-apple-teal-700 p-10 rounded-hig-3xl border border-apple-teal-800 shadow-float hover:shadow-float-lg transition-all relative overflow-hidden">
-              <div className="absolute bottom-0 right-0 w-64 h-64 bg-apple-teal-600/20 rounded-full blur-3xl" />
-              <div className="relative z-10">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-apple-teal-800/50 backdrop-blur-sm rounded-full text-xs font-bold text-apple-teal-100 mb-4">
-                  AUDIO GENERATION
-                </div>
-                <h3 className="text-4xl font-bold text-white mb-4">Sound &amp; Voice</h3>
-                <p className="text-apple-teal-100 text-lg leading-relaxed mb-6">
-                  ElevenLabs, MusicLM, Suno v4, Udio—ultra-realistic voice cloning and music generation.
-                </p>
-                <div className="flex items-center gap-2 text-apple-teal-100 text-sm font-semibold group-hover:gap-3 transition-all">
-                  <span>15+ models available</span>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            </Link>
-          </div>
-        </section>
-
-        {/* Features Section */}
-        <section id="features" className="py-24 px-6 bg-gradient-to-b from-surface-tertiary to-white">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-16">
-              <h2 className="text-5xl font-bold mb-4">Built for creators who demand excellence</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {[
-                {
-                  title: "Unified Interface",
-                  desc: "Switch between text, image, video, and audio generation seamlessly. One workspace for everything.",
-                  color: "mint",
-                },
-                {
-                  title: "Model Comparison",
-                  desc: "Run the same prompt across multiple AI models simultaneously to find the perfect output.",
-                  color: "teal",
-                },
-                {
-                  title: "Project Organization",
-                  desc: "Organize your generations into folders, add tags, and build a searchable creative library.",
-                  color: "mint",
-                },
-                {
-                  title: "Advanced Controls",
-                  desc: "Fine-tune aspect ratios, quality, style, duration, and model-specific parameters with precision.",
-                  color: "teal",
-                },
-                {
-                  title: "Global AI Access",
-                  desc: "Access Western and Chinese AI models—DeepSeek, Qwen, Kimi, GLM alongside GPT and Claude.",
-                  color: "mint",
-                },
-                {
-                  title: "Export Anywhere",
-                  desc: "Download outputs in multiple formats, share links, or push directly to your favorite tools.",
-                  color: "teal",
-                },
-              ].map((feature) => (
-                <div
-                  key={feature.title}
-                  className={`glass-float p-8 rounded-hig-2xl hover:shadow-float transition-all group ${
-                    feature.color === 'mint' ? 'hover:border-mint-200' : 'hover:border-apple-teal-200'
-                  }`}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-2">
+                <Link
+                  href="/text"
+                  className="inline-flex items-center gap-3 px-5 py-3 bg-ink text-bg font-mono text-[11px] tracking-[0.04em] uppercase hover:bg-ink-soft transition-colors"
                 >
-                  <div
-                    className={`w-12 h-12 rounded-hig-lg mb-6 flex items-center justify-center ${
-                      feature.color === 'mint' ? 'bg-mint-100' : 'bg-apple-teal-100'
-                    }`}
-                  >
-                    <div
-                      className={`w-6 h-6 rounded ${
-                        feature.color === 'mint' ? 'bg-mint-500' : 'bg-apple-teal-500'
-                      }`}
-                    />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-3">{feature.title}</h3>
-                  <p className="text-label-secondary leading-relaxed">{feature.desc}</p>
+                  start writing
+                  <span aria-hidden>→</span>
+                </Link>
+                <Link
+                  href="#modes"
+                  className="inline-flex items-center gap-3 font-mono text-[11px] tracking-[0.04em] uppercase text-ink-soft hover:text-ink transition-colors"
+                >
+                  see the four modes
+                  <span aria-hidden>↓</span>
+                </Link>
+              </div>
+
+              <ul className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-6 font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-accent" />
+                  no credit card
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-accent" />
+                  free tier included
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-accent" />
+                  cancel anytime
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* ===================================================================
+            Modes — four cards, hairline grid, mono eyebrow + serif title.
+            =================================================================== */}
+        <section
+          id="modes"
+          className="px-8 pt-24 pb-12 border-b border-hairline-soft"
+        >
+          <div className="max-w-6xl mx-auto">
+            <div className="grid grid-cols-12 gap-8 mb-12">
+              <div className="col-span-12 md:col-span-2">
+                <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">
+                  the four modes
                 </div>
+              </div>
+              <div className="col-span-12 md:col-span-10">
+                <h2 className="font-serif italic text-ink text-pretty leading-[1.05] text-[clamp(2rem,4.5vw,3.5rem)]">
+                  Four ways to make. <br />
+                  <span className="text-ink-soft">One composer.</span>
+                </h2>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-hairline border border-hairline">
+              {MODES.map(mode => (
+                <Link
+                  key={mode.href}
+                  href={mode.href}
+                  className="group relative bg-surface p-10 transition-colors hover:bg-surface-alt"
+                >
+                  <div className="flex items-start justify-between mb-6">
+                    <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">
+                      {mode.eyebrow}
+                    </span>
+                    <span className="font-mono text-[10px] tracking-[0.04em] text-accent uppercase">
+                      {mode.count}
+                    </span>
+                  </div>
+                  <h3 className="font-serif italic text-ink text-3xl md:text-4xl leading-[1.05] tracking-[-0.01em] mb-4">
+                    {mode.title}
+                  </h3>
+                  <p className="text-[15px] text-ink-soft leading-relaxed max-w-md mb-8">
+                    {mode.blurb}
+                  </p>
+                  <span className="font-mono text-[11px] tracking-[0.04em] text-ink uppercase inline-flex items-center gap-2">
+                    open
+                    <span
+                      aria-hidden
+                      className="transition-transform group-hover:translate-x-1"
+                    >
+                      →
+                    </span>
+                  </span>
+                </Link>
               ))}
             </div>
           </div>
         </section>
 
-        {/* CTA Section */}
-        <section className="py-32 px-6 relative overflow-hidden">
-          <div className="absolute inset-0 opacity-20">
-            <div className="absolute top-0 left-0 w-full h-full gradient-mint-teal" />
-          </div>
+        {/* ===================================================================
+            Principles — six small cards in a 3-up grid. Mono eyebrow,
+            hairline left rule.
+            =================================================================== */}
+        <section
+          id="principles"
+          className="px-8 pt-24 pb-24 border-b border-hairline-soft"
+        >
+          <div className="max-w-6xl mx-auto">
+            <div className="grid grid-cols-12 gap-8 mb-16">
+              <div className="col-span-12 md:col-span-2">
+                <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">
+                  principles
+                </div>
+              </div>
+              <div className="col-span-12 md:col-span-10">
+                <h2 className="font-serif italic text-ink text-pretty leading-[1.05] text-[clamp(2rem,4.5vw,3.5rem)]">
+                  How we decided. <br />
+                  <span className="text-ink-soft">What we kept out.</span>
+                </h2>
+              </div>
+            </div>
 
-          <div className="max-w-4xl mx-auto text-center relative z-10 space-y-8">
-            <h2 className="text-6xl font-bold text-balance">
-              Ready to create with the world&apos;s best AI?
-            </h2>
-            <p className="text-2xl text-label-secondary text-pretty">
-              Join thousands of creators using Clox Studio to bring their ideas to life.
+            <ul className="grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-12">
+              {PRINCIPLES.map(p => (
+                <li key={p.label} className="border-l border-hairline pl-5">
+                  <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase mb-3">
+                    {p.label}
+                  </div>
+                  <h3 className="font-serif italic text-ink text-2xl leading-tight mb-2">
+                    {p.title}
+                  </h3>
+                  <p className="text-[14px] text-ink-soft leading-relaxed">{p.body}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* ===================================================================
+            Closing CTA — a single editorial pull quote and a single button.
+            =================================================================== */}
+        <section className="px-8 py-32">
+          <div className="max-w-4xl mx-auto text-center space-y-10">
+            <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">
+              ready when you are
+            </div>
+            <p className="font-serif italic text-ink text-pretty leading-[1.05] text-[clamp(2.5rem,6vw,4.5rem)]">
+              &ldquo;The best interface is the one that gets out of the way of the
+              <span className="text-accent"> work</span>.&rdquo;
             </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-5 pt-6">
+            <div className="flex items-center justify-center">
               <Link
                 href="/text"
-                className="w-full sm:w-auto px-12 py-6 gradient-mint-teal text-white rounded-hig-2xl text-xl font-bold shadow-float-lg hover:scale-105 active:scale-95 transition-all"
+                className="inline-flex items-center gap-3 px-6 py-3 bg-ink text-bg font-mono text-[11px] tracking-[0.04em] uppercase hover:bg-ink-soft transition-colors"
               >
-                Launch Studio
-              </Link>
-              <Link
-                href="#models"
-                className="w-full sm:w-auto px-12 py-6 glass-float rounded-hig-2xl text-xl font-bold hover:bg-white transition-all"
-              >
-                View All Models
+                launch studio
+                <span aria-hidden>→</span>
               </Link>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="py-16 px-6 border-t border-separator glass-float mx-6 mb-6 rounded-hig-2xl">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 gradient-mint-teal rounded-hig-lg flex items-center justify-center shadow-mint-glow group-hover:scale-110 transition-transform">
-              <span className="text-white font-bold text-xl">C</span>
-            </div>
-            <span className="font-bold text-2xl tracking-tight">Clox Studio</span>
+      {/* =====================================================================
+          Footer — wordmark + ©. No links, no clutter.
+          ===================================================================== */}
+      <footer className="px-8 py-10 border-t border-hairline-soft">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-2.5">
+            <span aria-hidden className="font-serif italic text-2xl text-accent leading-none">
+              C
+            </span>
+            <span className="text-[13px] text-ink tracking-tight">Clox</span>
           </Link>
-          <div className="text-sm text-label-secondary">
-            © {new Date().getFullYear()} Clox Studio. Powered by 80+ AI models.
+          <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">
+            © {new Date().getFullYear()} clox — every model, one studio
           </div>
         </div>
       </footer>

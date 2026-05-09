@@ -23,7 +23,7 @@ const PROVIDER_CONFIG = {
   baidu: { name: 'Baidu ERNIE', category: 'Text AI', docs: 'https://cloud.baidu.com/doc/WENXINWORKSHOP', guide: 'Get API key from console.bce.baidu.com', fields: { key: true, secret: false, url: false } },
   perplexity: { name: 'Perplexity', category: 'Text AI', docs: 'https://docs.perplexity.ai', guide: 'Get API key from perplexity.ai/settings/api', fields: { key: true, secret: false, url: false } },
   together: { name: 'Together AI', category: 'Text AI', docs: 'https://docs.together.ai', guide: 'Get API key from api.together.xyz/settings/api-keys', fields: { key: true, secret: false, url: false } },
-  
+
   // === IMAGE AI (12 providers) ===
   'openai-dalle': { name: 'DALL-E 3', category: 'Image AI', docs: 'https://platform.openai.com/docs/guides/images', guide: 'Uses same API key as OpenAI GPT', fields: { key: true, secret: false, url: false } },
   midjourney: { name: 'Midjourney', category: 'Image AI', docs: 'https://docs.midjourney.com', guide: 'Use via Discord bot or unofficial API', fields: { key: true, secret: false, url: false } },
@@ -37,7 +37,7 @@ const PROVIDER_CONFIG = {
   getimg: { name: 'Getimg.ai', category: 'Image AI', docs: 'https://docs.getimg.ai', guide: 'Get API key from getimg.ai/dashboard/api-keys', fields: { key: true, secret: false, url: false } },
   segmind: { name: 'Segmind', category: 'Image AI', docs: 'https://docs.segmind.com', guide: 'Get API key from segmind.com/api-keys', fields: { key: true, secret: false, url: false } },
   'deepai': { name: 'DeepAI', category: 'Image AI', docs: 'https://deepai.org/apis', guide: 'Get API key from deepai.org/dashboard/profile', fields: { key: true, secret: false, url: false } },
-  
+
   // === VIDEO AI (8 providers) ===
   'openai-sora': { name: 'OpenAI Sora', category: 'Video AI', docs: 'https://openai.com/sora', guide: 'Currently limited access - uses OpenAI API key', fields: { key: true, secret: false, url: false } },
   runway: { name: 'Runway Gen-3', category: 'Video AI', docs: 'https://docs.runwayml.com', guide: 'Get API key from app.runwayml.com/account', fields: { key: true, secret: true, url: false } },
@@ -47,7 +47,7 @@ const PROVIDER_CONFIG = {
   'hailuo-ai': { name: 'Hailuo MiniMax', category: 'Video AI', docs: 'https://www.hailuo.ai', guide: 'Chinese video AI from MiniMax', fields: { key: true, secret: false, url: false } },
   synthesia: { name: 'Synthesia', category: 'Video AI', docs: 'https://docs.synthesia.io', guide: 'Enterprise API - contact sales', fields: { key: true, secret: false, url: false } },
   heygen: { name: 'HeyGen', category: 'Video AI', docs: 'https://docs.heygen.com', guide: 'Get API key from app.heygen.com', fields: { key: true, secret: false, url: false } },
-  
+
   // === AUDIO AI (10 providers) ===
   elevenlabs: { name: 'ElevenLabs (Voice)', category: 'Audio AI', docs: 'https://elevenlabs.io/docs', guide: 'Get API key from elevenlabs.io/subscription', fields: { key: true, secret: false, url: false } },
   'openai-tts': { name: 'OpenAI TTS', category: 'Audio AI', docs: 'https://platform.openai.com/docs/guides/text-to-speech', guide: 'Uses same API key as OpenAI GPT', fields: { key: true, secret: false, url: false } },
@@ -62,6 +62,20 @@ const PROVIDER_CONFIG = {
 }
 
 type TabType = 'API Keys' | 'Users' | 'Translations' | 'Settings' | 'Analytics'
+
+const TABS: TabType[] = ['API Keys', 'Users', 'Translations', 'Settings', 'Analytics']
+const CATEGORIES = ['Text AI', 'Image AI', 'Video AI', 'Audio AI']
+
+const LANG_INFO: Record<string, { name: string; code: string }> = {
+  en: { name: 'English', code: 'EN' },
+  es: { name: 'Spanish', code: 'ES' },
+  fr: { name: 'French', code: 'FR' },
+  de: { name: 'German', code: 'DE' },
+  ja: { name: 'Japanese', code: 'JA' },
+  zh: { name: 'Chinese', code: 'ZH' },
+  ko: { name: 'Korean', code: 'KO' },
+  ru: { name: 'Russian', code: 'RU' },
+}
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<TabType>('API Keys')
@@ -79,13 +93,11 @@ export default function AdminDashboard() {
 
   const checkAuthAndLoadData = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    
     if (!session) {
       router.push('/auth/login')
       return
     }
 
-    // Load API keys from shared settings store
     const settings = getAdminSettings()
     const keys: Record<string, { key: string; secret: string; url: string; enabled: boolean }> = {}
     Object.entries(settings.providers).forEach(([provider, config]) => {
@@ -93,12 +105,11 @@ export default function AdminDashboard() {
         key: config.apiKey || '',
         secret: config.apiSecret || '',
         url: config.baseUrl || '',
-        enabled: config.enabled
+        enabled: config.enabled,
       }
     })
     setApiKeys(keys)
 
-    // Load users from Supabase
     try {
       const { data: usersData } = await supabase.auth.admin.listUsers()
       if (usersData?.users) {
@@ -118,10 +129,10 @@ export default function AdminDashboard() {
       enabled: config?.enabled ?? false,
       apiKey: config?.key || '',
       apiSecret: config?.secret || '',
-      baseUrl: config?.url || ''
+      baseUrl: config?.url || '',
     }
     saveAdminSettings(settings)
-    alert(`${PROVIDER_CONFIG[provider as keyof typeof PROVIDER_CONFIG].name} settings saved!`)
+    alert(`${PROVIDER_CONFIG[provider as keyof typeof PROVIDER_CONFIG].name} settings saved`)
   }
 
   const handleToggleProvider = (provider: string) => {
@@ -133,17 +144,16 @@ export default function AdminDashboard() {
           key: prev[provider]?.key || '',
           secret: prev[provider]?.secret || '',
           url: prev[provider]?.url || '',
-          enabled: !prev[provider]?.enabled
-        }
+          enabled: !prev[provider]?.enabled,
+        },
       }
-      // Save to shared settings store immediately
       const settings = getAdminSettings()
-      Object.entries(updated).forEach(([provider, config]) => {
-        settings.providers[provider] = {
+      Object.entries(updated).forEach(([p, config]) => {
+        settings.providers[p] = {
           enabled: config.enabled,
           apiKey: config.key || '',
           apiSecret: config.secret || '',
-          baseUrl: config.url || ''
+          baseUrl: config.url || '',
         }
       })
       saveAdminSettings(settings)
@@ -151,169 +161,184 @@ export default function AdminDashboard() {
     })
   }
 
-  const categories = ['Text AI', 'Image AI', 'Video AI', 'Audio AI']
   const providersInCategory = Object.entries(PROVIDER_CONFIG).filter(
-    ([, config]) => config.category === activeCategory
+    ([, config]) => config.category === activeCategory,
   )
-
-  const tabs: TabType[] = ['API Keys', 'Users', 'Translations', 'Settings', 'Analytics']
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-mint-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
-        <div className="text-2xl font-bold text-mint">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-bg">
+        <div className="font-mono text-[11px] tracking-[0.04em] uppercase text-ink-muted">
+          loading…
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-white via-mint-50 to-teal-50 dark:from-[#1C1C1E] dark:via-[#2C2C2E] dark:to-[#1C1C1E]">
-      {/* Animated Background Blobs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 -left-4 w-72 h-72 bg-mint/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob"></div>
-        <div className="absolute top-0 -right-4 w-72 h-72 bg-teal/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob [animation-delay:2s]"></div>
-        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-mint-300/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl animate-blob [animation-delay:4s]"></div>
-      </div>
+    <div className="min-h-screen bg-bg text-ink font-sans">
+      {/* ================================================================== */}
+      {/* Top strip — editorial header with breadcrumb + section title.       */}
+      {/* ================================================================== */}
+      <header className="sticky top-0 z-30 bg-bg/85 backdrop-blur border-b border-hairline">
+        <div className="max-w-7xl mx-auto px-8 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <span className="font-serif italic text-2xl text-accent leading-none">C</span>
+            <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">
+              admin / super
+            </span>
+            <span className="font-serif italic text-lg text-ink">{activeTab}</span>
+          </div>
+          <button
+            onClick={() => router.push('/text')}
+            className="font-mono text-[11px] tracking-[0.04em] uppercase text-ink-soft hover:text-ink transition-colors"
+          >
+            return to studio →
+          </button>
+        </div>
+      </header>
 
-      {/* Header */}
-      <div className="relative z-10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-xl border-b border-mint-200/50 dark:border-mint-700/50">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-mint-900 dark:text-mint-100">Super Admin Dashboard</h1>
-              <p className="text-sm text-mint-600 dark:text-mint-400 mt-1">Manage all AI providers and system settings</p>
-            </div>
+      {/* ================================================================== */}
+      {/* Tab bar — hairline rule with active 2px accent.                      */}
+      {/* ================================================================== */}
+      <div className="border-b border-hairline">
+        <div className="max-w-7xl mx-auto px-8 flex items-center gap-1">
+          {TABS.map(tab => (
             <button
-              onClick={() => router.push('/text')}
-              className="px-6 py-3 gradient-mint-teal text-white rounded-hig-xl font-bold shadow-mint-glow hover:scale-105 transition-transform"
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`relative px-4 py-3 font-mono text-[11px] tracking-[0.04em] uppercase transition-colors ${
+                activeTab === tab ? 'text-ink' : 'text-ink-muted hover:text-ink-soft'
+              }`}
             >
-              Go to App →
+              {tab}
+              {activeTab === tab && (
+                <span className="absolute left-3 right-3 -bottom-px h-[2px] bg-ink" />
+              )}
             </button>
-          </div>
+          ))}
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="relative z-10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-xl border-b border-mint-200/30 dark:border-mint-700/30">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex gap-1">
-            {tabs.map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-6 py-4 font-bold text-sm transition-all relative ${
-                  activeTab === tab
-                    ? 'text-mint-900 dark:text-mint-100'
-                    : 'text-mint-500 dark:text-mint-500 hover:text-mint-700 dark:hover:text-mint-300'
-                }`}
-              >
-                {tab}
-                {activeTab === tab && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 gradient-mint-teal rounded-full"></div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
+      {/* ================================================================== */}
+      {/* Content                                                              */}
+      {/* ================================================================== */}
+      <main className="max-w-7xl mx-auto px-8 py-10">
         {activeTab === 'API Keys' && (
-          <div className="space-y-6">
-            {/* Category Tabs */}
-            <div className="flex gap-3 p-2 bg-white/60 dark:bg-[#2C2C2E]/60 backdrop-blur-xl rounded-hig-xl border border-mint-200 dark:border-mint-700 shadow-sm">
-              {categories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`flex-1 px-6 py-3 rounded-hig-lg font-bold text-sm transition-all ${
-                    activeCategory === cat
-                      ? 'gradient-mint-teal text-white shadow-mint-glow'
-                      : 'text-mint-600 dark:text-mint-400 hover:bg-mint-50 dark:hover:bg-mint-900/20'
-                  }`}
-                >
-                  {cat}
-                  <span className="ml-2 text-xs opacity-70">
-                    ({Object.values(PROVIDER_CONFIG).filter(p => p.category === cat).length})
-                  </span>
-                </button>
-              ))}
+          <div className="space-y-8">
+            <div>
+              <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase mb-2">
+                providers
+              </div>
+              <h2 className="font-serif italic text-3xl text-ink mb-1">
+                Connect every model.
+              </h2>
+              <p className="text-sm text-ink-soft max-w-xl leading-relaxed">
+                Enable a provider, paste a key, and that model becomes available to every
+                user across text, image, video and audio surfaces.
+              </p>
             </div>
 
-            {/* Provider Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {providersInCategory.map(([key, config]) => {
-                const providerData = apiKeys[key] || { key: '', secret: '', url: '', enabled: false }
-                
+            {/* Category bar — flat row of mono uppercase tabs with hairline divider. */}
+            <div className="flex items-center gap-px bg-hairline border border-hairline">
+              {CATEGORIES.map(cat => {
+                const count = Object.values(PROVIDER_CONFIG).filter(p => p.category === cat).length
                 return (
-                  <div
-                    key={key}
-                    className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float hover:shadow-mint-glow transition-all"
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    className={`flex-1 px-4 py-3 bg-surface font-mono text-[11px] tracking-[0.04em] uppercase transition-colors flex items-center justify-between ${
+                      activeCategory === cat ? 'text-ink' : 'text-ink-muted hover:text-ink-soft hover:bg-surface-alt'
+                    }`}
                   >
+                    <span>{cat.replace(' AI', '')}</span>
+                    <span className="text-ink-muted ml-3">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Provider list */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-hairline border border-hairline">
+              {providersInCategory.map(([key, config]) => {
+                const data = apiKeys[key] || { key: '', secret: '', url: '', enabled: false }
+                return (
+                  <div key={key} className="bg-surface p-6">
                     <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-bold text-mint-900 dark:text-mint-100">{config.name}</h3>
-                        <p className="text-xs text-mint-600 dark:text-mint-400 mt-1">{config.category}</p>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${data.enabled ? 'bg-accent' : 'bg-ink-muted/40'}`}
+                            aria-hidden
+                          />
+                          <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase">
+                            {data.enabled ? 'connected' : 'idle'}
+                          </span>
+                        </div>
+                        <h3 className="font-serif italic text-xl text-ink leading-tight">
+                          {config.name}
+                        </h3>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input
                           type="checkbox"
-                          checked={providerData.enabled}
+                          checked={data.enabled}
                           onChange={() => handleToggleProvider(key)}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-mint-200 dark:bg-mint-800 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-mint-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-mint peer-checked:to-teal"></div>
+                        <div className="w-9 h-5 bg-rail-soft border border-hairline relative transition-colors peer-checked:bg-ink peer-checked:border-ink after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-bg after:border after:border-hairline after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4 peer-checked:after:border-ink" />
                       </label>
                     </div>
 
                     <div className="space-y-3">
                       {config.fields.key && (
                         <div>
-                          <label className="block text-xs font-bold text-mint-700 dark:text-mint-300 mb-1">API Key</label>
+                          <label className="block font-mono text-[10px] tracking-[0.04em] uppercase text-ink-muted mb-1.5">
+                            api key
+                          </label>
                           <input
                             type="password"
-                            value={providerData.key}
-                            onChange={(e) => setApiKeys(prev => ({ ...prev, [key]: { ...prev[key], key: e.target.value } }))}
-                            placeholder="sk-..."
-                            className="w-full px-3 py-2 bg-mint-50 dark:bg-mint-900/30 border border-mint-200 dark:border-mint-700 rounded-hig-lg text-sm text-mint-900 dark:text-mint-100 placeholder:text-mint-400 focus:ring-2 focus:ring-teal-400 outline-none"
-                          />
-                        </div>
-                      )}
-                      
-                      {config.fields.secret && (
-                        <div>
-                          <label className="block text-xs font-bold text-mint-700 dark:text-mint-300 mb-1">API Secret</label>
-                          <input
-                            type="password"
-                            value={providerData.secret}
-                            onChange={(e) => setApiKeys(prev => ({ ...prev, [key]: { ...prev[key], secret: e.target.value } }))}
-                            placeholder="secret..."
-                            className="w-full px-3 py-2 bg-mint-50 dark:bg-mint-900/30 border border-mint-200 dark:border-mint-700 rounded-hig-lg text-sm text-mint-900 dark:text-mint-100 placeholder:text-mint-400 focus:ring-2 focus:ring-teal-400 outline-none"
+                            value={data.key}
+                            onChange={e => setApiKeys(prev => ({ ...prev, [key]: { ...prev[key], key: e.target.value } }))}
+                            placeholder="sk-…"
+                            className="w-full px-3 py-2 bg-bg border border-hairline rounded-card text-sm font-mono text-ink placeholder:text-ink-muted outline-none focus:border-ink/40 transition-colors"
                           />
                         </div>
                       )}
 
-                      <div className="flex items-center gap-2 pt-2">
+                      {config.fields.secret && (
+                        <div>
+                          <label className="block font-mono text-[10px] tracking-[0.04em] uppercase text-ink-muted mb-1.5">
+                            api secret
+                          </label>
+                          <input
+                            type="password"
+                            value={data.secret}
+                            onChange={e => setApiKeys(prev => ({ ...prev, [key]: { ...prev[key], secret: e.target.value } }))}
+                            placeholder="secret…"
+                            className="w-full px-3 py-2 bg-bg border border-hairline rounded-card text-sm font-mono text-ink placeholder:text-ink-muted outline-none focus:border-ink/40 transition-colors"
+                          />
+                        </div>
+                      )}
+
+                      <p className="text-[12px] text-ink-soft leading-relaxed">{config.guide}</p>
+
+                      <div className="flex items-center gap-3 pt-2 border-t border-hairline-soft">
                         <button
                           onClick={() => handleSaveKey(key)}
-                          className="flex-1 px-4 py-2 bg-gradient-to-r from-mint to-teal text-white rounded-hig-lg font-bold text-sm hover:scale-105 transition-transform shadow-sm"
+                          className="px-3 py-1.5 bg-ink text-bg font-mono text-[10px] tracking-[0.04em] uppercase hover:bg-ink-soft transition-colors"
                         >
-                          Save
+                          save
                         </button>
                         <a
                           href={config.docs}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="px-4 py-2 bg-mint-100 dark:bg-mint-800 text-mint-700 dark:text-mint-300 rounded-hig-lg font-bold text-sm hover:bg-mint-200 dark:hover:bg-mint-700 transition-colors"
+                          className="font-mono text-[10px] tracking-[0.04em] uppercase text-ink-soft hover:text-ink transition-colors"
                         >
-                          Docs
+                          docs ↗
                         </a>
                       </div>
-
-                      <p className="text-xs text-mint-500 dark:text-mint-500 leading-relaxed">
-                        {config.guide}
-                      </p>
                     </div>
                   </div>
                 )
@@ -323,41 +348,53 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'Users' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
-            <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100 mb-6">User Management</h2>
-            <div className="overflow-x-auto">
+          <div className="space-y-6">
+            <div>
+              <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase mb-2">
+                users
+              </div>
+              <h2 className="font-serif italic text-3xl text-ink mb-1">
+                Who is in the studio.
+              </h2>
+            </div>
+
+            <div className="border border-hairline">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-mint-200 dark:border-mint-700">
-                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Email</th>
-                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Status</th>
-                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Created</th>
-                    <th className="text-left py-3 px-4 text-sm font-bold text-mint-700 dark:text-mint-300">Actions</th>
+                  <tr className="border-b border-hairline">
+                    <th className="text-left px-5 py-3 font-mono text-[10px] tracking-[0.04em] uppercase text-ink-muted">email</th>
+                    <th className="text-left px-5 py-3 font-mono text-[10px] tracking-[0.04em] uppercase text-ink-muted">status</th>
+                    <th className="text-left px-5 py-3 font-mono text-[10px] tracking-[0.04em] uppercase text-ink-muted">created</th>
+                    <th className="text-left px-5 py-3 font-mono text-[10px] tracking-[0.04em] uppercase text-ink-muted">actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map(user => (
-                    <tr key={user.id} className="border-b border-mint-100 dark:border-mint-800">
-                      <td className="py-4 px-4 text-sm text-mint-900 dark:text-mint-100">{user.email}</td>
-                      <td className="py-4 px-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          user.email_confirmed_at
-                            ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300'
-                            : 'bg-mint-100 dark:bg-mint-800 text-mint-700 dark:text-mint-300'
-                        }`}>
-                          {user.email_confirmed_at ? 'Active' : 'Pending'}
+                  {users.map(u => (
+                    <tr key={u.id} className="border-b border-hairline-soft last:border-0">
+                      <td className="px-5 py-4 text-sm text-ink">{u.email}</td>
+                      <td className="px-5 py-4">
+                        <span className="inline-flex items-center gap-2 font-mono text-[10px] tracking-[0.04em] uppercase text-ink-soft">
+                          <span className={`w-1.5 h-1.5 rounded-full ${u.email_confirmed_at ? 'bg-accent' : 'bg-ink-muted/50'}`} />
+                          {u.email_confirmed_at ? 'active' : 'pending'}
                         </span>
                       </td>
-                      <td className="py-4 px-4 text-sm text-mint-600 dark:text-mint-400">
-                        {new Date(user.created_at).toLocaleDateString()}
+                      <td className="px-5 py-4 font-mono text-[12px] text-ink-soft">
+                        {new Date(u.created_at).toLocaleDateString()}
                       </td>
-                      <td className="py-4 px-4">
-                        <button className="text-sm font-bold text-mint-600 dark:text-mint-400 hover:text-mint-900 dark:hover:text-mint-100">
-                          Manage
+                      <td className="px-5 py-4">
+                        <button className="font-mono text-[11px] tracking-[0.04em] uppercase text-ink-soft hover:text-ink transition-colors">
+                          manage
                         </button>
                       </td>
                     </tr>
                   ))}
+                  {users.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-5 py-10 font-mono text-[11px] tracking-[0.04em] uppercase text-ink-muted text-center">
+                        no users yet
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -365,64 +402,78 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'Translations' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
-            <div className="flex items-center justify-between mb-6">
+          <div className="space-y-6">
+            <div className="flex items-end justify-between">
               <div>
-                <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100">Translation Management</h2>
-                <p className="text-mint-600 dark:text-mint-400 mt-1">Manage app translations for all supported languages</p>
+                <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase mb-2">
+                  translations
+                </div>
+                <h2 className="font-serif italic text-3xl text-ink mb-1">
+                  Speak every language.
+                </h2>
+                <p className="text-sm text-ink-soft max-w-xl leading-relaxed">
+                  Manage interface copy across the supported locales. The editor lives in
+                  its own surface for focus.
+                </p>
               </div>
               <button
                 onClick={() => router.push('/admin/translations')}
-                className="px-6 py-3 gradient-mint-teal text-white rounded-hig-xl font-bold shadow-mint-glow hover:scale-105 transition-transform"
+                className="px-4 py-2 bg-ink text-bg font-mono text-[11px] tracking-[0.04em] uppercase hover:bg-ink-soft transition-colors"
               >
-                Open Full Editor →
+                open editor →
               </button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {['en', 'es', 'fr', 'de', 'ja', 'zh', 'ko', 'ru'].map(lang => {
-                const langInfo: Record<string, { name: string; flag: string }> = {
-                  en: { name: 'English', flag: '🇺🇸' },
-                  es: { name: 'Spanish', flag: '🇪🇸' },
-                  fr: { name: 'French', flag: '🇫🇷' },
-                  de: { name: 'German', flag: '🇩🇪' },
-                  ja: { name: 'Japanese', flag: '🇯🇵' },
-                  zh: { name: 'Chinese', flag: '🇨🇳' },
-                  ko: { name: 'Korean', flag: '🇰🇷' },
-                  ru: { name: 'Russian', flag: '🇷🇺' },
-                }
-                return (
-                  <div
-                    key={lang}
-                    className="bg-mint-50 dark:bg-mint-900/30 rounded-hig-xl p-4 border border-mint-200 dark:border-mint-700"
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="text-2xl">{langInfo[lang].flag}</span>
-                      <span className="font-bold text-mint-900 dark:text-mint-100">{langInfo[lang].name}</span>
-                    </div>
-                    <div className="text-xs text-mint-600 dark:text-mint-400">
-                      {lang === 'en' ? 'Base language' : 'Click editor to manage'}
-                    </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-hairline border border-hairline">
+              {Object.entries(LANG_INFO).map(([lang, info]) => (
+                <div key={lang} className="bg-surface p-5">
+                  <div className="font-mono text-[10px] tracking-[0.04em] uppercase text-ink-muted mb-2">
+                    {info.code}
                   </div>
-                )
-              })}
+                  <div className="font-serif italic text-lg text-ink leading-tight mb-1">
+                    {info.name}
+                  </div>
+                  <div className="font-mono text-[10px] tracking-[0.04em] uppercase text-ink-muted">
+                    {lang === 'en' ? 'base locale' : 'manage in editor'}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
         {activeTab === 'Settings' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
-            <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100 mb-4">System Settings</h2>
-            <p className="text-mint-600 dark:text-mint-400">Global configuration options coming soon...</p>
+          <div className="space-y-6">
+            <div>
+              <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase mb-2">
+                system
+              </div>
+              <h2 className="font-serif italic text-3xl text-ink mb-1">Global settings.</h2>
+            </div>
+            <div className="border border-hairline p-6 bg-surface">
+              <p className="font-mono text-[11px] tracking-[0.04em] uppercase text-ink-muted">
+                global configuration — coming soon
+              </p>
+            </div>
           </div>
         )}
 
         {activeTab === 'Analytics' && (
-          <div className="bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-xl rounded-hig-2xl border border-mint-200 dark:border-mint-700 p-6 shadow-float">
-            <h2 className="text-2xl font-bold text-mint-900 dark:text-mint-100 mb-4">Usage Analytics</h2>
-            <p className="text-mint-600 dark:text-mint-400">API usage statistics and metrics coming soon...</p>
+          <div className="space-y-6">
+            <div>
+              <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted uppercase mb-2">
+                analytics
+              </div>
+              <h2 className="font-serif italic text-3xl text-ink mb-1">Usage at a glance.</h2>
+            </div>
+            <div className="border border-hairline p-6 bg-surface">
+              <p className="font-mono text-[11px] tracking-[0.04em] uppercase text-ink-muted">
+                api usage and metrics — coming soon
+              </p>
+            </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   )
 }
