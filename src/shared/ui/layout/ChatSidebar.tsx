@@ -1,13 +1,26 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { ReactNode, useState, useEffect } from 'react'
+import { ReactNode, useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import {
   Chat,
   Modality,
   listChats as listChatsFromStore,
   saveChats as saveChatsToStore,
 } from '@/lib/chat-store'
+
+/** Lightweight shape of a DB project as it shows up in the sidebar list. */
+interface DbProject {
+  id: string
+  title: string
+  archived_at: string | null
+  my_role: 'owner' | 'admin' | 'member'
+  member_count: number
+  chat_count: number
+  credit_budget_usd: number | null
+  credit_spent_usd: number
+}
 
 interface ProjectSettings {
   id: string
@@ -54,6 +67,38 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
     maxTokens: 2048,
     modelId: 'gemini-2.5-flash'
   })
+
+  // DB projects (canonical source for shared/multi-device project membership).
+  // Populated from /api/projects on mount and refreshed when other surfaces
+  // dispatch `clox-projects-changed`.
+  const [dbProjects, setDbProjects] = useState<DbProject[]>([])
+  const loadDbProjects = useCallback(async () => {
+    try {
+      const res = await fetch('/api/projects?include=archived', { cache: 'no-store' })
+      if (!res.ok) return
+      const body = await res.json().catch(() => ({}))
+      const list = (body.projects ?? []) as DbProject[]
+      // Show only active projects in the sidebar; archived ones are accessible
+      // from the /projects index.
+      setDbProjects(list.filter(p => !p.archived_at))
+    } catch { /* offline — leave the list empty, /projects still works */ }
+  }, [])
+  useEffect(() => {
+    void loadDbProjects()
+    const refresh = () => { void loadDbProjects() }
+    window.addEventListener('clox-projects-changed', refresh)
+    window.addEventListener('clox-chats-synced', refresh)
+    return () => {
+      window.removeEventListener('clox-projects-changed', refresh)
+      window.removeEventListener('clox-chats-synced', refresh)
+    }
+  }, [loadDbProjects])
+
+  // Drag-and-drop bookkeeping. The currently dragged chat id is stored in a
+  // ref-like state so drop-zones can render their hover state purely from CSS
+  // when `dragOverProjectId` matches.
+  const [draggingChatId, setDraggingChatId] = useState<string | null>(null)
+  const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null)
 
   // Load chats from the shared store and stay in sync with other workspaces.
   useEffect(() => {
@@ -143,9 +188,32 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
     setEditingTitle(currentTitle)
   }
 
-  // Move chat to project or remove from project
+  // Move chat to project or remove from project. Updates localStorage
+  // immediately for the optimistic UI, then PATCHes the DB row so the
+  // project membership is durable across browsers/devices.
   const moveChatToProject = (chatId: string, projectId: string | undefined) => {
     saveChats(chats.map(c => c.id === chatId ? { ...c, projectId, folderId: undefined } : c))
+    // The DB persistence is best-effort: if the chat hasn't been synced yet
+    // (offline / brand new), the next chat-sync run will pick it up. If the
+    // projectId here is a DB UUID, link it; if it's a legacy localStorage id,
+    // skip the API call (legacy projects only exist client-side anyway).
+    const isUuid = projectId
+      ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)
+      : true
+    if (!isUuid) return
+    void (async () => {
+      try {
+        const res = await fetch(`/api/chats/${chatId}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ project_id: projectId ?? null }),
+        })
+        if (res.ok) {
+          // Refresh the DB project list so the chat-count badge stays honest.
+          void loadDbProjects()
+        }
+      } catch { /* network blip — local copy is still correct */ }
+    })()
   }
 
   // Open project settings
@@ -201,93 +269,231 @@ export default function ChatSidebar({ activeChatId, onChatSelect, modality }: Ch
               </div>
             ) : (
               filteredChats.filter(c => c.type !== 'project').map(chat => (
-                <SidebarItem
+                // Each chat row is draggable. We use a native HTML5 drag so
+                // there's no extra dependency; the drop targets below handle
+                // the linking. The drag image is the row itself.
+                <div
                   key={chat.id}
-                  id={chat.id}
-                  title={chat.title}
-                  model={chat.type === 'project' ? 'Project' : chat.model}
-                  active={chat.id === activeChatId}
-                  isEditing={editingId === chat.id}
-                  editingTitle={editingTitle}
-                  onEditingTitleChange={setEditingTitle}
-                  onStartEdit={() => startEditing(chat.id, chat.title)}
-                  onSaveEdit={() => handleRename(chat.id, editingTitle, 'chat')}
-                  onCancelEdit={() => setEditingId(null)}
-                  onDelete={() => handleDeleteChat(chat.id)}
-                  onClick={() => onChatSelect?.(chat.id)}
-                  projects={chats.filter(c => c.type === 'project').map(p => ({ id: p.id, title: p.title }))}
-                  onMoveToProject={(projectId) => moveChatToProject(chat.id, projectId)}
-                  currentProjectId={chat.projectId}
-                />
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggingChatId(chat.id)
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('text/x-clox-chat-id', chat.id)
+                  }}
+                  onDragEnd={() => {
+                    setDraggingChatId(null)
+                    setDragOverProjectId(null)
+                  }}
+                  className={draggingChatId === chat.id ? 'opacity-40' : ''}
+                >
+                  <SidebarItem
+                    id={chat.id}
+                    title={chat.title}
+                    model={chat.type === 'project' ? 'Project' : chat.model}
+                    active={chat.id === activeChatId}
+                    isEditing={editingId === chat.id}
+                    editingTitle={editingTitle}
+                    onEditingTitleChange={setEditingTitle}
+                    onStartEdit={() => startEditing(chat.id, chat.title)}
+                    onSaveEdit={() => handleRename(chat.id, editingTitle, 'chat')}
+                    onCancelEdit={() => setEditingId(null)}
+                    onDelete={() => handleDeleteChat(chat.id)}
+                    onClick={() => onChatSelect?.(chat.id)}
+                    projects={[
+                      ...dbProjects.map(p => ({ id: p.id, title: p.title })),
+                      ...chats.filter(c => c.type === 'project').map(p => ({ id: p.id, title: p.title })),
+                    ]}
+                    onMoveToProject={(projectId) => moveChatToProject(chat.id, projectId)}
+                    currentProjectId={chat.projectId}
+                  />
+                </div>
               ))
             )}
           </div>
         </div>
 
-        {/* Projects */}
-        {filteredChats.filter(c => c.type === 'project').length > 0 && (
+        {/* Projects ─────────────────────────────────────────────────────
+            Two sources merge here: DB projects (canonical, multi-device,
+            shared with members) and legacy localStorage "project" chats
+            kept for back-compat. Both behave as drop targets so users can
+            drag a chat onto either one to link it. */}
+        {(dbProjects.length > 0 || filteredChats.filter(c => c.type === 'project').length > 0 || draggingChatId) && (
           <div className="space-y-0.5">
-            <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted px-4 mb-1.5">
-              projects
+            <div className="flex items-center justify-between px-4 mb-1.5">
+              <span className="font-mono text-[10px] tracking-[0.04em] text-ink-muted">projects</span>
+              <Link
+                href="/projects"
+                className="font-mono text-[9.5px] tracking-[0.06em] text-ink-muted hover:text-ink transition-colors"
+              >
+                manage →
+              </Link>
             </div>
+
+            {/* When the user is dragging, surface a clear "no project" zone
+                at the top so they can detach a chat from its current project
+                without opening a menu. */}
+            {draggingChatId && (
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOverProjectId('__none__') }}
+                onDragLeave={() => setDragOverProjectId(prev => prev === '__none__' ? null : prev)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const id = e.dataTransfer.getData('text/x-clox-chat-id') || draggingChatId
+                  if (id) moveChatToProject(id, undefined)
+                  setDraggingChatId(null); setDragOverProjectId(null)
+                }}
+                className={`mx-2 mb-1.5 px-3 py-2 border border-dashed font-mono text-[10px] tracking-[0.04em] uppercase transition-colors ${
+                  dragOverProjectId === '__none__'
+                    ? 'border-accent text-accent bg-accent/[0.06]'
+                    : 'border-hairline-soft text-ink-muted'
+                }`}
+              >
+                drop here — no project
+              </div>
+            )}
+
             <div className="space-y-2">
-              {filteredChats.filter(c => c.type === 'project').map(project => (
-                <div key={project.id} className="space-y-0.5">
-                  <div className="flex items-center gap-1">
-                    <div className="flex-1">
-                      <SidebarItem
-                        id={project.id}
-                        title={project.title}
-                        model="Project"
-                        active={project.id === activeChatId}
-                        isEditing={editingId === project.id}
-                        editingTitle={editingTitle}
-                        onEditingTitleChange={setEditingTitle}
-                        onStartEdit={() => startEditing(project.id, project.title)}
-                        onSaveEdit={() => handleRename(project.id, editingTitle, 'chat')}
-                        onCancelEdit={() => setEditingId(null)}
-                        onDelete={() => handleDeleteChat(project.id)}
-                        onClick={() => onChatSelect?.(project.id)}
-                      />
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openProjectSettings(project.id)
+              {/* DB projects first */}
+              {dbProjects.map(project => {
+                const dropping = dragOverProjectId === project.id
+                const localChildren = chats.filter(c => c.projectId === project.id && c.type === 'chat')
+                const total = (project.chat_count ?? 0) + localChildren.length
+                return (
+                  <div key={`db-${project.id}`} className="space-y-0.5">
+                    <div
+                      onDragOver={(e) => {
+                        if (!draggingChatId) return
+                        e.preventDefault()
+                        setDragOverProjectId(project.id)
                       }}
-                      className="p-1.5 hover:bg-rail-soft text-ink-muted hover:text-ink transition-colors"
-                      title="Project Settings"
+                      onDragLeave={() => setDragOverProjectId(prev => prev === project.id ? null : prev)}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        const id = e.dataTransfer.getData('text/x-clox-chat-id') || draggingChatId
+                        if (id) moveChatToProject(id, project.id)
+                        setDraggingChatId(null); setDragOverProjectId(null)
+                      }}
+                      className={`flex items-center gap-1 transition-colors ${
+                        dropping ? 'bg-accent/[0.08] outline outline-1 outline-accent/40' : ''
+                      }`}
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    </button>
+                      <Link
+                        href={`/projects/${project.id}`}
+                        className="flex-1 group flex items-center justify-between pl-4 pr-2 py-2 hover:bg-rail-soft transition-colors"
+                      >
+                        <div className="min-w-0 flex-1 pr-2">
+                          <div className="text-[13px] truncate text-ink-soft group-hover:text-ink">{project.title}</div>
+                          <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted truncate mt-0.5">
+                            {total === 0 ? 'project' : `project · ${total} chat${total === 1 ? '' : 's'}`}
+                            {project.member_count > 1 ? ` · ${project.member_count} ppl` : ''}
+                            {project.my_role !== 'owner' ? ` · ${project.my_role}` : ''}
+                          </div>
+                        </div>
+                        <span className="font-mono text-[10px] text-ink-muted opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                      </Link>
+                    </div>
+                    {/* Local chats already linked to this DB project (best-effort
+                        until full DB chat listing arrives — keeps the sidebar
+                        immediately useful after a drop). */}
+                    {localChildren.length > 0 && (
+                      <div className="ml-7 pl-3 border-l border-hairline-soft space-y-0">
+                        {localChildren.map(chat => (
+                          <SidebarItem
+                            key={chat.id}
+                            id={chat.id}
+                            title={chat.title}
+                            model={chat.model}
+                            active={chat.id === activeChatId}
+                            isEditing={editingId === chat.id}
+                            editingTitle={editingTitle}
+                            onEditingTitleChange={setEditingTitle}
+                            onStartEdit={() => startEditing(chat.id, chat.title)}
+                            onSaveEdit={() => handleRename(chat.id, editingTitle, 'chat')}
+                            onCancelEdit={() => setEditingId(null)}
+                            onDelete={() => handleDeleteChat(chat.id)}
+                            onClick={() => onChatSelect?.(chat.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {/* Chats within this project */}
-                  {getChatsByProject(project.id).length > 0 && (
-                    <div className="ml-7 pl-3 border-l border-hairline-soft space-y-0">
-                      {getChatsByProject(project.id).map(chat => (
+                )
+              })}
+
+              {/* Legacy localStorage projects (kept until the user creates
+                  proper DB projects). Same drop-zone behaviour. */}
+              {filteredChats.filter(c => c.type === 'project').map(project => {
+                const dropping = dragOverProjectId === project.id
+                return (
+                  <div key={`local-${project.id}`} className="space-y-0.5">
+                    <div
+                      onDragOver={(e) => {
+                        if (!draggingChatId) return
+                        e.preventDefault()
+                        setDragOverProjectId(project.id)
+                      }}
+                      onDragLeave={() => setDragOverProjectId(prev => prev === project.id ? null : prev)}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        const id = e.dataTransfer.getData('text/x-clox-chat-id') || draggingChatId
+                        if (id) moveChatToProject(id, project.id)
+                        setDraggingChatId(null); setDragOverProjectId(null)
+                      }}
+                      className={`flex items-center gap-1 transition-colors ${
+                        dropping ? 'bg-accent/[0.08] outline outline-1 outline-accent/40' : ''
+                      }`}
+                    >
+                      <div className="flex-1">
                         <SidebarItem
-                          key={chat.id}
-                          id={chat.id}
-                          title={chat.title}
-                          model={chat.model}
-                          active={chat.id === activeChatId}
-                          isEditing={editingId === chat.id}
+                          id={project.id}
+                          title={project.title}
+                          model="Project · local"
+                          active={project.id === activeChatId}
+                          isEditing={editingId === project.id}
                           editingTitle={editingTitle}
                           onEditingTitleChange={setEditingTitle}
-                          onStartEdit={() => startEditing(chat.id, chat.title)}
-                          onSaveEdit={() => handleRename(chat.id, editingTitle, 'chat')}
+                          onStartEdit={() => startEditing(project.id, project.title)}
+                          onSaveEdit={() => handleRename(project.id, editingTitle, 'chat')}
                           onCancelEdit={() => setEditingId(null)}
-                          onDelete={() => handleDeleteChat(chat.id)}
-                          onClick={() => onChatSelect?.(chat.id)}
+                          onDelete={() => handleDeleteChat(project.id)}
+                          onClick={() => onChatSelect?.(project.id)}
                         />
-                      ))}
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openProjectSettings(project.id) }}
+                        className="p-1.5 hover:bg-rail-soft text-ink-muted hover:text-ink transition-colors"
+                        title="Project settings"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </button>
                     </div>
-                  )}
-                </div>
-              ))}
+                    {getChatsByProject(project.id).length > 0 && (
+                      <div className="ml-7 pl-3 border-l border-hairline-soft space-y-0">
+                        {getChatsByProject(project.id).map(chat => (
+                          <SidebarItem
+                            key={chat.id}
+                            id={chat.id}
+                            title={chat.title}
+                            model={chat.model}
+                            active={chat.id === activeChatId}
+                            isEditing={editingId === chat.id}
+                            editingTitle={editingTitle}
+                            onEditingTitleChange={setEditingTitle}
+                            onStartEdit={() => startEditing(chat.id, chat.title)}
+                            onSaveEdit={() => handleRename(chat.id, editingTitle, 'chat')}
+                            onCancelEdit={() => setEditingId(null)}
+                            onDelete={() => handleDeleteChat(chat.id)}
+                            onClick={() => onChatSelect?.(chat.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}

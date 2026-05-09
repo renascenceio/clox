@@ -23,6 +23,7 @@ import ThemeToggle from '@/shared/ui/components/ThemeToggle'
 import LanguageSwitcher from '@/shared/ui/components/LanguageSwitcher'
 import Avatar from '@/shared/ui/components/Avatar'
 import { createClient } from '@/lib/supabase/client'
+import { syncLocalChatsToDB } from '@/lib/projects/chat-sync'
 
 export const spring: Transition = { type: "spring", stiffness: 380, damping: 30 }
 
@@ -62,6 +63,7 @@ const PRIMARY_NAV: { href: string; label: string; icon: ReactNode; count?: numbe
   { href: '/image', label: 'Image',   icon: <NavIcon path="M1.5 2.5h10v8h-10z M1.5 8.5L4 6l2 2 2-2.5 3.5 3.5" extra="M4.5 5a.7.7 0 110-1.4.7.7 0 010 1.4z" /> },
   { href: '/video', label: 'Video',   icon: <NavIcon path="M1.5 3h7v7h-7z M9 5l3-1.5v6L9 8z" /> },
   { href: '/audio', label: 'Audio',   icon: <NavIcon path="M5 2v9 M3 4v5 M7 3v7 M9 5v3 M1 5v3 M11 4v5" /> },
+  { href: '/projects', label: 'Projects', icon: <NavIcon path="M1.5 3.5h4l1 1.2h5v6.3h-10z" /> },
   { href: '/gallery', label: 'Gallery', icon: <NavIcon path="M1.5 2.5h10v8h-10z M1.5 8.5L4 6l2 2 2-2.5 3.5 3.5" /> },
 ]
 
@@ -110,6 +112,13 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
   }, [])
 
   useEffect(() => { loadProfile() }, [loadProfile])
+
+  // One-shot localStorage→DB chat migration. Idempotent; runs at most once
+  // per session. See lib/projects/chat-sync.ts for the contract.
+  useEffect(() => {
+    const t = window.setTimeout(() => { void syncLocalChatsToDB() }, 600)
+    return () => window.clearTimeout(t)
+  }, [])
 
   // Close menu on outside click
   useEffect(() => {

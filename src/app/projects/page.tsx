@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import AppLayout from '@/shared/ui/layout/AppLayout'
+import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
 
 // ---------------------------------------------------------------------------
 // /projects — index of all projects the signed-in user owns or belongs to.
@@ -69,7 +70,7 @@ export default function ProjectsIndexPage() {
   })
 
   return (
-    <AppLayout>
+    <AppLayout sidebar={<ChatSidebar />}>
       <div className="min-h-full bg-bg">
         <div className="max-w-[1100px] mx-auto px-8 py-12">
 
