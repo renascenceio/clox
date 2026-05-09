@@ -286,7 +286,7 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
       const children = buildDocxChildren(docx, code, lang)
       const doc = new docx.Document({
         creator: 'Clox',
-        styles: defaultDocxStyles(docx),
+        styles: defaultDocxStyles(),
         sections: [{ properties: {}, children }],
       })
       const blob = await docx.Packer.toBlob(doc)
@@ -1303,9 +1303,15 @@ function inlineToRuns(docx: typeof import('docx'), line: string): any[] {
 
 /** Default styling so the .docx looks like a real Word doc rather than
  *  default Calibri-12. We keep the configuration tiny — Word users
- *  routinely retheme — but ship sane line height + heading sizes. */
+ *  routinely retheme — but ship sane line height + heading sizes.
+ *
+ *  The `docx` runtime accepts the styles spec as a plain object — we
+ *  don't need to instantiate any of its classes — so the helper is a
+ *  pure factory. (Earlier drafts threaded the `docx` namespace
+ *  through here for `Style`/`StyleLevel` enums; the current shape
+ *  doesn't need them.) */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function defaultDocxStyles(docx: typeof import('docx')): any {
+function defaultDocxStyles(): any {
   return {
     default: {
       document: {
