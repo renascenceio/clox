@@ -86,7 +86,21 @@ export default function TextPage() {
   const enabledTextModels  = useAvailableModels(TEXT_MODELS)
   const enabledImageModels = useAvailableModels(IMAGE_MODELS)
   const enabledVideoModels = useAvailableModels(VIDEO_MODELS)
-  const enabledAudioModels = useAvailableModels(AUDIO_MODELS)
+  // The Voice mode picker should only surface text-to-speech models —
+  // not the music-generation entries (Suno, Udio, Stable Audio) that
+  // also live in AUDIO_MODELS for a future "Music" mode. Without this
+  // filter the dropdown was 15 rows long and the speech entries
+  // (ElevenLabs, OpenAI TTS, Azure, Play.ht, Fish, ChatGLM) were
+  // visually buried beneath the music half — users reported that
+  // ElevenLabs "wasn't in the list" even though it was technically
+  // present, just below the fold of the dropdown's vh-cap on small
+  // viewports. Pre-filtering on `type === 'voice'` keeps the picker
+  // focused on what the active mode can actually deliver.
+  const VOICE_AUDIO_MODELS = useMemo(
+    () => AUDIO_MODELS.filter(m => m.type === 'voice'),
+    [],
+  )
+  const enabledAudioModels = useAvailableModels(VOICE_AUDIO_MODELS)
 
   /* ----- theme ------------------------------------------------------- */
   // Initial paint comes from the blocking script in `layout.tsx`, which
