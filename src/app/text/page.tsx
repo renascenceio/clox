@@ -550,6 +550,13 @@ export default function TextPage() {
 
     try {
       const apiKey = getProviderApiKey(selectedModel.provider) || undefined
+      // Dual-credential providers (Kling, Baidu ERNIE, Play.ht, Azure
+      // Speech…) round-trip a second value alongside the API key. We
+      // read it straight off the admin-settings store so the existing
+      // single-key callers don't need to know about it; routes that
+      // don't care simply ignore the field.
+      const apiSecret =
+        getAdminSettings().providers[selectedModel.provider]?.apiSecret || undefined
       // Media generation routes accept a single `prompt` string. The cleanest
       // way to thread skills through without changing every route is to
       // prepend a short skills directive to the prompt itself. The registry
@@ -578,7 +585,7 @@ export default function TextPage() {
         const res = await fetch('/api/generate-video', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: composedPrompt, model: selectedVideoModel.id, aspectRatio: aspect, duration, apiKey }),
+          body: JSON.stringify({ prompt: composedPrompt, model: selectedVideoModel.id, aspectRatio: aspect, duration, apiKey, apiSecret }),
         })
         result = await res.json()
         if (!res.ok || !result.url) throw new Error(result.error || `Video generation failed (${res.status})`)
