@@ -112,10 +112,19 @@ async function generateWithGeminiImage(
   modelId: string,
   prompt: string,
   apiKey: string,
+  opts: { negativePrompt?: string } = {},
 ): Promise<{ dataUrl: string; mimeType: string }> {
+  // The Gemini :generateContent endpoint doesn't expose a dedicated
+  // `negative_prompt` field, but appending an "Avoid: …" instruction to
+  // the user prompt is the canonical workaround Google's docs call out
+  // in the image-generation cookbook. Keep it terse so we don't blow
+  // out the user's intent.
+  const finalPrompt = opts.negativePrompt
+    ? `${prompt}\n\nAvoid: ${opts.negativePrompt}`
+    : prompt
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`
   const body = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
     generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
   }
   const res = await fetch(url, {
@@ -182,12 +191,24 @@ async function generateWithImagen(
   prompt: string,
   ratio: string,
   apiKey: string,
+  opts: {
+    negativePrompt?: string
+    personGeneration?: string
+    seed?: number
+  } = {},
 ): Promise<{ dataUrl: string; mimeType: string }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:predict?key=${apiKey}`
-  const body = {
-    instances: [{ prompt }],
-    parameters: { sampleCount: 1, aspectRatio: IMAGEN_ASPECT_FROM_RATIO[ratio] ?? '1:1' },
+  // Imagen exposes the optional knobs directly in `parameters`.
+  // Keys are emitted only when set so we don't override defaults
+  // for users who didn't change anything.
+  const parameters: Record<string, unknown> = {
+    sampleCount: 1,
+    aspectRatio: IMAGEN_ASPECT_FROM_RATIO[ratio] ?? '1:1',
   }
+  if (opts.negativePrompt)   parameters.negativePrompt   = opts.negativePrompt
+  if (opts.personGeneration) parameters.personGeneration = opts.personGeneration
+  if (opts.seed !== undefined) parameters.seed = opts.seed
+  const body = { instances: [{ prompt }], parameters }
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -214,6 +235,7 @@ async function generateWithStability(
   prompt: string,
   ratio: string,
   apiKey: string,
+  opts: { negativePrompt?: string; seed?: number } = {},
 ): Promise<{ dataUrl: string; mimeType: string }> {
   const endpoint =
     mapped.stabilityMode === 'sd3'
@@ -224,6 +246,8 @@ async function generateWithStability(
   form.set('prompt', prompt)
   form.set('output_format', 'png')
   form.set('aspect_ratio', STABILITY_ASPECT_FROM_RATIO[ratio] ?? '1:1')
+  if (opts.negativePrompt) form.set('negative_prompt', opts.negativePrompt)
+  if (opts.seed !== undefined) form.set('seed', String(opts.seed))
   if (mapped.stabilityMode === 'sd3') {
     // The SD3 endpoint accepts a `model` param to pick large / medium / turbo.
     form.set('model', mapped.modelId === 'sd3-large' ? 'sd3.5-large' : 'sd3.5-medium')
@@ -264,6 +288,7 @@ async function generateWithBfl(
   prompt: string,
   ratio: string,
   apiKey: string,
+  opts: { seed?: number } = {},
 ): Promise<{ dataUrl: string; mimeType: string }> {
   // BFL uses width/height. Pick a sensible resolution per ratio (≤2048
   // long side, multiple of 32). The numbers below match BFL's recommended
@@ -286,7 +311,12 @@ async function generateWithBfl(
       'x-key': apiKey,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ prompt, width: size.width, height: size.height }),
+    body: JSON.stringify({
+      prompt,
+      width: size.width,
+      height: size.height,
+      ...(opts.seed !== undefined ? { seed: opts.seed } : {}),
+    }),
   })
   if (!startRes.ok) {
     const errText = await startRes.text()
@@ -332,20 +362,24 @@ async function generateWithIdeogram(
   prompt: string,
   ratio: string,
   apiKey: string,
+  opts: { negativePrompt?: string; seed?: number } = {},
 ): Promise<{ dataUrl: string; mimeType: string }> {
+  // Ideogram nests every knob under `image_request`. Only emit the
+  // optional fields when set to avoid overriding their defaults.
+  const imageRequest: Record<string, unknown> = {
+    prompt,
+    aspect_ratio: IDEOGRAM_ASPECT_FROM_RATIO[ratio] ?? 'ASPECT_1_1',
+    model: mapped.ideogramVersion,
+  }
+  if (opts.negativePrompt) imageRequest.negative_prompt = opts.negativePrompt
+  if (opts.seed !== undefined) imageRequest.seed = opts.seed
   const res = await fetch('https://api.ideogram.ai/generate', {
     method: 'POST',
     headers: {
       'Api-Key': apiKey,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      image_request: {
-        prompt,
-        aspect_ratio: IDEOGRAM_ASPECT_FROM_RATIO[ratio] ?? 'ASPECT_1_1',
-        model: mapped.ideogramVersion,
-      },
-    }),
+    body: JSON.stringify({ image_request: imageRequest }),
   })
   if (!res.ok) {
     const errText = await res.text()
@@ -368,6 +402,21 @@ async function generateWithIdeogram(
 /*                              Handler                               */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Provider-agnostic shape for the picker fields the route understands.
+ * Each adapter consumes the keys it knows about and silently ignores
+ * the rest, so adding a new field to a capability spec doesn't require
+ * changes here unless we want a model to act on it.
+ */
+interface ImageParams {
+  size?: string                  // DALL-E exact resolution, e.g. '1792x1024'
+  quality?: string               // DALL-E: 'standard' | 'hd'
+  style?: string                 // DALL-E: 'vivid' | 'natural'
+  seed?: string | number         // Stability / BFL / Ideogram / Imagen
+  negativePrompt?: string        // Stability / Ideogram / Imagen / Gemini
+  personGeneration?: string      // Imagen 4: 'dont_allow' | 'allow_adult' | 'allow_all'
+}
+
 export async function POST(request: Request) {
   let body: {
     prompt?: string
@@ -377,6 +426,8 @@ export async function POST(request: Request) {
      *  natively; DALL-E 3 only supports `n: 1` per request, so we loop
      *  N parallel calls and merge the results. */
     count?: number
+    /** Full picker-field payload — see `ImageParams` above. */
+    params?: ImageParams
     apiKey?: string
     projectId?: string | null
     chatId?: string | null
@@ -392,6 +443,7 @@ export async function POST(request: Request) {
     model: requestedModelId = 'nano-banana',
     ratio = '1:1',
     count: rawCount,
+    params = {},
     apiKey: clientApiKey,
     projectId,
     chatId,
@@ -400,6 +452,12 @@ export async function POST(request: Request) {
   // Clamp to a sane range so a malformed payload doesn't accidentally
   // burn 50 credits on a single send.
   const count = Math.max(1, Math.min(4, Math.floor(Number(rawCount) || 1)))
+
+  // Coerce seed -> integer; empty string / NaN means "let provider pick".
+  const seedRaw = params.seed
+  const seedNum =
+    seedRaw === undefined || seedRaw === '' ? undefined :
+    Number.isFinite(Number(seedRaw)) ? Math.floor(Number(seedRaw)) : undefined
 
   const caller = await getCallerForLogging()
   if (projectId && caller) {
@@ -493,29 +551,68 @@ export async function POST(request: Request) {
     // parallel below so every provider gets the same multi-image UX
     // even when its native API only supports n=1 (DALL-E 3, Imagen
     // single-call, Nano Banana :generateContent).
-    const generateOne = async (): Promise<{ dataUrl: string; mimeType: string } | null> => {
+    //
+    // Each adapter receives the picker fields it understands. Bumping
+    // the seed by the call index gives a deterministic-but-distinct
+    // set when count > 1, so the user gets variation even with an
+    // explicit seed.
+    const generateOne = async (idx: number): Promise<{ dataUrl: string; mimeType: string } | null> => {
       const key = providerKey!  // Already validated above.
+      const callSeed = seedNum === undefined ? undefined : seedNum + idx
       if (mapped.provider === 'google') {
         return mapped.googleMode === 'imagen'
-          ? await generateWithImagen(mapped.modelId, prompt, ratio, key)
-          : await generateWithGeminiImage(mapped.modelId, prompt, key)
+          ? await generateWithImagen(mapped.modelId, prompt, ratio, key, {
+              negativePrompt: params.negativePrompt,
+              personGeneration: params.personGeneration,
+              seed: callSeed,
+            })
+          : await generateWithGeminiImage(mapped.modelId, prompt, key, {
+              negativePrompt: params.negativePrompt,
+            })
       }
       if (mapped.provider === 'openai') {
-        const size = OPENAI_SIZE_FROM_RATIO[ratio] ?? '1024x1024'
+        // The picker's exact `size` choice wins over the ratio map.
+        // Validate shape so a malformed value doesn't blow up the AI
+        // SDK type system; OpenAI itself will 400 on values outside
+        // its supported list, surfacing the error verbatim through
+        // our error path.
+        const sanitisedSize = (() => {
+          const v = params.size?.trim()
+          if (v && /^\d+x\d+$/.test(v)) return v as `${number}x${number}`
+          return OPENAI_SIZE_FROM_RATIO[ratio] ?? '1024x1024'
+        })()
         const client = openaiUseDefaultClient ? defaultOpenai : createOpenAI({ apiKey: key })
+        // Quality / style are DALL-E specific knobs forwarded via
+        // the AI SDK's `providerOptions` channel. Only emit them
+        // when set so DALL-E 4 / gpt-image-1 (which doesn't accept
+        // `style`) doesn't error on unknown fields.
+        const openaiOpts: Record<string, string> = {}
+        if (params.quality) openaiOpts.quality = params.quality
+        if (params.style && mapped.modelId === 'dall-e-3') openaiOpts.style = params.style
         const { image } = await generateImage({
           model: client.image(mapped.modelId),
           prompt,
-          size,
+          size: sanitisedSize,
+          ...(Object.keys(openaiOpts).length
+            ? { providerOptions: { openai: openaiOpts } }
+            : {}),
         })
         return {
           dataUrl: `data:${image.mimeType};base64,${image.base64}`,
           mimeType: image.mimeType,
         }
       }
-      if (mapped.provider === 'stability') return await generateWithStability(mapped, prompt, ratio, key)
-      if (mapped.provider === 'bfl')       return await generateWithBfl(mapped, prompt, ratio, key)
-      if (mapped.provider === 'ideogram')  return await generateWithIdeogram(mapped, prompt, ratio, key)
+      if (mapped.provider === 'stability') return await generateWithStability(mapped, prompt, ratio, key, {
+        negativePrompt: params.negativePrompt,
+        seed: callSeed,
+      })
+      if (mapped.provider === 'bfl')       return await generateWithBfl(mapped, prompt, ratio, key, {
+        seed: callSeed,
+      })
+      if (mapped.provider === 'ideogram')  return await generateWithIdeogram(mapped, prompt, ratio, key, {
+        negativePrompt: params.negativePrompt,
+        seed: callSeed,
+      })
       return null
     }
 
@@ -524,7 +621,7 @@ export async function POST(request: Request) {
     // call fails we surface its error (the user expects all-or-nothing
     // for a small N, and partial results would be confusing in the
     // composer).
-    const tasks = Array.from({ length: count }, () => generateOne())
+    const tasks = Array.from({ length: count }, (_, i) => generateOne(i))
     const settled = await Promise.all(tasks)
     const results = settled.filter((r): r is { dataUrl: string; mimeType: string } => Boolean(r))
 
