@@ -155,7 +155,24 @@ export async function POST(req: Request) {
       },
     })
 
-    return result.toDataStreamResponse()
+    return result.toDataStreamResponse({
+      // By default `toDataStreamResponse` masks every server-side error with
+      // the literal string "An error occurred." which then fires through the
+      // `useChat` `onError` handler with no context. That's why historical
+      // failures (model 404s, missing keys, Anthropic auth) all surfaced in
+      // the browser as the same useless message. We forward the real cause
+      // so debugging — both ours and the user's — actually works.
+      getErrorMessage: (error: unknown) => {
+        if (error == null) return 'Unknown chat error'
+        if (typeof error === 'string') return error
+        if (error instanceof Error) return error.message
+        try {
+          return JSON.stringify(error)
+        } catch {
+          return String(error)
+        }
+      },
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown chat error'
     console.error('[v0] /api/chat error:', message)

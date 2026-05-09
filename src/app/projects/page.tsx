@@ -1,10 +1,18 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import AppLayout from '@/shared/ui/layout/AppLayout'
-import ChatSidebar from '@/shared/ui/layout/ChatSidebar'
+
+// /projects shares the editorial chrome with /history, /gallery, /skills,
+// /settings. The shell is `ChatWorkspace` driven by `useChatChrome`, which
+// gives us the four-item topstrip nav (Projects · Chats · History · Gallery)
+// AND the uniform left rail spacing every other library page uses. The old
+// AppLayout-only wrapping made History disappear from the topstrip and
+// produced a slightly different rail gutter on project routes.
+import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
+import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
+import { listChats } from '@/lib/chat-store'
 import RowActionsMenu, { RowActionIcons } from '@/shared/ui/components/RowActionsMenu'
 
 // ---------------------------------------------------------------------------
@@ -37,6 +45,12 @@ type ProjectRow = {
 }
 
 export default function ProjectsIndexPage() {
+  // Chrome (topstrip nav, palette, language, identity, dropdowns). Active rail
+  // is 'projects' so the topstrip highlights the right pill. `useChatChrome`
+  // is the same hook every other library page uses — switching to it is what
+  // brings the History link back into the topstrip on this surface.
+  const chrome = useChatChrome('projects')
+
   const [projects, setProjects] = useState<ProjectRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
@@ -113,10 +127,34 @@ export default function ProjectsIndexPage() {
     } catch (e) { setError((e as Error).message); load() }
   }, [load])
 
-  return (
-    <AppLayout sidebar={<ChatSidebar />}>
-      <div className="min-h-full bg-bg">
-        <div className="max-w-[1100px] mx-auto px-8 py-12">
+  // Recent text-chats for the rail. Same shape /history, /skills and other
+  // library surfaces use — a click drops the user back into /text on the
+  // selected thread. We don't deep-link here because the projects index is
+  // its own destination, not a chat composer.
+  const recent: RailRecentItem[] = useMemo(() => {
+    return listChats()
+      .filter(c => (c.modality ?? 'text') === 'text')
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 8)
+      .map(c => ({
+        id: c.id,
+        title: c.title,
+        meta:
+          new Date(c.createdAt).toLocaleString([], { month: 'short', day: 'numeric' }) +
+          ' · ' + c.model.toLowerCase(),
+        onClick: () => {
+          if (typeof window !== 'undefined') localStorage.setItem('activeChatId:text', c.id)
+          chrome.router.push('/text')
+        },
+      }))
+  }, [chrome.router])
+
+  // The page body stays exactly as it was — only the chrome around it
+  // changes. Wrapping it in `bodySlot` reuses the same scrollable content
+  // region every library surface uses, so the vertical rhythm matches.
+  const body = (
+    <div className="min-h-full bg-bg">
+      <div className="max-w-[1100px] mx-auto px-8 py-12">
 
           {/* eyebrow + heading */}
           <div className="border-b border-hairline pb-6 mb-8">
@@ -224,7 +262,41 @@ export default function ProjectsIndexPage() {
           )}
         </AnimatePresence>
       </div>
-    </AppLayout>
+  )
+
+  return (
+    <div className="fixed inset-0 isolate">
+      <ChatWorkspace
+        theme={chrome.theme}
+        onChangeTheme={chrome.handleThemeChange}
+        brandName="Clox"
+        brandVersion="0.5"
+        user={chrome.user}
+        language={chrome.language}
+        onChangeLanguage={chrome.handleChangeLanguage}
+        onOpenSettings={chrome.onOpenSettings}
+        onOpenSuperAdmin={chrome.onOpenSuperAdmin}
+        onOpenSkills={chrome.onOpenSkills}
+        onSignOut={chrome.handleSignOut}
+        onDeleteAccount={chrome.handleDeleteAccount}
+        nav={chrome.nav}
+        recent={recent}
+        onNewChat={chrome.onNewChat}
+        breadcrumb="workspaces · projects"
+        title="Projects"
+        models={[]}
+        modelId=""
+        onChangeModel={() => undefined}
+        modes={[]}
+        modeId=""
+        onChangeMode={() => undefined}
+        transcript={[]}
+        inputValue=""
+        onInputChange={() => undefined}
+        onSend={() => undefined}
+        bodySlot={body}
+      />
+    </div>
   )
 }
 

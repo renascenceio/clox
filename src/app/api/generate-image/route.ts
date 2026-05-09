@@ -1,16 +1,18 @@
 /**
  * Real image generation.
  *
- * Two paths are wired up, everything else returns a clear error:
+ * Live providers (each opt-in via the matching API key, env var or
+ * Super Admin → API Keys):
  *
- *  - Google (Nano Banana / Imagen 3) — called directly against the Generative
- *    Language REST API. We go through REST rather than `@ai-sdk/google` v1.x
- *    because that package's image models are v2-spec and AI SDK 4 only
- *    accepts v1 ("Unsupported model version" bug).
+ *   - Google (Nano Banana / Imagen)        — GOOGLE_GENERATIVE_AI_API_KEY
+ *   - OpenAI (DALL-E 3 / 4)                — OPENAI_API_KEY
+ *   - Stability AI (SD 3.5, SDXL Core)     — STABILITY_API_KEY
+ *   - Black Forest Labs (FLUX 1.x)         — BFL_API_KEY
+ *   - Ideogram (3.0, 2.0 Turbo)            — IDEOGRAM_API_KEY
  *
- *  - OpenAI (DALL-E 3) — via `@ai-sdk/openai` which ships a v1-spec image
- *    model. Requires a real OPENAI_API_KEY; AI Gateway cannot proxy image
- *    generation calls.
+ * Other providers (Midjourney, Recraft, Playground, CogView, Wanxiang,
+ * ERNIE-ViLG, Kolors) return a clear "missing key" error pointing at the
+ * right env var. Midjourney has no public API at all; it returns a note.
  */
 
 import { experimental_generateImage as generateImage } from 'ai'
@@ -20,12 +22,24 @@ import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
 
 export const maxDuration = 60
 
-type GoogleImageMode = 'gemini' | 'imagen'
+type ImageProvider =
+  | 'openai'
+  | 'google'
+  | 'stability'
+  | 'bfl'
+  | 'ideogram'
 
 interface MappedModel {
-  provider: 'openai' | 'google'
+  provider: ImageProvider
   modelId: string
-  googleMode?: GoogleImageMode
+  /** Google sub-mode — Nano Banana hits :generateContent, Imagen hits :predict. */
+  googleMode?: 'gemini' | 'imagen'
+  /** Stability sub-mode — SD3 hits the sd3 endpoint, others the core endpoint. */
+  stabilityMode?: 'sd3' | 'core'
+  /** BFL sub-path — `flux-pro-1.1-ultra`, `flux-pro-1.1`, `flux-dev` etc. */
+  bflPath?: string
+  /** Ideogram model_version request param. */
+  ideogramVersion?: string
 }
 
 const IMAGE_MODEL_MAP: Record<string, MappedModel> = {
@@ -33,38 +47,25 @@ const IMAGE_MODEL_MAP: Record<string, MappedModel> = {
   'dall-e-3': { provider: 'openai', modelId: 'dall-e-3' },
   'dall-e-4': { provider: 'openai', modelId: 'dall-e-3' },
 
-  // Google — all three entries share the same GOOGLE_GENERATIVE_AI_API_KEY
-  // but hit different endpoints. Names verified from ai.google.dev/gemini-api
-  // docs (April 2026). Preview slugs are unstable and may need bumping again
-  // when Google promotes / retires them.
-  'nano-banana': {
-    provider: 'google',
-    modelId: 'gemini-2.5-flash-image', // Nano Banana (stable)
-    googleMode: 'gemini',
-  },
-  'nano-banana-2': {
-    provider: 'google',
-    modelId: 'gemini-3.1-flash-image-preview', // Nano Banana 2
-    googleMode: 'gemini',
-  },
-  'nano-banana-pro': {
-    provider: 'google',
-    modelId: 'gemini-3-pro-image-preview', // Nano Banana Pro
-    googleMode: 'gemini',
-  },
-  // Imagen 3 was superseded by Imagen 4 on the Gemini API. We keep the
-  // legacy 'imagen-3' id so existing selections don't break, but route it
-  // to imagen-4.0-generate-001 which is the current public model.
-  'imagen-3': {
-    provider: 'google',
-    modelId: 'imagen-4.0-generate-001',
-    googleMode: 'imagen',
-  },
-  'imagen-4': {
-    provider: 'google',
-    modelId: 'imagen-4.0-generate-001',
-    googleMode: 'imagen',
-  },
+  // Google — preview slugs are unstable, bump as Google promotes models.
+  'nano-banana':     { provider: 'google', modelId: 'gemini-2.5-flash-image',         googleMode: 'gemini' },
+  'nano-banana-2':   { provider: 'google', modelId: 'gemini-3.1-flash-image-preview', googleMode: 'gemini' },
+  'nano-banana-pro': { provider: 'google', modelId: 'gemini-3-pro-image-preview',     googleMode: 'gemini' },
+  'imagen-3':        { provider: 'google', modelId: 'imagen-4.0-generate-001',        googleMode: 'imagen' },
+  'imagen-4':        { provider: 'google', modelId: 'imagen-4.0-generate-001',        googleMode: 'imagen' },
+
+  // Stability AI — `sd3` for SD3 family, `core` for SDXL/SD1.5 fallback.
+  'stable-diffusion-3.5': { provider: 'stability', modelId: 'sd3-large',  stabilityMode: 'sd3' },
+  'stable-diffusion-xl':  { provider: 'stability', modelId: 'sdxl-1.0',   stabilityMode: 'core' },
+
+  // Black Forest Labs FLUX — separate REST endpoints per model.
+  'flux-1.1-pro-ultra': { provider: 'bfl', modelId: 'flux-pro-1.1-ultra', bflPath: 'flux-pro-1.1-ultra' },
+  'flux-1-pro':         { provider: 'bfl', modelId: 'flux-pro-1.1',       bflPath: 'flux-pro-1.1' },
+  'flux-1-dev':         { provider: 'bfl', modelId: 'flux-dev',           bflPath: 'flux-dev' },
+
+  // Ideogram
+  'ideogram-3.0':       { provider: 'ideogram', modelId: 'V_3',       ideogramVersion: 'V_3' },
+  'ideogram-2.0-turbo': { provider: 'ideogram', modelId: 'V_2_TURBO', ideogramVersion: 'V_2_TURBO' },
 }
 
 const OPENAI_SIZE_FROM_RATIO: Record<string, `${number}x${number}`> = {
@@ -79,15 +80,25 @@ const OPENAI_SIZE_FROM_RATIO: Record<string, `${number}x${number}`> = {
 }
 
 const IMAGEN_ASPECT_FROM_RATIO: Record<string, string> = {
-  '1:1': '1:1',
-  '16:9': '16:9',
-  '9:16': '9:16',
-  '4:3': '4:3',
-  '3:4': '3:4',
-  '3:2': '4:3',
-  '2:3': '3:4',
-  '21:9': '16:9',
+  '1:1': '1:1', '16:9': '16:9', '9:16': '9:16',
+  '4:3': '4:3', '3:4': '3:4', '3:2': '4:3', '2:3': '3:4', '21:9': '16:9',
 }
+
+const STABILITY_ASPECT_FROM_RATIO: Record<string, string> = {
+  '1:1': '1:1', '16:9': '16:9', '9:16': '9:16',
+  '4:3': '4:5', '3:4': '5:4', '3:2': '3:2', '2:3': '2:3', '21:9': '21:9',
+}
+
+const IDEOGRAM_ASPECT_FROM_RATIO: Record<string, string> = {
+  '1:1': 'ASPECT_1_1',  '16:9': 'ASPECT_16_9',  '9:16': 'ASPECT_9_16',
+  '4:3': 'ASPECT_4_3',  '3:4': 'ASPECT_3_4',
+  '3:2': 'ASPECT_3_2',  '2:3': 'ASPECT_2_3',
+  '21:9': 'ASPECT_16_9',
+}
+
+/* ------------------------------------------------------------------ */
+/*                         Provider adapters                          */
+/* ------------------------------------------------------------------ */
 
 function googleApiKey(clientApiKey?: string) {
   return (
@@ -105,10 +116,7 @@ async function generateWithGeminiImage(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: {
-      // Tell Gemini we expect images back. Without this it returns text only.
-      responseModalities: ['TEXT', 'IMAGE'],
-    },
+    generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
   }
   const res = await fetch(url, {
     method: 'POST',
@@ -124,7 +132,6 @@ async function generateWithGeminiImage(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const imagePart = parts.find((p: any) => p.inlineData?.data)
   if (!imagePart) {
-    // Surface any textual refusal so the caller understands why it failed.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const textPart = parts.find((p: any) => p.text)
     throw new Error(
@@ -149,10 +156,7 @@ async function generateWithImagen(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:predict?key=${apiKey}`
   const body = {
     instances: [{ prompt }],
-    parameters: {
-      sampleCount: 1,
-      aspectRatio: IMAGEN_ASPECT_FROM_RATIO[ratio] ?? '1:1',
-    },
+    parameters: { sampleCount: 1, aspectRatio: IMAGEN_ASPECT_FROM_RATIO[ratio] ?? '1:1' },
   }
   const res = await fetch(url, {
     method: 'POST',
@@ -168,6 +172,171 @@ async function generateWithImagen(
   if (!base64) throw new Error('Imagen returned no image data.')
   return { dataUrl: `data:image/png;base64,${base64}`, mimeType: 'image/png' }
 }
+
+/**
+ * Stability AI — Stable Image Generate. SD3 family hits `/v2beta/stable-image/generate/sd3`,
+ * SDXL hits `/v2beta/stable-image/generate/core`. Both are synchronous.
+ * Multipart form-data is required even for text-only prompts; the API
+ * uses the boundary to detect file uploads.
+ */
+async function generateWithStability(
+  mapped: MappedModel,
+  prompt: string,
+  ratio: string,
+  apiKey: string,
+): Promise<{ dataUrl: string; mimeType: string }> {
+  const endpoint =
+    mapped.stabilityMode === 'sd3'
+      ? 'https://api.stability.ai/v2beta/stable-image/generate/sd3'
+      : 'https://api.stability.ai/v2beta/stable-image/generate/core'
+
+  const form = new FormData()
+  form.set('prompt', prompt)
+  form.set('output_format', 'png')
+  form.set('aspect_ratio', STABILITY_ASPECT_FROM_RATIO[ratio] ?? '1:1')
+  if (mapped.stabilityMode === 'sd3') {
+    // The SD3 endpoint accepts a `model` param to pick large / medium / turbo.
+    form.set('model', mapped.modelId === 'sd3-large' ? 'sd3.5-large' : 'sd3.5-medium')
+  }
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      // Image bytes back, base64-encoded for symmetry with our other paths.
+      Accept: 'application/json',
+    },
+    body: form,
+  })
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`Stability ${res.status}: ${errText}`)
+  }
+  const json = await res.json()
+  // Stability returns { image: <base64>, finish_reason, seed }. When the
+  // request is a content-mod hit it returns finish_reason === 'CONTENT_FILTERED'.
+  if (json?.finish_reason && json.finish_reason !== 'SUCCESS') {
+    throw new Error(`Stability refused this prompt: ${json.finish_reason}`)
+  }
+  const base64 = json?.image
+  if (!base64) throw new Error('Stability returned no image data.')
+  return { dataUrl: `data:image/png;base64,${base64}`, mimeType: 'image/png' }
+}
+
+/**
+ * Black Forest Labs FLUX — async REST. POST starts a job and returns an
+ * `id` and `polling_url`. We poll until the result is ready and then
+ * fetch the signed image URL it returns. Polling is the only option
+ * BFL exposes; their docs say results are usually ready in ≤10s.
+ */
+async function generateWithBfl(
+  mapped: MappedModel,
+  prompt: string,
+  ratio: string,
+  apiKey: string,
+): Promise<{ dataUrl: string; mimeType: string }> {
+  // BFL uses width/height. Pick a sensible resolution per ratio (≤2048
+  // long side, multiple of 32). The numbers below match BFL's recommended
+  // presets for FLUX 1.1.
+  const sizeForRatio: Record<string, { width: number; height: number }> = {
+    '1:1':  { width: 1024, height: 1024 },
+    '16:9': { width: 1280, height: 720  },
+    '9:16': { width: 720,  height: 1280 },
+    '4:3':  { width: 1152, height: 864  },
+    '3:4':  { width: 864,  height: 1152 },
+    '3:2':  { width: 1216, height: 832  },
+    '2:3':  { width: 832,  height: 1216 },
+    '21:9': { width: 1280, height: 544  },
+  }
+  const size = sizeForRatio[ratio] ?? sizeForRatio['1:1']
+
+  const startRes = await fetch(`https://api.bfl.ai/v1/${mapped.bflPath}`, {
+    method: 'POST',
+    headers: {
+      'x-key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prompt, width: size.width, height: size.height }),
+  })
+  if (!startRes.ok) {
+    const errText = await startRes.text()
+    throw new Error(`BFL start ${startRes.status}: ${errText}`)
+  }
+  const startJson = await startRes.json()
+  const pollingUrl: string | undefined = startJson?.polling_url
+  if (!pollingUrl) throw new Error('BFL did not return a polling URL.')
+
+  // Poll for up to ~50s — within our maxDuration of 60s.
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < 50_000) {
+    await new Promise(r => setTimeout(r, 1500))
+    const pollRes = await fetch(pollingUrl, { headers: { 'x-key': apiKey } })
+    if (!pollRes.ok) continue
+    const pollJson = await pollRes.json()
+    if (pollJson?.status === 'Ready') {
+      const imageUrl: string | undefined = pollJson?.result?.sample
+      if (!imageUrl) throw new Error('BFL returned no result URL.')
+      // Fetch the signed image and inline it as a data URL so the client
+      // doesn't have to deal with cross-origin caching quirks.
+      const imgRes = await fetch(imageUrl)
+      if (!imgRes.ok) throw new Error(`BFL image fetch ${imgRes.status}`)
+      const buf = Buffer.from(await imgRes.arrayBuffer())
+      return {
+        dataUrl: `data:image/png;base64,${buf.toString('base64')}`,
+        mimeType: 'image/png',
+      }
+    }
+    if (pollJson?.status === 'Error' || pollJson?.status === 'Failed') {
+      throw new Error(`BFL job failed: ${pollJson?.result ?? 'unknown'}`)
+    }
+  }
+  throw new Error('BFL job timed out (50s).')
+}
+
+/**
+ * Ideogram — synchronous JSON API. Returns an array of objects with `url`
+ * pointing at a signed CDN. We download and inline.
+ */
+async function generateWithIdeogram(
+  mapped: MappedModel,
+  prompt: string,
+  ratio: string,
+  apiKey: string,
+): Promise<{ dataUrl: string; mimeType: string }> {
+  const res = await fetch('https://api.ideogram.ai/generate', {
+    method: 'POST',
+    headers: {
+      'Api-Key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      image_request: {
+        prompt,
+        aspect_ratio: IDEOGRAM_ASPECT_FROM_RATIO[ratio] ?? 'ASPECT_1_1',
+        model: mapped.ideogramVersion,
+      },
+    }),
+  })
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`Ideogram ${res.status}: ${errText}`)
+  }
+  const json = await res.json()
+  const url: string | undefined = json?.data?.[0]?.url
+  if (!url) throw new Error('Ideogram returned no image URL.')
+  const imgRes = await fetch(url)
+  if (!imgRes.ok) throw new Error(`Ideogram image fetch ${imgRes.status}`)
+  const mimeType = imgRes.headers.get('content-type') || 'image/png'
+  const buf = Buffer.from(await imgRes.arrayBuffer())
+  return {
+    dataUrl: `data:${mimeType};base64,${buf.toString('base64')}`,
+    mimeType,
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*                              Handler                               */
+/* ------------------------------------------------------------------ */
 
 export async function POST(request: Request) {
   let body: {
@@ -213,8 +382,9 @@ export async function POST(request: Request) {
       {
         success: false,
         error:
-          `${requestedModelId} isn't wired to a live provider yet. ` +
-          `Pick Nano Banana / Imagen 3 (Google) or DALL-E 3 (OpenAI) for now.`,
+          `${requestedModelId} isn't connected to a live image provider yet. ` +
+          `Currently wired: Nano Banana / Imagen (Google), DALL-E (OpenAI), Stable Diffusion 3.5 / SDXL (Stability), FLUX (BFL), Ideogram. ` +
+          `Other providers (Midjourney has no public API; Recraft / Playground / CogView / Wanxiang / ERNIE / Kolors are coming) need their adapter wired here.`,
       },
       { status: 400 },
     )
@@ -228,53 +398,31 @@ export async function POST(request: Request) {
       ratio,
     })
 
+    let result: { dataUrl: string; mimeType: string } | null = null
+
     if (mapped.provider === 'google') {
       const key = googleApiKey(clientApiKey)
       if (!key) {
         return Response.json(
           {
             success: false,
-            error:
-              'Google image generation needs GOOGLE_GENERATIVE_AI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.',
+            error: 'Google image generation needs GOOGLE_GENERATIVE_AI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.',
           },
           { status: 400 },
         )
       }
-
-      const { dataUrl } =
+      result =
         mapped.googleMode === 'imagen'
           ? await generateWithImagen(mapped.modelId, prompt, ratio, key)
           : await generateWithGeminiImage(mapped.modelId, prompt, key)
-
-      if (caller) {
-        void recordUsage({
-          userId: caller.userId,
-          domain: caller.domain,
-          provider: 'google',
-          model: requestedModelId,
-          modality: 'image',
-          chatType: 'image',
-          projectId: projectId ?? null,
-          chatId: chatId ?? null,
-        })
-      }
-      return Response.json({
-        success: true,
-        url: dataUrl,
-        prompt,
-        model: mapped.modelId,
-      })
-    }
-
-    if (mapped.provider === 'openai') {
+    } else if (mapped.provider === 'openai') {
       const envKey = process.env.OPENAI_API_KEY
       const key = clientApiKey?.trim() || envKey
       if (!key) {
         return Response.json(
           {
             success: false,
-            error:
-              'DALL-E needs OPENAI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys. (AI Gateway does not proxy image generation.)',
+            error: 'DALL-E needs OPENAI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.',
           },
           { status: 400 },
         )
@@ -286,26 +434,73 @@ export async function POST(request: Request) {
         prompt,
         size,
       })
-      const dataUrl = `data:${image.mimeType};base64,${image.base64}`
-      if (caller) {
-        void recordUsage({
-          userId: caller.userId,
-          domain: caller.domain,
-          provider: 'openai',
-          model: requestedModelId,
-          modality: 'image',
-          chatType: 'image',
-          projectId: projectId ?? null,
-          chatId: chatId ?? null,
-        })
+      result = {
+        dataUrl: `data:${image.mimeType};base64,${image.base64}`,
+        mimeType: image.mimeType,
       }
-      return Response.json({ success: true, url: dataUrl, prompt, model: mapped.modelId })
+    } else if (mapped.provider === 'stability') {
+      const key = clientApiKey?.trim() || process.env.STABILITY_API_KEY
+      if (!key) {
+        return Response.json(
+          {
+            success: false,
+            error: 'Stable Diffusion needs STABILITY_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.',
+          },
+          { status: 400 },
+        )
+      }
+      result = await generateWithStability(mapped, prompt, ratio, key)
+    } else if (mapped.provider === 'bfl') {
+      const key = clientApiKey?.trim() || process.env.BFL_API_KEY
+      if (!key) {
+        return Response.json(
+          {
+            success: false,
+            error: 'FLUX needs BFL_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys (api.bfl.ai).',
+          },
+          { status: 400 },
+        )
+      }
+      result = await generateWithBfl(mapped, prompt, ratio, key)
+    } else if (mapped.provider === 'ideogram') {
+      const key = clientApiKey?.trim() || process.env.IDEOGRAM_API_KEY
+      if (!key) {
+        return Response.json(
+          {
+            success: false,
+            error: 'Ideogram needs IDEOGRAM_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys.',
+          },
+          { status: 400 },
+        )
+      }
+      result = await generateWithIdeogram(mapped, prompt, ratio, key)
     }
 
-    return Response.json(
-      { success: false, error: `Unsupported provider: ${mapped.provider}` },
-      { status: 400 },
-    )
+    if (!result) {
+      return Response.json(
+        { success: false, error: `Unsupported provider: ${mapped.provider}` },
+        { status: 400 },
+      )
+    }
+
+    if (caller) {
+      void recordUsage({
+        userId: caller.userId,
+        domain: caller.domain,
+        provider: mapped.provider,
+        model: requestedModelId,
+        modality: 'image',
+        chatType: 'image',
+        projectId: projectId ?? null,
+        chatId: chatId ?? null,
+      })
+    }
+    return Response.json({
+      success: true,
+      url: result.dataUrl,
+      prompt,
+      model: mapped.modelId,
+    })
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : 'Image generation failed'
