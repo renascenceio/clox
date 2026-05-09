@@ -259,23 +259,39 @@ export default function TextPage() {
     localStorage.setItem(`chat-settings-${activeChatId}`, JSON.stringify(settings))
   }, [activeChatId, selectedModel.id, systemPrompt, temperature, maxTokens])
 
-  // Keep the per-modality selection valid against what the admin has
-  // enabled. Each modality has its own registry, so we run four guards.
+  // Keep the per-modality selection sensible against what's actually
+  // configured. `useAvailableModels` now returns all models with a
+  // `connected` flag, so we default to the first *connected* model
+  // whenever the current pick is disconnected — that way users land
+  // on a model that will work, while still being able to manually
+  // pick a disconnected one and discover the "needs api key" hint.
   useEffect(() => {
     if (enabledTextModels.length === 0) return
-    if (!enabledTextModels.find(m => m.id === selectedTextModel.id)) setSelectedTextModel(enabledTextModels[0])
+    const current = enabledTextModels.find(m => m.id === selectedTextModel.id)
+    if (current?.connected) return
+    const firstConnected = enabledTextModels.find(m => m.connected)
+    if (firstConnected) setSelectedTextModel(firstConnected)
   }, [enabledTextModels, selectedTextModel.id])
   useEffect(() => {
     if (enabledImageModels.length === 0) return
-    if (!enabledImageModels.find(m => m.id === selectedImageModel.id)) setSelectedImageModel(enabledImageModels[0])
+    const current = enabledImageModels.find(m => m.id === selectedImageModel.id)
+    if (current?.connected) return
+    const firstConnected = enabledImageModels.find(m => m.connected)
+    if (firstConnected) setSelectedImageModel(firstConnected)
   }, [enabledImageModels, selectedImageModel.id])
   useEffect(() => {
     if (enabledVideoModels.length === 0) return
-    if (!enabledVideoModels.find(m => m.id === selectedVideoModel.id)) setSelectedVideoModel(enabledVideoModels[0])
+    const current = enabledVideoModels.find(m => m.id === selectedVideoModel.id)
+    if (current?.connected) return
+    const firstConnected = enabledVideoModels.find(m => m.connected)
+    if (firstConnected) setSelectedVideoModel(firstConnected)
   }, [enabledVideoModels, selectedVideoModel.id])
   useEffect(() => {
     if (enabledAudioModels.length === 0) return
-    if (!enabledAudioModels.find(m => m.id === selectedAudioModel.id)) setSelectedAudioModel(enabledAudioModels[0])
+    const current = enabledAudioModels.find(m => m.id === selectedAudioModel.id)
+    if (current?.connected) return
+    const firstConnected = enabledAudioModels.find(m => m.connected)
+    if (firstConnected) setSelectedAudioModel(firstConnected)
   }, [enabledAudioModels, selectedAudioModel.id])
 
   /* ----- chat hook (text-only path) --------------------------------
@@ -488,13 +504,18 @@ export default function TextPage() {
       const skillsPrefix = buildSkillsPromptPrefix(activeSkillIds)
       const composedPrompt = skillsPrefix + promptText
 
-      let result: { url?: string; durationSec?: number; error?: string } = {}
+      let result: { url?: string; urls?: string[]; durationSec?: number; error?: string } = {}
       if (modality === 'image') {
         const ratio = (imageParams.aspectRatio as string | undefined) ?? '1:1'
+        // The image picker exposes a 1-4 count for every model. Pass it
+        // through so the route can fan out parallel calls (DALL-E 3 only
+        // accepts n=1 natively, so the server loops; other providers
+        // honour `count` directly).
+        const count = Math.max(1, Math.min(4, Number(imageParams.count) || 1))
         const res = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: composedPrompt, model: selectedImageModel.id, ratio, apiKey }),
+          body: JSON.stringify({ prompt: composedPrompt, model: selectedImageModel.id, ratio, count, apiKey }),
         })
         result = await res.json()
         if (!res.ok || !result.url) throw new Error(result.error || `Image generation failed (${res.status})`)
@@ -527,6 +548,11 @@ export default function TextPage() {
                 content: '',
                 clox_pending: false,
                 clox_media_url: result.url,
+                // Capture the full set when the route returned multiple
+                // images (image-only for now). Falls back to a single
+                // entry so the renderer's grid path also works for
+                // legacy single-image responses.
+                clox_media_urls: result.urls ?? (result.url ? [result.url] : undefined),
                 clox_media_kind: modality,
                 clox_media_duration: result.durationSec,
               }
@@ -553,12 +579,21 @@ export default function TextPage() {
     modality === 'audio' ? enabledAudioModels : enabledTextModels
 
   const models: ModelOption[] = useMemo(
-    () => activeRegistry.map(m => ({
-      id: m.id,
-      label: `${m.brandName ?? m.provider} ${m.version || m.name}`,
-      tag: modelTagFor(m.provider, m.brandName),
-      short: shortName(m.version, m.name),
-    })),
+    () => activeRegistry.map(m => {
+      // `useAvailableModels` now returns every model with a `connected`
+      // flag so the picker can show provider models the user hasn't
+      // configured yet (e.g. Moonshot/Kling/Kimi) instead of hiding them
+      // outright. Disconnected models swap their provider tag for a
+      // "needs api key" affordance the menu renders in muted style.
+      const connected = (m as typeof m & { connected?: boolean }).connected ?? true
+      return {
+        id: m.id,
+        label: `${m.brandName ?? m.provider} ${m.version || m.name}`,
+        tag: connected ? modelTagFor(m.provider, m.brandName) : 'needs api key',
+        short: shortName(m.version, m.name),
+        disconnected: !connected,
+      }
+    }),
     [activeRegistry],
   )
 
@@ -632,6 +667,14 @@ export default function TextPage() {
       const errored  = Boolean(m.clox_error)
       const mediaKind = m.clox_media_kind as 'image' | 'video' | 'audio' | undefined
       const mediaUrl  = m.clox_media_url  as string | undefined
+      // Multi-image responses (DALL-E count > 1, etc.) ride on
+      // `clox_media_urls`. Fall back to the single-url path so legacy
+      // messages still render.
+      const mediaUrls = Array.isArray(m.clox_media_urls)
+        ? (m.clox_media_urls as string[])
+        : mediaUrl
+          ? [mediaUrl]
+          : []
       let body: React.ReactNode
       if (pending) {
         body = (
@@ -645,10 +688,27 @@ export default function TextPage() {
             {String(m.content ?? 'Generation failed')}
           </span>
         )
-      } else if (mediaKind === 'image' && mediaUrl) {
+      } else if (mediaKind === 'image' && mediaUrls.length > 0) {
+        // 1 → full size; 2 → side by side; 3-4 → 2x2 grid. Each cell
+        // caps so a 4-up doesn't blow out the chat column width.
+        const cols = mediaUrls.length === 1 ? 1 : 2
+        const cellMax = mediaUrls.length === 1 ? 360 : 220
         body = (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={mediaUrl} alt="generated" style={{ maxWidth: 360, borderRadius: 2, display: 'block' }} />
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${cols}, minmax(0, ${cellMax}px))`,
+            gap: 6,
+          }}>
+            {mediaUrls.map((u, idx) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={idx}
+                src={u}
+                alt={`generated ${idx + 1}`}
+                style={{ width: '100%', borderRadius: 2, display: 'block' }}
+              />
+            ))}
+          </div>
         )
       } else if (mediaKind === 'video' && mediaUrl) {
         body = (

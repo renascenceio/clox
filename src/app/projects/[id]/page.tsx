@@ -106,41 +106,44 @@ export default function ProjectWorkspacePage({
       </div>
     )
   } else {
+    // Same editorial padding contract as `/history`, `/gallery`, `/skills`,
+    // `/settings`, and the projects index — `padding: '28px 56px 64px'`
+    // with a content cap that matches the surface's density. The detail
+    // page has a 280px right rail, so we cap a touch wider than the
+    // gallery (1140) to give the main column comfortable breathing room.
     body = (
-      <div className="min-h-full bg-bg">
-        <div className="max-w-[1280px] mx-auto px-8 py-10">
+      <div style={{ padding: '28px 56px 64px', maxWidth: 1200, margin: '0 auto' }}>
 
-          <ProjectHeader project={project} onChange={load} />
+        <ProjectHeader project={project} onChange={load} />
 
-          {/* tab rail */}
-          <div className="flex items-center gap-0 border-b border-hairline mt-8 mb-8 font-mono text-[10.5px] tracking-[0.1em] uppercase">
-            {(['chats', 'members', 'usage', 'files', 'settings'] as Tab[]).map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`px-4 py-3 -mb-px transition-colors border-b ${
-                  tab === t
-                    ? 'border-ink text-ink'
-                    : 'border-transparent text-ink-muted hover:text-ink-soft'
-                }`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-10">
-            <div className="min-w-0">
-              {tab === 'chats'    && <ChatsTab    project={project} onChange={load} />}
-              {tab === 'members'  && <MembersTab  project={project} onChange={load} canManage={canManage} />}
-              {tab === 'usage'    && <UsageTab    project={project} />}
-              {tab === 'files'    && <FilesTab    project={project} onChange={load} canManage={canManage} />}
-              {tab === 'settings' && <SettingsTab project={project} onChange={load} canManage={canManage} />}
-            </div>
-            <ActivityRail projectId={project.id} />
-          </div>
-
+        {/* tab rail */}
+        <div className="flex items-center gap-0 border-b border-hairline mt-8 mb-8 font-mono text-[10.5px] tracking-[0.1em] uppercase">
+          {(['chats', 'members', 'usage', 'files', 'settings'] as Tab[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-3 -mb-px transition-colors border-b ${
+                tab === t
+                  ? 'border-ink text-ink'
+                  : 'border-transparent text-ink-muted hover:text-ink-soft'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
         </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-10">
+          <div className="min-w-0">
+            {tab === 'chats'    && <ChatsTab    project={project} onChange={load} />}
+            {tab === 'members'  && <MembersTab  project={project} onChange={load} canManage={canManage} />}
+            {tab === 'usage'    && <UsageTab    project={project} />}
+            {tab === 'files'    && <FilesTab    project={project} onChange={load} canManage={canManage} />}
+            {tab === 'settings' && <SettingsTab project={project} onChange={load} canManage={canManage} />}
+          </div>
+          <ActivityRail projectId={project.id} />
+        </div>
+
       </div>
     )
   }

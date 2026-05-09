@@ -4,13 +4,13 @@
  * Live providers (each opt-in via the matching API key, env var or
  * Super Admin → API Keys):
  *
- *   - Luma Dream Machine — LUMAAI_API_KEY
- *   - Runway (Gen-3 Alpha / Gen-4 Turbo) — RUNWAYML_API_SECRET
+ *   - OpenAI Sora 2 / Sora 2 Pro — OPENAI_API_KEY
+ *   - Luma Dream Machine          — LUMAAI_API_KEY
+ *   - Runway (Gen-3 / Gen-4)      — RUNWAYML_API_SECRET
  *
- * Sora is waitlisted with no public REST endpoint, Pika / Haiper / Vidu /
- * PixVerse / Kling / CogVideo / HeyGen / Synthesia / D-ID need their own
- * adapter wired below — they all return a clean "missing key" error
- * pointing at the right env var until then.
+ * Pika / Haiper / Vidu / PixVerse / Kling / CogVideo / HeyGen /
+ * Synthesia / D-ID need their own adapter wired below — they all return
+ * a clean "missing key" error pointing at the right env var until then.
  *
  * NOTE: video jobs typically take 30-180s. We extend the route's
  * `maxDuration` to 300s and poll inside the handler.
@@ -21,7 +21,7 @@ import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
 
 export const maxDuration = 300
 
-type VideoProvider = 'luma' | 'runway'
+type VideoProvider = 'sora' | 'luma' | 'runway'
 
 interface VideoMapEntry {
   provider: VideoProvider
@@ -30,6 +30,12 @@ interface VideoMapEntry {
 }
 
 const VIDEO_MODEL_MAP: Record<string, VideoMapEntry> = {
+  // OpenAI Sora 2 — `sora` (UI) is the standard `sora-2` model;
+  // `sora-turbo` is the higher-fidelity `sora-2-pro`. Both share the
+  // same `POST /v1/videos` + poll workflow on api.openai.com.
+  sora:         { provider: 'sora', modelId: 'sora-2' },
+  'sora-turbo': { provider: 'sora', modelId: 'sora-2-pro' },
+
   // Luma — `ray-2` and `ray-1-6` are the current public Dream Machine models.
   'luma-dream-machine':   { provider: 'luma',   modelId: 'ray-1-6' },
   'luma-dream-machine-2': { provider: 'luma',   modelId: 'ray-2' },
@@ -45,8 +51,6 @@ const UNWIRED_HINT: Record<
   string,
   { provider: string; envKey: string; docsUrl: string }
 > = {
-  'sora-turbo':         { provider: 'OpenAI Sora', envKey: 'OPENAI_API_KEY (Sora API access)', docsUrl: 'https://openai.com/sora' },
-  sora:                 { provider: 'OpenAI Sora', envKey: 'OPENAI_API_KEY (Sora API access)', docsUrl: 'https://openai.com/sora' },
   'pika-2.0':           { provider: 'Pika',         envKey: 'PIKA_API_KEY',     docsUrl: 'https://pika.art' },
   'pika-1.5':           { provider: 'Pika',         envKey: 'PIKA_API_KEY',     docsUrl: 'https://pika.art' },
   'haiper-2.0':         { provider: 'Haiper',       envKey: 'HAIPER_API_KEY',   docsUrl: 'https://haiper.ai' },
@@ -65,6 +69,115 @@ const UNWIRED_HINT: Record<
 /* ------------------------------------------------------------------ */
 /*                          Provider adapters                          */
 /* ------------------------------------------------------------------ */
+
+/**
+ * OpenAI Sora 2 — `POST /v1/videos` returns a job, poll `GET /v1/videos/{id}`
+ * until `status === "completed"`, then download the MP4 from
+ * `GET /v1/videos/{id}/content`. The full reference lives at
+ * https://developers.openai.com/api/docs/guides/video-generation.
+ *
+ * `sora-2` accepts `1280x720` / `720x1280`; `sora-2-pro` adds 1024x1792
+ * and 1080p variants. We pick the size from the requested aspect ratio
+ * with model-aware fallbacks so portrait UI requests don't 400.
+ */
+const SORA_SIZE_BY_RATIO: Record<string, { sora2: string; sora2Pro: string }> = {
+  '16:9': { sora2: '1280x720', sora2Pro: '1920x1080' },
+  '9:16': { sora2: '720x1280', sora2Pro: '1080x1920' },
+  // Sora doesn't have a true square; default to landscape 720p.
+  '1:1':  { sora2: '1280x720', sora2Pro: '1280x720' },
+  '4:3':  { sora2: '1280x720', sora2Pro: '1280x720' },
+  '3:4':  { sora2: '720x1280', sora2Pro: '720x1280' },
+  '21:9': { sora2: '1280x720', sora2Pro: '1792x1024' },
+}
+
+/** Sora only allows specific clip durations: 4, 8, 12, 16, 20 seconds. */
+function clampSoraDuration(requested: number): '4' | '8' | '12' | '16' | '20' {
+  const allowed = [4, 8, 12, 16, 20] as const
+  // Snap to the nearest allowed duration so the user's slider value
+  // doesn't bounce them out of the API.
+  const nearest = allowed.reduce((best, v) =>
+    Math.abs(v - requested) < Math.abs(best - requested) ? v : best,
+  ) as 4 | 8 | 12 | 16 | 20
+  return String(nearest) as '4' | '8' | '12' | '16' | '20'
+}
+
+async function generateWithSora(
+  modelId: string,
+  prompt: string,
+  ratio: string,
+  duration: number,
+  apiKey: string,
+): Promise<{ dataUrl: string; durationSec: number }> {
+  const size = SORA_SIZE_BY_RATIO[ratio] ?? SORA_SIZE_BY_RATIO['16:9']
+  const sizeStr = modelId === 'sora-2-pro' ? size.sora2Pro : size.sora2
+  const seconds = clampSoraDuration(duration)
+
+  // Step 1: create the job. Sora accepts JSON for prompt-only generations;
+  // multipart is only required when supplying an `input_reference` image.
+  const startRes = await fetch('https://api.openai.com/v1/videos', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: modelId,
+      prompt,
+      size: sizeStr,
+      seconds,
+    }),
+  })
+  if (!startRes.ok) {
+    const errText = await startRes.text()
+    if (startRes.status === 401) {
+      throw new Error('OpenAI Sora denied your key (401). The Sora API requires an OpenAI organisation with Sora access — check platform.openai.com/account.')
+    }
+    if (startRes.status === 403) {
+      throw new Error('OpenAI Sora returned 403. Your organisation likely does not have Sora API access yet — request it at openai.com/sora.')
+    }
+    throw new Error(`Sora start ${startRes.status}: ${errText}`)
+  }
+  const startJson = await startRes.json()
+  const jobId: string | undefined = startJson?.id
+  if (!jobId) throw new Error('Sora did not return a job id.')
+
+  // Step 2: poll. Sora jobs are typically 60-180s for sora-2 and longer
+  // for sora-2-pro, so we honour the route's 300s `maxDuration` budget
+  // by polling for up to 270s and leaving headroom for the download.
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < 270_000) {
+    await new Promise(r => setTimeout(r, 5_000))
+    const pollRes = await fetch(`https://api.openai.com/v1/videos/${jobId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (!pollRes.ok) continue
+    const pollJson = await pollRes.json()
+    const status: string | undefined = pollJson?.status
+
+    if (status === 'completed') {
+      // Step 3: download the MP4 stream. The Sora API doesn't expose a
+      // public CDN URL — the content endpoint streams the bytes directly,
+      // gated by the same Bearer token.
+      const dlRes = await fetch(`https://api.openai.com/v1/videos/${jobId}/content`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      })
+      if (!dlRes.ok) throw new Error(`Sora content fetch ${dlRes.status}`)
+      const buf = Buffer.from(await dlRes.arrayBuffer())
+      return {
+        dataUrl: `data:video/mp4;base64,${buf.toString('base64')}`,
+        durationSec: Number(seconds),
+      }
+    }
+    if (status === 'failed') {
+      const reason =
+        pollJson?.error?.message ??
+        pollJson?.failure_reason ??
+        'unknown'
+      throw new Error(`Sora job failed: ${reason}`)
+    }
+  }
+  throw new Error('Sora job timed out (270s).')
+}
 
 const RUNWAY_RATIO_MAP: Record<string, string> = {
   '16:9': '1280:720',  '9:16': '720:1280',
@@ -271,7 +384,21 @@ export async function POST(request: Request) {
 
     let result: { dataUrl: string; durationSec: number } | null = null
 
-    if (mapped.provider === 'luma') {
+    if (mapped.provider === 'sora') {
+      // Sora rides the same `OPENAI_API_KEY` everything else from OpenAI
+      // uses; the org just needs Sora access enabled on platform.openai.com.
+      const key = clientApiKey?.trim() || process.env.OPENAI_API_KEY
+      if (!key) {
+        return Response.json(
+          {
+            success: false,
+            error: 'OpenAI Sora needs OPENAI_API_KEY in your Vercel env vars, or a key saved in Super Admin → API Keys. Your OpenAI organisation must also have Sora API access enabled.',
+          },
+          { status: 400 },
+        )
+      }
+      result = await generateWithSora(mapped.modelId, prompt, aspectRatio, duration, key)
+    } else if (mapped.provider === 'luma') {
       const key = clientApiKey?.trim() || process.env.LUMAAI_API_KEY
       if (!key) {
         return Response.json(
