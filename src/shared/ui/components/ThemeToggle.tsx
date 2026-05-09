@@ -1,35 +1,47 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import {
+  getStoredPalette,
+  setStoredPalette,
+  type PaletteKey,
+} from '@/shared/ui/chat/palettes'
 
+/**
+ * Lightweight light/dark toggle used outside the workspace shell
+ * (e.g. on the marketing pages). Internally it delegates to the
+ * single source of truth — `setStoredPalette` — so it stays in
+ * sync with the workspace palette picker. Without that delegation,
+ * a user could end up with `clox-palette = pearl` and `theme = dark`
+ * in localStorage and watch the page flicker between palettes on
+ * every navigation.
+ */
 export default function ThemeToggle() {
   const [mounted, setMounted] = useState(false)
   const [isDark, setIsDark] = useState(false)
 
   useEffect(() => {
     setMounted(true)
-    // Check initial theme
-    const theme = localStorage.getItem('theme')
-    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    const shouldBeDark = theme === 'dark' || (!theme && systemDark)
-    
+    // Honour both the new `clox-palette` key (workspace picker) and
+    // the legacy `theme` key (this component's older incarnation +
+    // any system-dark preference for first-time visitors).
+    const stored = getStoredPalette('pearl')
+    const systemDark =
+      stored === 'pearl' &&
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-color-scheme: dark)').matches
+    const shouldBeDark = stored === 'dark' || systemDark
     setIsDark(shouldBeDark)
-    if (shouldBeDark) {
-      document.documentElement.classList.add('dark')
-    }
+    // The blocking <head> script in layout.tsx already applied the
+    // attributes; we only need to react if the OS preference flips
+    // the result for a first-time visitor with no stored choice.
+    if (systemDark && stored === 'pearl') setStoredPalette('dark')
   }, [])
 
   const toggleTheme = () => {
-    const newIsDark = !isDark
-    setIsDark(newIsDark)
-    
-    if (newIsDark) {
-      document.documentElement.classList.add('dark')
-      localStorage.setItem('theme', 'dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-      localStorage.setItem('theme', 'light')
-    }
+    const next: PaletteKey = isDark ? 'pearl' : 'dark'
+    setIsDark(!isDark)
+    setStoredPalette(next)
   }
 
   if (!mounted) {

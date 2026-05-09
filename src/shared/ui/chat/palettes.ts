@@ -207,11 +207,41 @@ export function getStoredPalette(fallback: PaletteKey = 'pearl'): PaletteKey {
   return fallback
 }
 
+/**
+ * Map a palette key to the `data-theme` value `globals.css` actually
+ * reacts to. The CSS uses kebab-case for the alternates (`pearl-light`)
+ * and the special name `onyx` for the dark palette.
+ */
+const THEME_ATTR_MAP: Record<PaletteKey, string> = {
+  light:        'light',
+  pearl:        'pearl',
+  pearlLight:   'pearl-light',
+  pearlNeutral: 'pearl-neutral',
+  linen:        'linen',
+  mist:         'mist',
+  slate:        'slate',
+  frost:        'frost',
+  dark:         'onyx',
+}
+
 export function setStoredPalette(key: PaletteKey): void {
   if (typeof window === 'undefined') return
   localStorage.setItem('clox-palette', key)
   // Mirror to legacy `theme` for any stragglers still reading it.
   localStorage.setItem('theme', key === 'dark' ? 'dark' : 'light')
-  document.documentElement.dataset.palette = key
-  document.documentElement.classList.toggle('dark', key === 'dark')
+  const html = document.documentElement
+  // We set BOTH attributes so:
+  //  • the SSR / pre-paint script in layout.tsx and this runtime call
+  //    end up with identical state (no churn after hydration);
+  //  • CSS rules keyed on `data-theme` (the alternates + onyx) AND the
+  //    `.dark` class (the legacy ThemeToggle hook) all update at once;
+  //  • our inline-styled palette-aware regions (which read the
+  //    `clox-palette` localStorage key) stay in sync via `data-palette`.
+  // Without setting `data-theme` here, Tailwind `text-ink` / `bg-bg`
+  // tokens stayed locked to the SSR-default light palette while the
+  // rest of the UI flipped to dark — that's the "dark text on dark
+  // background after reload" bug.
+  html.dataset.palette = key
+  html.setAttribute('data-theme', THEME_ATTR_MAP[key])
+  html.classList.toggle('dark', key === 'dark')
 }
