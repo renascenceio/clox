@@ -192,13 +192,20 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null)
 
   /**
-   * Open the rendered artifact in a new browser tab. Always available
-   * as an escape hatch: if the inline preview ever looks wrong (slow
-   * external scripts, sandbox edge cases, browser-specific iframe
-   * quirks), the user can click "open" and view the same content as a
-   * real, full-window page. We use Blob URLs rather than data: URLs
-   * because Blob URLs survive popup blockers and don't hit the URL-
-   * length ceiling that bites for large generated pages.
+   * Open the rendered artifact in a real, named browser tab.
+   *
+   * Why this routes through `/preview?id=…&kind=…` instead of
+   * `URL.createObjectURL(blob)`:
+   *   - The URL bar shows `/preview?id=…&kind=html` — recognizable as
+   *     HTML, on our own origin. Users were getting confused by the
+   *     opaque `blob:https://…/uuid` form (which works, but doesn't
+   *     read as "this is an HTML page").
+   *   - The new tab is same-origin so its sandboxed iframe inherits
+   *     normal browser policies (no third-party-context heuristics).
+   *   - sessionStorage payload is read-once and survives popup
+   *     blockers more reliably than blob URL navigation.
+   *
+   * The receiving route lives at `app/preview/page.tsx`.
    */
   function handleOpenExternally() {
     try {
@@ -207,11 +214,27 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
         lang === 'svg' ? svgToFullHtml(code) :
         lang === 'xml' ? xmlToFullHtml(code) :
         wrapInPreviewScaffold(code)
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      // Revoke after a minute — long enough for the new tab to load,
-      // short enough that we don't leak object URLs across a session.
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      const id =
+        // crypto.randomUUID is available in every modern browser; the
+        // fallback covers older Safari and the rare environment where
+        // crypto is missing entirely.
+        (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+          ? crypto.randomUUID()
+          : `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const titleHint =
+        lang === 'svg' ? 'svg-artifact'
+        : lang === 'markdown' || lang === 'md' ? 'markdown-artifact'
+        : lang === 'xml' ? 'xml-artifact'
+        : 'page.html'
+      sessionStorage.setItem(`clox.preview.${id}`, JSON.stringify({
+        kind: lang || 'html',
+        title: titleHint,
+        html,
+      }))
+      const url = `/preview?id=${encodeURIComponent(id)}&kind=${encodeURIComponent(lang || 'html')}&title=${encodeURIComponent(titleHint)}`
+      // `noopener` would prevent the new tab from accessing
+      // `window.opener` — which is exactly what we want for the
+      // sandboxed preview. We still get the new-tab UX.
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (e) {
       console.error('[v0] open externally failed', e)
@@ -788,7 +811,14 @@ function HtmlPreview({
           height,
           minHeight: 220,
           border: 0,
+          // Force a white canvas for the artifact regardless of the
+          // surrounding page's theme. Without `colorScheme: light` the
+          // browser will pick "dark" if the parent prefers it, which
+          // makes any model-emitted HTML that doesn't set its own
+          // background look invisible (white text on transparent body
+          // → effectively dark canvas with white-on-white content).
           background: '#ffffff',
+          colorScheme: 'light',
           display: 'block',
         }}
       />
