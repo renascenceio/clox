@@ -191,6 +191,33 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
   // depending on the preview state.
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null)
 
+  /**
+   * Open the rendered artifact in a new browser tab. Always available
+   * as an escape hatch: if the inline preview ever looks wrong (slow
+   * external scripts, sandbox edge cases, browser-specific iframe
+   * quirks), the user can click "open" and view the same content as a
+   * real, full-window page. We use Blob URLs rather than data: URLs
+   * because Blob URLs survive popup blockers and don't hit the URL-
+   * length ceiling that bites for large generated pages.
+   */
+  function handleOpenExternally() {
+    try {
+      const html =
+        lang === 'markdown' || lang === 'md' ? wrapInPreviewScaffold(mdToHtml(code)) :
+        lang === 'svg' ? svgToFullHtml(code) :
+        lang === 'xml' ? xmlToFullHtml(code) :
+        wrapInPreviewScaffold(code)
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      // Revoke after a minute — long enough for the new tab to load,
+      // short enough that we don't leak object URLs across a session.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (e) {
+      console.error('[v0] open externally failed', e)
+    }
+  }
+
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(code)
@@ -488,6 +515,16 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
               {showPreview ? 'code' : 'preview'}
             </ToolbarButton>
           )}
+          {/* "open" — render in a real new tab. Always available for
+              HTML-style content as an escape hatch from the sandboxed
+              inline iframe (which can be cramped, throttled, or
+              affected by aggressive browser sandboxing in dev). */}
+          {(lang === 'html' || lang === 'svg' || lang === 'xml' ||
+            lang === 'markdown' || lang === 'md') && (
+            <ToolbarButton onClick={handleOpenExternally}>
+              open
+            </ToolbarButton>
+          )}
           <ToolbarButton onClick={handleCopy}>
             {copied ? 'copied' : 'copy'}
           </ToolbarButton>
@@ -653,67 +690,28 @@ function HtmlPreview({
 }) {
   const ownRef = useRef<HTMLIFrameElement | null>(null)
   const iframeRef = externalRef ?? ownRef
-  const [height, setHeight] = useState(320)
+  // Generous default — most HTML pages we get back from the model are
+  // 200-700px tall, and starting at 480px means even pages whose
+  // resize bridge fails to call back still show meaningful content
+  // rather than appearing as a tiny strip.
+  const [height, setHeight] = useState(480)
+  // Track whether the iframe has reported its real height yet. If not,
+  // we surface an "open in new tab" CTA after a short timeout so the
+  // user has an escape hatch when the auto-resize fails (it's rare
+  // but happens with aggressive browser-extension iframe sandboxing).
+  const [resized, setResized] = useState(false)
+  const [stuck, setStuck] = useState(false)
 
   // Build the document we'll feed via srcDoc. SVG and XML get wrapped
-  // in a minimal HTML scaffold; raw HTML is passed through but with
-  // a small auto-resize bridge appended so the parent learns about
-  // content-height changes.
+  // in a minimal HTML scaffold; raw HTML is wrapped in a styled
+  // scaffold ONLY if it isn't already a complete document — this way
+  // a fragment like `<button>Hi</button>` gets readable defaults
+  // (a real font, padding, no-margin body), while a full
+  // `<!DOCTYPE html>...<html>...` document is left untouched.
   const srcDoc = useMemo(() => {
-    const resizer = `
-<script>(function(){
-  function send(){
-    try {
-      var h = Math.max(
-        document.documentElement.scrollHeight || 0,
-        document.body ? document.body.scrollHeight : 0,
-        document.documentElement.offsetHeight || 0
-      );
-      parent.postMessage({ __cloxArtifact: 'resize', h: h }, '*');
-    } catch(e) {}
-  }
-  window.addEventListener('load', send);
-  if (document.readyState === 'complete') send();
-  if ('ResizeObserver' in window) {
-    new ResizeObserver(send).observe(document.documentElement);
-  } else {
-    setInterval(send, 500);
-  }
-})();<\/script>`
-    if (lang === 'svg') {
-      return [
-        '<!doctype html><html><head><meta charset="utf-8"><style>',
-        'html,body{margin:0;height:100%;}',
-        'body{display:grid;place-items:center;background:#fafafa;padding:12px;}',
-        'svg{max-width:100%;max-height:100%;}',
-        '</style></head><body>',
-        code,
-        resizer,
-        '</body></html>',
-      ].join('')
-    }
-    if (lang === 'xml') {
-      // Render XML as readable formatted text (browsers display raw
-      // XML as a tree, but only when the response Content-Type says
-      // so — srcDoc renders as text/html so we use a <pre> wrapper).
-      return [
-        '<!doctype html><html><head><meta charset="utf-8"><style>',
-        'body{margin:0;font:13px ui-monospace,Menlo,monospace;padding:12px;background:#fafafa;color:#1a1a1a;}',
-        'pre{margin:0;white-space:pre-wrap;word-break:break-word;}',
-        '</style></head><body><pre>',
-        // Encode HTML-special characters so the markup doesn't render.
-        code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
-        '</pre>',
-        resizer,
-        '</body></html>',
-      ].join('')
-    }
-    // Plain HTML — append the resizer just before the closing </body>
-    // if one exists, otherwise append it at the end.
-    if (/<\/body>/i.test(code)) {
-      return code.replace(/<\/body>/i, resizer + '</body>')
-    }
-    return code + resizer
+    if (lang === 'svg')  return svgToFullHtml(code, true)
+    if (lang === 'xml')  return xmlToFullHtml(code, true)
+    return wrapInPreviewScaffold(code, true)
   }, [code, lang])
 
   useEffect(() => {
@@ -724,27 +722,77 @@ function HtmlPreview({
       const h = (data as { h?: number }).h
       if (typeof h !== 'number' || !Number.isFinite(h)) return
       // Clamp to a reasonable range so a runaway document can't push
-      // the artifact off the bottom of the viewport.
-      setHeight(Math.max(180, Math.min(h + 8, 1200)))
+      // the artifact off the bottom of the viewport. The upper bound
+      // is generous enough for a typical full-page demo (Tailwind
+      // landing, dashboard shell) without runaway scrollback.
+      const clamped = Math.max(220, Math.min(h + 12, 1600))
+      setHeight(clamped)
+      setResized(true)
     }
     window.addEventListener('message', onMsg)
-    return () => window.removeEventListener('message', onMsg)
-  }, [])
+    // After 1500ms with no resize callback, flag the iframe as stuck
+    // so we render a small "open in new tab" hint above it. We don't
+    // hide the iframe — it usually shows *something* — we just give
+    // the user a faster path to a working preview.
+    const stuckTimer = window.setTimeout(() => setStuck(true), 1500)
+    return () => {
+      window.removeEventListener('message', onMsg)
+      window.clearTimeout(stuckTimer)
+    }
+  }, [srcDoc])
+
+  // Reset the stuck flag whenever the source changes (e.g. streaming
+  // updates) — the new content gets its own 1.5s grace period.
+  useEffect(() => {
+    setResized(false)
+    setStuck(false)
+  }, [srcDoc])
+
+  const showStuckHint = stuck && !resized
 
   return (
-    <iframe
-      ref={iframeRef}
-      title="Artifact preview"
-      sandbox="allow-scripts allow-popups allow-forms allow-modals"
-      srcDoc={srcDoc}
-      style={{
-        width: '100%',
-        height,
-        border: 0,
-        background: '#fff',
-        display: 'block',
-      }}
-    />
+    <div style={{ position: 'relative' }}>
+      {showStuckHint && (
+        <div
+          style={{
+            padding: '6px 10px',
+            borderBottom: '1px dashed var(--hairline-soft)',
+            fontFamily: 'var(--font-geist-mono), ui-monospace, monospace',
+            fontSize: 10.5,
+            color: 'rgb(var(--ink-soft-rgb))',
+            background: 'rgb(var(--surface-rgb))',
+            letterSpacing: '0.04em',
+          }}
+        >
+          Inline preview slow to render — click <strong>open</strong> in
+          the toolbar to view in a new tab.
+        </div>
+      )}
+      <iframe
+        ref={iframeRef}
+        title="Artifact preview"
+        // `allow-scripts` enables JS inside the sandbox; we deliberately
+        // omit `allow-same-origin` so the iframe runs in an opaque
+        // origin (can't read the parent's cookies, localStorage, etc.).
+        // `allow-popups` lets `target="_blank"` links open from inside
+        // the preview, which is what users expect for HTML demos.
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals"
+        srcDoc={srcDoc}
+        // `referrerpolicy=no-referrer` avoids leaking the parent URL
+        // to any embedded analytics or third-party widgets the model
+        // might wire up in its preview HTML.
+        referrerPolicy="no-referrer"
+        loading="eager"
+        style={{
+          width: '100%',
+          height,
+          minHeight: 220,
+          border: 0,
+          background: '#ffffff',
+          display: 'block',
+        }}
+      />
+    </div>
   )
 }
 
@@ -1290,36 +1338,150 @@ function htmlToMarkdownLite(html: string): string {
     .replace(/&gt;/g, '>')
 }
 
-/** If the model emitted an HTML fragment (no <html> wrapper), wrap it
- *  in a minimal styled doc so html2canvas / preview render readably. */
-function ensureFullHtml(html: string): string {
-  if (/<html[\s>]/i.test(html)) return html
-  return [
-    '<!doctype html><html><head><meta charset="utf-8"><style>',
-    'body{font:14px/1.6 ui-sans-serif,system-ui;color:#1a1a1a;margin:0;padding:24px;background:#fff;}',
-    'h1,h2,h3{margin:1em 0 0.4em;line-height:1.25;}',
+/**
+ * Auto-resize bridge injected into preview iframes. When the document
+ * grows or shrinks (e.g. images load, a script renders charts, fonts
+ * swap) it postMessages the new height back to the parent, which the
+ * `HtmlPreview` parent uses to fit the iframe to its content.
+ *
+ * Wrapped in a closing-tag-safe template literal — the `<\/script>`
+ * escape is essential because we sometimes inject this *into* an HTML
+ * document that's itself living inside a JS string (srcDoc), and a
+ * naive `</script>` would close the outer block.
+ */
+const RESIZE_BRIDGE = `
+<script>(function(){
+  function send(){
+    try {
+      var de = document.documentElement;
+      var b  = document.body;
+      var h = Math.max(
+        de ? de.scrollHeight : 0,
+        b  ? b.scrollHeight  : 0,
+        de ? de.offsetHeight : 0,
+        b  ? b.offsetHeight  : 0
+      );
+      parent.postMessage({ __cloxArtifact: 'resize', h: h }, '*');
+    } catch(e) {}
+  }
+  // Multiple triggers so we resize regardless of WHEN content settles —
+  // first paint, late image loads, font swaps, async script renders.
+  if (document.readyState === 'complete') send();
+  window.addEventListener('DOMContentLoaded', send);
+  window.addEventListener('load', send);
+  window.addEventListener('resize', send);
+  // Watch the documentElement for any layout-affecting mutations.
+  if ('ResizeObserver' in window) {
+    try { new ResizeObserver(send).observe(document.documentElement); } catch(e) {}
+  }
+  if ('MutationObserver' in window) {
+    try {
+      new MutationObserver(send).observe(document.documentElement, {
+        subtree: true, childList: true, attributes: true, characterData: true,
+      });
+    } catch(e) {}
+  }
+  // Final safety net — periodic poll for the first few seconds in case
+  // every observer above is blocked by a hostile CSP we don't control.
+  var ticks = 0;
+  var poll = setInterval(function(){ send(); if (++ticks > 20) clearInterval(poll); }, 200);
+  // Fire one straight away so the parent gets at least one signal even
+  // if every other listener is blocked.
+  setTimeout(send, 0);
+})();<\/script>`
+
+/**
+ * Wrap an HTML body for inline preview / external open / PDF export.
+ *
+ * Behaviour:
+ *   - If `code` is already a complete `<!doctype>` / `<html>` document,
+ *     we leave the markup alone and ONLY append the resize bridge
+ *     (when `withResizer` is set). This is critical: many model
+ *     outputs include their own <head>, custom styles, link rel,
+ *     viewport meta — clobbering them with our defaults breaks the
+ *     intended layout.
+ *   - If `code` is a fragment, we wrap it in a styled scaffold with
+ *     editorial defaults (system font, sensible spacing, code/table
+ *     styling) so a snippet like `<button>Hi</button>` reads cleanly
+ *     instead of inheriting browser quirks-mode defaults.
+ *
+ * `withResizer = false` is the right call when this scaffold is being
+ * fed to html2canvas (PDF export) — the resize bridge would just
+ * postMessage into the void and the off-screen render frame doesn't
+ * need it.
+ */
+function wrapInPreviewScaffold(html: string, withResizer = false): string {
+  const isFullDocument =
+    /<!doctype/i.test(html) || /<html[\s>]/i.test(html)
+  if (isFullDocument) {
+    if (!withResizer) return html
+    if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, RESIZE_BRIDGE + '</body>')
+    if (/<\/html>/i.test(html)) return html.replace(/<\/html>/i, RESIZE_BRIDGE + '</html>')
+    return html + RESIZE_BRIDGE
+  }
+  // Fragment path — supply a real document with sensible defaults.
+  const scaffold = [
+    '<!doctype html><html lang="en"><head>',
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<style>',
+    'html,body{margin:0;background:#ffffff;color:#1a1a1a;}',
+    'body{font:14px/1.6 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:20px;}',
+    'h1,h2,h3,h4{margin:1em 0 0.4em;line-height:1.25;font-weight:600;}',
+    'h1{font-size:1.8em;}h2{font-size:1.4em;}h3{font-size:1.15em;}',
     'p{margin:0.6em 0;}',
     'ul,ol{margin:0.6em 0 0.6em 1.4em;padding:0;}',
-    'pre{background:#f5f5f5;padding:10px 12px;overflow:auto;border:1px solid #eee;}',
-    'code{font:12.5px ui-monospace,Menlo,monospace;}',
+    'a{color:#0a66c2;}',
+    'pre{background:#f5f5f5;padding:10px 12px;overflow:auto;border:1px solid #eee;border-radius:4px;}',
+    'code{font:12.5px ui-monospace,Menlo,Consolas,monospace;}',
     'table{border-collapse:collapse;width:100%;margin:0.8em 0;}',
     'th,td{border:1px solid #e3e3e3;padding:6px 10px;text-align:left;}',
-    '</style></head><body>',
+    'img{max-width:100%;height:auto;}',
+    'button{font:inherit;padding:6px 12px;border:1px solid #d4d4d4;background:#fafafa;border-radius:4px;cursor:pointer;}',
+    'input,textarea,select{font:inherit;padding:6px 8px;border:1px solid #d4d4d4;border-radius:4px;}',
+    '</style>',
+    '</head><body>',
     html,
+    withResizer ? RESIZE_BRIDGE : '',
+    '</body></html>',
+  ].join('')
+  return scaffold
+}
+
+/** Wrap a raw <svg>…</svg> for inline preview / PDF export. */
+function svgToFullHtml(svg: string, withResizer = false): string {
+  return [
+    '<!doctype html><html><head><meta charset="utf-8"><style>',
+    'html,body{margin:0;background:#fafafa;}',
+    'body{display:grid;place-items:center;padding:20px;min-height:100vh;}',
+    'svg{max-width:100%;height:auto;}',
+    '</style></head><body>',
+    svg,
+    withResizer ? RESIZE_BRIDGE : '',
     '</body></html>',
   ].join('')
 }
 
-/** Wrap a raw <svg>…</svg> for the PDF exporter. */
-function svgToFullHtml(svg: string): string {
+/** Render XML as readable formatted text (browsers display raw XML as
+ *  a tree, but only when the response Content-Type says so — srcDoc
+ *  renders as text/html so we use a <pre> wrapper). */
+function xmlToFullHtml(xml: string, withResizer = false): string {
   return [
     '<!doctype html><html><head><meta charset="utf-8"><style>',
-    'body{margin:0;display:grid;place-items:center;background:#fff;padding:24px;}',
-    'svg{max-width:100%;height:auto;}',
-    '</style></head><body>',
-    svg,
+    'body{margin:0;font:13px ui-monospace,Menlo,Consolas,monospace;padding:16px;background:#fafafa;color:#1a1a1a;}',
+    'pre{margin:0;white-space:pre-wrap;word-break:break-word;}',
+    '</style></head><body><pre>',
+    xml.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+    '</pre>',
+    withResizer ? RESIZE_BRIDGE : '',
     '</body></html>',
   ].join('')
+}
+
+/** Compatibility shim — the PDF exporter still calls `ensureFullHtml`
+ *  for raw HTML input. Routes through the unified scaffold helper. */
+function ensureFullHtml(html: string): string {
+  return wrapInPreviewScaffold(html, false)
 }
 
 /**
