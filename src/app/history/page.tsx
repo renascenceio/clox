@@ -110,7 +110,7 @@ export default function HistoryPage() {
         onChangeTheme={chrome.handleThemeChange}
         brandName="Clox"
         brandVersion="0.5"
-        user={{ initial: 'e', name: 'Elena Marchetti', plan: 'pro · 4 seats' }}
+        user={chrome.user}
         language={chrome.language}
         onChangeLanguage={chrome.handleChangeLanguage}
         onOpenSettings={chrome.onOpenSettings}

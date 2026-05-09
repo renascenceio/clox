@@ -247,8 +247,7 @@ export default function TextPage() {
   }, [messages, selectedModel.version, selectedModel.name])
 
   const nav: RailNavItem[] = [
-    { id: 'home', label: 'Home', icon: I.home, onClick: () => router.push('/') },
-    { id: 'projects', label: 'Projects', icon: I.proj, count: 0 },
+    { id: 'projects', label: 'Projects', icon: I.proj, onClick: () => router.push('/projects') },
     { id: 'chats', label: 'Chats', icon: I.chats, count: recentChats.length, active: true },
     { id: 'history', label: 'History', icon: I.hist, onClick: () => router.push('/history') },
     { id: 'gallery', label: 'Gallery', icon: I.gal, onClick: () => router.push('/gallery') },
@@ -269,7 +268,6 @@ export default function TextPage() {
     {
       label: 'jump to',
       items: [
-        { icon: I.home, label: 'Home', hint: 'g h', onSelect: () => router.push('/') },
         { icon: I.proj, label: 'Projects', hint: 'g p', onSelect: () => router.push('/projects') },
         { icon: I.chats, label: 'Chats', hint: 'g c', onSelect: () => router.push('/text') },
         { icon: I.hist, label: 'History', hint: 'g y', onSelect: () => router.push('/history') },
@@ -390,8 +388,44 @@ export default function TextPage() {
 
   const breadcrumb = `chats · ${selectedModel.brandName?.toLowerCase() ?? selectedModel.provider}`
 
-  /* ----- user identity --------------------------------------------- */
-  const user = { initial: 'e', name: 'Elena Marchetti', plan: 'pro · 4 seats' }
+  /* ----- user identity (live profile from Supabase) ----------------- */
+  const [user, setUser] = useState<{ initial: string; name: string; plan: string; email?: string }>(
+    { initial: '·', name: 'Signed out', plan: 'guest' },
+  )
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const supabase = createClient()
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (!authUser || cancelled) return
+
+        const [profile, credits] = await Promise.all([
+          supabase.from('profiles').select('first_name, last_name, plan').eq('id', authUser.id).single(),
+          supabase.from('credits').select('balance_usd').eq('user_id', authUser.id).single(),
+        ])
+        if (cancelled) return
+
+        const first = (profile.data?.first_name ?? '').trim()
+        const last  = (profile.data?.last_name  ?? '').trim()
+        const fallback = authUser.email?.split('@')[0] ?? 'Clox user'
+        const fullName = [first, last].filter(Boolean).join(' ').trim() || fallback
+        const initial = (first || fallback).slice(0, 1).toLowerCase() || '·'
+
+        const planRaw = (profile.data?.plan as string | null | undefined)?.toLowerCase()
+        let plan: string
+        if (planRaw && planRaw !== 'free') plan = planRaw
+        else if (credits.data?.balance_usd != null) {
+          plan = `free · $${parseFloat(String(credits.data.balance_usd)).toFixed(2)}`
+        } else plan = 'free'
+
+        setUser({ initial, name: fullName, plan, email: authUser.email ?? undefined })
+      } catch (e) {
+        console.error('[v0] /text profile load failed', e)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   return (
     <div className="fixed inset-0 isolate">
