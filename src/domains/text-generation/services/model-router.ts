@@ -28,18 +28,34 @@ export type AIProvider =
 
 /**
  * Maps our internal model IDs to the provider-specific model IDs required by
- * each SDK's direct path. We deliberately keep this MINIMAL and prefer to pass
- * ids through unchanged, because hardcoded names drift every time a provider
- * ships a new model family (e.g. `claude-3-5-sonnet-20241022` is long dead).
- * When the AI Gateway is available we bypass this map entirely — the gateway
- * keeps its own up-to-date catalog and tolerates friendly names like
- * `claude-sonnet-4.6` or `gemini-2.5-flash`.
+ * each SDK's direct path.
  *
- * Only add an entry here if our UI ID is a synthetic label that *cannot* be
- * sent directly to the provider API.
+ * Background: most of our UI ids are also valid provider ids (e.g. `gpt-4o`,
+ * `grok-4`, `gemini-2.5-flash`) so they pass through unchanged. The two
+ * exceptions are:
+ *
+ *   1. **Anthropic**'s API expects dashes only — `claude-opus-4-6`, not
+ *      `claude-opus-4.6`. The "4.6" version of the id was a Vercel AI Gateway
+ *      convenience that the gateway translated for us; once we removed the
+ *      gateway path, every Claude request started 404'ing because the dot
+ *      form isn't a real model name at api.anthropic.com.
+ *   2. **Perplexity**'s `sonar-large` / `sonar-small` are short labels we
+ *      coined; the real ids are the long `llama-3.1-sonar-*-128k-online`
+ *      strings.
+ *
+ * Add an entry only when the UI label cannot be sent verbatim to the
+ * provider's API. Provider catalogs change often, so prefer pass-through.
  */
 const MODEL_ID_MAP: Record<string, string> = {
-  // (Intentionally empty — we pass UI ids straight through.)
+  // Anthropic — dot form ↔ dash form.
+  'claude-opus-4.6':   'claude-opus-4-6',
+  'claude-sonnet-4.6': 'claude-sonnet-4-6',
+  'claude-haiku-4.5':  'claude-haiku-4-5',
+  'claude-opus-4.7':   'claude-opus-4-7',
+
+  // Perplexity — short label ↔ canonical Sonar name.
+  'sonar-large': 'llama-3.1-sonar-large-128k-online',
+  'sonar-small': 'llama-3.1-sonar-small-128k-online',
 }
 
 // Resolve the env var(s) that hold a provider's API key. Mirrors lib/providers.ts.
