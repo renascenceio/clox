@@ -115,13 +115,33 @@ export function dbSkillsToOptions(rows: SkillRow[]): SkillOption[] {
  * Build the system-prompt block injected for text chat. We concatenate
  * each row's full `system_prompt` under a `### Name` header so multi-
  * paragraph prompts (the Anthropic-style document specialists, the
- * frontend-designer brief, …) keep their structure. Returns '' when no
- * skills are active so callers can safely concatenate unconditionally. */
+ * frontend-designer brief, …) keep their structure.
+ *
+ * The PREAMBLE is the critical part. Skill prompts contain "craftsmanship
+ * defaults" (16:9 decks, neutral palettes, A4 PDFs, etc.) which are good
+ * starting points but historically overrode whatever the user actually
+ * asked for in the message. e.g. user types "make me a deck with dark
+ * blue and gold colors" — the skill's "restrained palette" default
+ * outranks the colour brief and the deck comes out neutral.
+ *
+ * The fix: we explicitly tell the model that the user's per-message
+ * instructions take precedence over any defaults the skill specifies.
+ * This keeps the skills useful as scaffolding while letting the user
+ * steer styling without having to fight the prompt.
+ *
+ * Returns '' when no skills are active so callers can safely concatenate
+ * unconditionally. */
 export function buildSkillsBlock(rows: SkillRow[]): string {
   if (rows.length === 0) return ''
   const blocks = rows.map(s => `### ${s.name}\n${s.system_prompt.trim()}`)
   return [
-    'Active skills (apply each in addition to your other instructions):',
+    'Active skills — apply each in addition to your other instructions.',
+    '',
+    'PRECEDENCE: any explicit style, colour, format or content instructions',
+    'in the user message OVERRIDE the defaults specified inside these',
+    'skills. The skills supply scaffolding; the user supplies direction.',
+    'When the user says "use dark blue and gold", the skill\'s "restrained',
+    'palette" default does not apply — use dark blue and gold.',
     '',
     ...blocks,
   ].join('\n')
