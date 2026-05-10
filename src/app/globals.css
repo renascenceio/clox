@@ -274,7 +274,28 @@ body {
  * -------------------------------------------------------------------------- */
 
 .prose {
-  color: rgb(var(--ink-rgb));
+  /*
+   * No `color` here. We deliberately let prose text inherit from
+   * the parent message card (ChatWorkspace passes `color: p.ink`
+   * inline, driven by the JS palette in palettes.ts which is the
+   * single source of truth for theme colours).
+   *
+   * The previous `color: rgb(var(--ink-rgb))` looked correct in
+   * theory but produced INVISIBLE dark-on-dark text in onyx mode
+   * because the JS palette (used for the card's background) and
+   * the `--ink-rgb` CSS variable (used here) can desync after a
+   * page reload: the JSX-declared `<html data-theme="pearl">` is
+   * the SSR default, the inline bootstrap then mutates it to
+   * `onyx`, but on subsequent client renders React can briefly
+   * reconcile it back. During that window, JS palette = onyx (so
+   * the card's background paints dark) while `--ink-rgb` =
+   * pearl's dark ink (so the prose text paints dark too). Result:
+   * dark text on dark card.
+   *
+   * Inheriting from the parent eliminates the desync entirely —
+   * the card and its text always come from the same palette
+   * object.
+   */
 }
 
 .prose pre {
@@ -299,7 +320,8 @@ body {
   margin-top: 1.15em !important;
   margin-bottom: 1.15em !important;
   line-height: 1.7 !important;
-  color: rgb(var(--ink-rgb));
+  /* color inherits from parent — see `.prose` block above. */
+  color: inherit;
 }
 .prose p:first-child { margin-top: 0 !important; }
 .prose p:last-child  { margin-bottom: 0 !important; }
@@ -309,7 +331,8 @@ body {
   font-family: var(--font-newsreader), Georgia, "Times New Roman", serif !important;
   font-style: italic !important;
   letter-spacing: -0.012em;
-  color: rgb(var(--ink-rgb));
+  /* color inherits from parent — see `.prose` block above. */
+  color: inherit;
 }
 .prose h1 {
   font-size: 1.75em !important;

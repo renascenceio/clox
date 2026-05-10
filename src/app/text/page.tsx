@@ -1023,18 +1023,21 @@ export default function TextPage() {
         // backtick) is left alone — only display blocks become
         // artifacts.
         body = (
-          // `dark:prose-invert` is REQUIRED. Without it, the Tailwind
-          // typography plugin hardcodes prose body / heading / link
-          // colours to dark grays via `--tw-prose-body` etc. — which
-          // means the assistant's prose lines render as dark text on
-          // top of the dark-mode canvas and become invisible. The
-          // chat artifact frame is fine (it uses its own inline
-          // tokens off `--ink-rgb`), but ReactMarkdown's plain
-          // paragraphs / lists / headings are all driven by the
-          // `prose` cascade, so they need the dark-mode flip
-          // explicitly. `prose-zinc` keeps the colour palette neutral
-          // rather than blue-tinted, matching the editorial chrome.
-          <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none prose-p:my-2 prose-p:leading-[1.6]">
+          /*
+           * Just `.prose` — the hand-rolled rules in globals.css
+           * (line ~276) own the editorial typography. The earlier
+           * `dark:prose-invert prose-zinc prose-p:my-2 …` classes
+           * were copy-pasted from a Tailwind Typography example
+           * but did nothing here because this project does NOT
+           * have `@tailwindcss/typography` installed. Real prose
+           * styling comes from `.prose`, `.prose p`, `.prose h*`
+           * etc. defined in globals.css, and those rules now
+           * inherit `color` from the parent message card so the
+           * JS palette (onyx vs pearl) is the single source of
+           * truth for text colour — fixing the dark-on-dark text
+           * bug after reloads.
+           */
+          <div className="prose">
             <ReactMarkdown
               components={{
                 code: CodeArtifact,
