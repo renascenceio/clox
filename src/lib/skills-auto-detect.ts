@@ -58,6 +58,54 @@ const PHRASE_TO_TAG: Array<{ patterns: RegExp[]; tag: string }> = [
   { patterns: [/\b(json\s*only|respond\s*in\s*json|valid\s*json)\b/i],           tag: 'json' },
   { patterns: [/\b(comparison\s*table|render.+table|markdown\s*table)\b/i],      tag: 'table' },
   { patterns: [/\b(brainstorm|come\s*up\s*with\s*ideas)\b/i],                    tag: 'brainstorm' },
+
+  // ── Anthropic Claude skills (seeded by migration 003) ────────────────
+  // Each natural-language phrase maps to one of the catalogue tags so a
+  // user typing "make me a poster" auto-fires Canvas Design without
+  // having to know the skill's name.
+
+  // Frontend Designer — UI prompts that aren't already caught by html/react.
+  { patterns: [/\b(dashboard|hero\s*section|design\s*system|ui\s*kit)\b/i],     tag: 'frontend' },
+  { patterns: [/\b(make\s*it\s*(?:look|feel)\s*(?:nice|good|polished|premium))\b/i], tag: 'design' },
+
+  // Theme Factory — apply a visual theme to an existing artifact.
+  { patterns: [/\b(apply\s*(?:a\s*)?theme|change\s*the\s*theme|theme\s*this|colour?\s*palette)\b/i], tag: 'theme' },
+
+  // Brand Guidelines (Anthropic) — explicit Anthropic brand work.
+  { patterns: [/\b(anthropic\s*brand|anthropic\s*colou?rs|anthropic\s*style|anthropic\s*identity)\b/i], tag: 'anthropic' },
+
+  // Doc Co-author — substantial structured documents.
+  { patterns: [/\b(prd|design\s*doc|decision\s*doc|rfc|technical\s*spec|spec\s*doc|proposal\s*doc)\b/i], tag: 'prd' },
+  { patterns: [/\bproduct\s*requirements?\b/i],                                  tag: 'prd' },
+
+  // Internal Communications — comms in idiomatic company formats.
+  { patterns: [/\b(3p\s*update|progress[\s/]+plans[\s/]+problems)\b/i],          tag: 'internal' },
+  { patterns: [/\b(company\s*newsletter|internal\s*newsletter|all[-\s]hands\s*update)\b/i], tag: 'newsletter' },
+  { patterns: [/\b(faq\s*answer|status\s*report|leadership\s*update|incident\s*report)\b/i], tag: 'comms' },
+
+  // Canvas Design — posters and static art pieces.
+  { patterns: [/\b(poster|art\s*print|design\s*piece|art\s*movement|gallery\s*piece)\b/i], tag: 'poster' },
+
+  // Algorithmic Art — generative / creative-coding work.
+  { patterns: [/\b(generative\s*art|algorithmic\s*art|p5\.?js|flow\s*field|particle\s*system|creative\s*coding)\b/i], tag: 'generative' },
+
+  // Slack GIF Creator — animated emoji / message GIFs.
+  { patterns: [/\b(slack\s*gif|animated\s*emoji|emoji\s*gif|reaction\s*gif)\b/i], tag: 'gif' },
+  // Plain "GIF" alone is too noisy ("animated GIF") — only fire when the
+  // request is clearly about MAKING one, not embedding an existing one.
+  { patterns: [/\b(make|create|build|design)\s+(?:an?\s+)?(?:animated\s+)?gif\b/i], tag: 'gif' },
+
+  // Web Artifact Builder — substantial single-file React mini-apps.
+  { patterns: [/\b(shadcn|self[-\s]contained\s*react|single[-\s]file\s*react|bundled\s*artifact)\b/i], tag: 'shadcn' },
+
+  // MCP Server Builder.
+  { patterns: [/\b(mcp\s*server|model\s*context\s*protocol|build\s*an?\s*mcp)\b/i], tag: 'mcp' },
+
+  // Anthropic Product Knowledge — questions about Claude products.
+  { patterns: [/\b(claude\.ai|claude\s*api|claude\s*code|claude\s*pro|claude\s*team|claude\s*enterprise|anthropic\s*pricing|claude\s*pricing|claude\s*rate\s*limits?)\b/i], tag: 'claude' },
+
+  // Skill Author — meta: making more skills.
+  { patterns: [/\b(create\s*(?:a\s*)?skill|author\s*(?:a\s*)?skill|add\s*(?:a\s*)?skill|skill\s*creator|skill\.md)\b/i], tag: 'skill' },
 ]
 
 /**
