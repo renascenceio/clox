@@ -1042,10 +1042,135 @@ export default function TextPage() {
           size:     typeof a.size === 'number' ? a.size : 0,
         }))
 
+      // ── Sandbox progress strip ─────────────────────────────────────
+      // Live phase events the chat route streams for sandbox boot +
+      // pip install + tool execution. Snippet-running / snippet-done
+      // events are skipped here because the tool-invocation pills
+      // below already render that state — we'd be doubling up. What
+      // the strip DOES surface is the lifecycle the user wouldn't
+      // otherwise see: "Starting Python sandbox" → "Installing python
+      // deps (~30-40s)" → "Packages ready (32s)". On a warm sandbox
+      // the strip is empty, which is what we want.
+      type ProgressEvent = {
+        type: 'sandbox-progress'
+        phase:
+          | 'sandbox-booting' | 'sandbox-ready' | 'sandbox-failed'
+          | 'deps-installing' | 'deps-ready'    | 'deps-failed'
+          | 'snippet-running' | 'snippet-done'  | 'snippet-timeout'
+        ts?: number
+        durationMs?: number
+        error?: string
+        tool?: 'python' | 'bash'
+        preview?: string
+      }
+      const progressEvents: ProgressEvent[] = annotations
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((a: any) => a && a.type === 'sandbox-progress' && typeof a.phase === 'string')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((a: any) => !String(a.phase).startsWith('snippet-'))
+
+      // Format a phase event into a human readable line. Successful
+      // deps-ready / sandbox-ready entries get the duration in
+      // seconds because that's the most meaningful signal about
+      // whether the boot was a cold start or a warm reuse.
+      const formatProgress = (e: ProgressEvent): string => {
+        const secs = e.durationMs ? `${Math.max(1, Math.round(e.durationMs / 1000))}s` : ''
+        switch (e.phase) {
+          case 'sandbox-booting': return 'Starting Python sandbox…'
+          case 'sandbox-ready':   return `Sandbox ready${secs ? ` (${secs})` : ''}`
+          case 'sandbox-failed':  return `Sandbox boot failed: ${e.error ?? 'unknown error'}`
+          case 'deps-installing': return 'Installing Python packages (~30–40s)…'
+          case 'deps-ready':      return `Packages ready${secs ? ` (${secs})` : ''}`
+          case 'deps-failed':     return `Package install failed${secs ? ` after ${secs}` : ''}: ${e.error ?? ''}`
+          default:                return ''
+        }
+      }
+
+      // ── Timeout detection ──────────────────────────────────────────
+      // When a sandbox tool returns a structured timeout result we
+      // want to give the user a single-click "Continue generation"
+      // affordance instead of forcing them to type "continue" by
+      // hand. The button lives below the message body and just
+      // appends a user message that nudges the model to resume with
+      // a smaller chunk size — full chat history (including any
+      // partial outputs) is preserved by useChat, so the model has
+      // the context it needs to pick up where it left off.
+      const timedOutTool = toolInvocations.find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        inv => (inv.result as any)?.kind === 'timeout',
+      )
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const timeoutSuggestion: string | null = timedOutTool
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? String((timedOutTool.result as any)?.suggestion ?? '')
+        : null
+      const onContinueClick = () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const append = (chat as any).append as
+          | ((message: { role: 'user'; content: string }) => Promise<unknown>)
+          | undefined
+        if (!append) return
+        const hint =
+          timeoutSuggestion ||
+          'Split the work into smaller chunks (one slide / page / sheet ' +
+          'per python call) and continue from where you left off.'
+        void append({
+          role: 'user',
+          content:
+            'The previous step timed out before it could finish. ' +
+            'Continue from where you stopped — ' + hint,
+        })
+      }
+      const showContinueButton = Boolean(timedOutTool)
+
       let bodyWithTools: React.ReactNode = body
-      if (toolInvocations.length > 0 || outputFiles.length > 0) {
+      if (
+        toolInvocations.length > 0 ||
+        outputFiles.length > 0 ||
+        progressEvents.length > 0 ||
+        showContinueButton
+      ) {
         bodyWithTools = (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {progressEvents.length > 0 && (
+              // Progress timeline. Rendered above the tool-invocation
+              // pills because conceptually it's "what happened in the
+              // sandbox before the model could even start its tool
+              // calls" — boot, dep install, etc. Visually it's a
+              // dashed monospace strip so it reads as system status,
+              // distinct from the bordered tool pills below.
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  padding: '6px 10px',
+                  border: '1px dashed currentColor',
+                  borderRadius: 2,
+                  opacity: 0.75,
+                  fontSize: 11,
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                }}
+              >
+                {progressEvents.map((e, idx) => {
+                  const text = formatProgress(e)
+                  const isFailure = e.phase === 'sandbox-failed' || e.phase === 'deps-failed'
+                  const isPending = e.phase === 'sandbox-booting' || e.phase === 'deps-installing'
+                  return (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ opacity: 0.55 }}>
+                        {isPending ? '◇' : isFailure ? '✕' : '◆'}
+                      </span>
+                      <span style={{ color: isFailure ? 'var(--accent, #b00020)' : undefined }}>
+                        {text}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
             {toolInvocations.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {toolInvocations.map((inv, ti) => {
@@ -1165,6 +1290,62 @@ export default function TextPage() {
             </div>
             )}
             {body}
+            {showContinueButton && (
+              // Click-to-continue affordance. Surfaces below the
+              // partial answer / error explanation so the user reads
+              // the timeout context first, then has a one-click way
+              // to resume. The handler appends a user message that
+              // carries the model's own suggestion (e.g. "split into
+              // smaller chunks") forward — chat history preserves
+              // anything the model already produced before timing
+              // out, so it picks up where it left off without
+              // starting over.
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                padding: '8px 10px',
+                border: '1px solid var(--accent, #b00020)',
+                borderRadius: 2,
+                fontSize: 12,
+              }}>
+                <div style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                  fontSize: 10,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  opacity: 0.85,
+                }}>
+                  Step timed out
+                </div>
+                {timeoutSuggestion && (
+                  <div style={{ opacity: 0.85, fontStyle: 'italic' }}>
+                    {timeoutSuggestion}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={onContinueClick}
+                  disabled={isStreaming}
+                  style={{
+                    alignSelf: 'flex-start',
+                    padding: '4px 12px',
+                    border: '1px solid currentColor',
+                    borderRadius: 2,
+                    background: 'transparent',
+                    color: 'inherit',
+                    cursor: isStreaming ? 'not-allowed' : 'pointer',
+                    fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                    fontSize: 11,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    opacity: isStreaming ? 0.5 : 1,
+                  }}
+                >
+                  Continue generation
+                </button>
+              </div>
+            )}
             {outputFiles.length > 0 && <DownloadStrip files={outputFiles} />}
           </div>
         )

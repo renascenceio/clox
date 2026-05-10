@@ -29,6 +29,30 @@
 
 import { Sandbox } from '@vercel/sandbox'
 
+/** Progress events the manager can emit while booting a sandbox or
+ *  installing the canonical Python package set. The route subscribes
+ *  to these and writes them as message annotations on the in-flight
+ *  assistant turn so the user sees friendly status text ("Starting
+ *  Python sandbox", "Installing python deps (~30-40s)") instead of
+ *  staring at a blank chat while the cold start runs.
+ *
+ *  Events are best-effort and idempotent in spirit: if a route
+ *  swallows them or the dataStream has already closed, nothing
+ *  breaks — they're cosmetic. The lifecycle still works without any
+ *  callback at all (early callsites pass `undefined`). */
+export type SandboxProgressEvent =
+  | { phase: 'sandbox-booting' }
+  | { phase: 'sandbox-ready'; durationMs: number }
+  | { phase: 'sandbox-failed'; error: string }
+  | { phase: 'deps-installing' }
+  | { phase: 'deps-ready'; durationMs: number }
+  | { phase: 'deps-failed'; error: string; durationMs: number }
+  | { phase: 'snippet-running'; tool: 'python' | 'bash'; preview: string }
+  | { phase: 'snippet-done';    tool: 'python' | 'bash'; ok: boolean; durationMs: number }
+  | { phase: 'snippet-timeout'; tool: 'python' | 'bash'; durationMs: number }
+
+export type SandboxProgressCallback = (event: SandboxProgressEvent) => void
+
 /** What the manager tracks per chat. We store the live `Sandbox`
  *  reference (not just the id) so we can reuse the same in-process
  *  command pipe and avoid a `Sandbox.get()` round trip on every tool
@@ -176,10 +200,14 @@ async function createSandbox(): Promise<Sandbox> {
  *  and the model will get a real ModuleNotFoundError when it tries to
  *  import something missing. That's better than failing the whole
  *  sandbox boot. */
-async function installFallbackPackages(sandbox: Sandbox): Promise<void> {
+async function installFallbackPackages(
+  sandbox: Sandbox,
+  onProgress?: SandboxProgressCallback,
+): Promise<void> {
   if (SKILLS_SNAPSHOT_ID) return // Snapshot already has them baked in.
   const startedAt = Date.now()
   console.log('[v0] sandbox: installing python deps (cold start, expect ~30-40s)…')
+  onProgress?.({ phase: 'deps-installing' })
   try {
     const result = await sandbox.runCommand({
       cmd:  'sh',
@@ -199,23 +227,31 @@ async function installFallbackPackages(sandbox: Sandbox): Promise<void> {
     const elapsed = Date.now() - startedAt
     if (result.exitCode === 0) {
       console.log(`[v0] sandbox: deps installed in ${elapsed}ms`)
+      onProgress?.({ phase: 'deps-ready', durationMs: elapsed })
     } else {
       const stderr = await result.stderr().catch(() => '')
       console.error(
         `[v0] sandbox: pip install exited ${result.exitCode} after ${elapsed}ms`,
         stderr.slice(0, 500),
       )
+      onProgress?.({
+        phase: 'deps-failed',
+        error: `pip exit ${result.exitCode}: ${stderr.slice(0, 160)}`,
+        durationMs: elapsed,
+      })
     }
   } catch (e) {
     const elapsed = Date.now() - startedAt
-    console.error(
-      `[v0] sandbox: pip install threw after ${elapsed}ms:`,
-      (e as Error).message ?? String(e),
-    )
+    const message = (e as Error).message ?? String(e)
+    console.error(`[v0] sandbox: pip install threw after ${elapsed}ms:`, message)
+    onProgress?.({ phase: 'deps-failed', error: message.slice(0, 160), durationMs: elapsed })
   }
 }
 
-export async function getOrCreateSandboxForChat(chatId: string): Promise<Sandbox> {
+export async function getOrCreateSandboxForChat(
+  chatId: string,
+  onProgress?: SandboxProgressCallback,
+): Promise<Sandbox> {
   const existing = REGISTRY.get(chatId)
   if (existing) {
     // Best-effort liveness check. If the sandbox auto-stopped between
@@ -238,7 +274,19 @@ export async function getOrCreateSandboxForChat(chatId: string): Promise<Sandbox
     REGISTRY.delete(chatId)
   }
 
-  const sandbox = await createSandbox()
+  // Cold path — emit boot progress so the user sees something is
+  // happening during the ~5-10s sandbox spin-up.
+  onProgress?.({ phase: 'sandbox-booting' })
+  const bootStartedAt = Date.now()
+  let sandbox: Sandbox
+  try {
+    sandbox = await createSandbox()
+  } catch (e) {
+    onProgress?.({ phase: 'sandbox-failed', error: (e as Error).message ?? String(e) })
+    throw e
+  }
+  onProgress?.({ phase: 'sandbox-ready', durationMs: Date.now() - bootStartedAt })
+
   // Kick off pip-install in the background. We do NOT await it here so
   // route handlers calling `getOrCreateSandboxForChat` for non-python
   // reasons (e.g. mounting attachments early in the request) don't
@@ -249,7 +297,7 @@ export async function getOrCreateSandboxForChat(chatId: string): Promise<Sandbox
     lastUsedAt: Date.now(),
     mountedKeys: new Set(),
     collectedKeys: new Set(),
-    packagesReady: installFallbackPackages(sandbox),
+    packagesReady: installFallbackPackages(sandbox, onProgress),
   }
   REGISTRY.set(chatId, record)
   return sandbox
@@ -279,10 +327,17 @@ export async function waitForPackages(chatId: string): Promise<void> {
  *  Errors are swallowed: pre-warm is best-effort — if it fails, the
  *  on-demand path in `getOrCreateSandboxForChat` will retry on the
  *  first real tool call. */
-export function prewarmSandbox(chatId: string): void {
+export function prewarmSandbox(
+  chatId: string,
+  onProgress?: SandboxProgressCallback,
+): void {
   // Fire-and-forget. The promise reference is tracked inside
   // REGISTRY via the `packagesReady` field once create finishes.
-  void getOrCreateSandboxForChat(chatId).catch(e => {
+  // The progress callback is the only path the route has into the
+  // boot/install lifecycle once it's running asynchronously, so this
+  // is what makes "Starting sandbox…" / "Installing python deps…"
+  // chips visible to the user.
+  void getOrCreateSandboxForChat(chatId, onProgress).catch(e => {
     console.error('[v0] sandbox prewarm failed:', (e as Error).message)
   })
 }

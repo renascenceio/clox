@@ -24,7 +24,10 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { getOrCreateSandboxForChat } from '@/lib/sandbox/manager'
+import {
+  getOrCreateSandboxForChat,
+  type SandboxProgressCallback,
+} from '@/lib/sandbox/manager'
 
 /** Per-command wall-clock cap. Most file-handling commands (`ls`,
  *  `pdfinfo`, `file`, `head`, `unzip`) finish in well under a second.
@@ -52,13 +55,51 @@ function capText(s: string): { text: string; truncated: boolean } {
   }
 }
 
+/** Pretty-print a shell command for the progress strip. We do a few
+ *  cheap heuristic rewrites so common operations read as English
+ *  instead of as a raw shell line — `pip install pandas pillow`
+ *  becomes "Installing pandas, pillow", and `ls /mnt/...` becomes
+ *  "Listing files". Falls back to the first non-empty line of the
+ *  command for everything else. */
+function previewBashCommand(command: string): string {
+  const firstLine = command.split('\n').map(l => l.trim()).find(l => l.length > 0) ?? ''
+
+  // pip install <packages…>
+  const pipMatch = firstLine.match(/\bpip(?:3)?\s+install\s+([^|;&]+?)(?:\s*$)/)
+  if (pipMatch) {
+    const pkgs = pipMatch[1]
+      .split(/\s+/)
+      .filter(p => p && !p.startsWith('-'))     // drop flags like --prefer-binary
+      .map(p => p.replace(/['"]/g, '').replace(/[<>=!~].*/, '')) // drop version specifiers
+    if (pkgs.length > 0) return `Installing ${pkgs.slice(0, 3).join(', ')}${pkgs.length > 3 ? '…' : ''}`
+  }
+
+  // ls / find — listing files
+  if (/^ls(\s|$)|^find(\s|$)/.test(firstLine)) return 'Listing files'
+
+  // pdf info / extract
+  if (/^pdfinfo(\s|$)/.test(firstLine)) return 'Reading PDF metadata'
+  if (/^pdftotext(\s|$)/.test(firstLine)) return 'Extracting PDF text'
+
+  // file inspection
+  if (/^(file|head|tail|cat)(\s|$)/.test(firstLine)) return 'Inspecting file'
+
+  // unzip / archive
+  if (/^(unzip|tar|zip)(\s|$)/.test(firstLine)) return 'Unpacking archive'
+
+  // Fallback — terse first-80-chars preview.
+  return firstLine.slice(0, 80)
+}
+
 /** Build the `bash` tool, parameterised by the chat id so each tool
- *  invocation can find its own sandbox.
+ *  invocation can find its own sandbox. `onProgress` is forwarded to
+ *  the manager (for sandbox boot / dep-install phase events) AND
+ *  fired locally for shell-running / shell-done events.
  *
  *  Accepting the chat id at build time (rather than reading it from
  *  the model's args) is intentional — the model has no business
  *  picking which chat's sandbox to drive. */
-export function makeBashTool(chatId: string) {
+export function makeBashTool(chatId: string, onProgress?: SandboxProgressCallback) {
   return tool({
     description: [
       'Run a shell command inside the conversation-scoped Linux microVM.',
@@ -86,8 +127,11 @@ export function makeBashTool(chatId: string) {
         ),
     }),
     execute: async ({ command }) => {
+      const preview = previewBashCommand(command)
       try {
-        const sandbox = await getOrCreateSandboxForChat(chatId)
+        const sandbox = await getOrCreateSandboxForChat(chatId, onProgress)
+        const startedAt = Date.now()
+        onProgress?.({ phase: 'snippet-running', tool: 'bash', preview })
         const result = await sandbox.runCommand({
           cmd:  'sh',
           args: ['-lc', command],
@@ -98,22 +142,46 @@ export function makeBashTool(chatId: string) {
         const stderr = await result.stderr()
         const out = capText(stdout)
         const err = capText(stderr)
+        const durationMs = Date.now() - startedAt
+        onProgress?.({
+          phase: 'snippet-done',
+          tool: 'bash',
+          ok: result.exitCode === 0,
+          durationMs,
+        })
         return {
           ok: result.exitCode === 0,
           exitCode: result.exitCode,
           stdout: out.text,
           stderr: err.text,
           truncated: out.truncated || err.truncated,
+          durationMs,
         }
       } catch (e) {
         const err = e as Error
         const isTimeout = /aborted|timeout/i.test(err.message ?? '')
+        if (isTimeout) {
+          onProgress?.({ phase: 'snippet-timeout', tool: 'bash', durationMs: COMMAND_TIMEOUT_MS })
+          return {
+            ok: false,
+            exitCode: -1,
+            stdout: '',
+            stderr:
+              'Shell command exceeded the 180s wall-clock cap and was aborted.',
+            kind: 'timeout',
+            durationMs: COMMAND_TIMEOUT_MS,
+            suggestion:
+              'For pip installs, install fewer packages per call or use ' +
+              '`pip install --prefer-binary` to force wheel use. For other ' +
+              'long-running commands, run them in chunks.',
+          }
+        }
         return {
           ok: false,
           exitCode: -1,
           stdout: '',
           stderr: err.message ?? String(err),
-          kind: isTimeout ? 'timeout' : 'runtime',
+          kind: 'runtime',
         }
       }
     },

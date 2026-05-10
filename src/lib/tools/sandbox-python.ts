@@ -22,7 +22,11 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { getOrCreateSandboxForChat, waitForPackages } from '@/lib/sandbox/manager'
+import {
+  getOrCreateSandboxForChat,
+  waitForPackages,
+  type SandboxProgressCallback,
+} from '@/lib/sandbox/manager'
 import { randomBytes } from 'node:crypto'
 
 /** Wall-clock cap per python call. Trivial snippets (`from pptx
@@ -48,7 +52,11 @@ function capText(s: string): { text: string; truncated: boolean } {
   }
 }
 
-export function makePythonTool(chatId: string) {
+/** Build the `python` tool. `onProgress` is forwarded to the manager
+ *  so sandbox-boot and dep-install events fan out to the same chat
+ *  dataStream that this tool will emit its own snippet-running /
+ *  snippet-done / snippet-timeout events into. */
+export function makePythonTool(chatId: string, onProgress?: SandboxProgressCallback) {
   return tool({
     description: [
       'Run a Python 3.13 snippet inside the conversation-scoped Linux microVM.',
@@ -74,8 +82,17 @@ export function makePythonTool(chatId: string) {
         ),
     }),
     execute: async ({ code }) => {
+      // Pull a one-line preview of what we're about to run so the
+      // client can render "Running Python: <preview>" in the progress
+      // strip. We strip leading comments and blank lines to get to
+      // the real first action — a model that opens with `# Step 1:
+      // build the deck` is more useful with the next-line preview.
+      const preview = code
+        .split('\n')
+        .map(l => l.trim())
+        .find(l => l.length > 0 && !l.startsWith('#')) ?? ''
       try {
-        const sandbox = await getOrCreateSandboxForChat(chatId)
+        const sandbox = await getOrCreateSandboxForChat(chatId, onProgress)
         // Gate on the canonical Python package set being installed
         // before we run the snippet. On a sandbox that's been around
         // for a few turns this is an instant no-op (the install
@@ -93,6 +110,8 @@ export function makePythonTool(chatId: string) {
         const stamp = randomBytes(6).toString('hex')
         const path  = `/tmp/snippet-${stamp}.py`
         await sandbox.writeFiles([{ path, content: Buffer.from(code, 'utf8') }])
+        const startedAt = Date.now()
+        onProgress?.({ phase: 'snippet-running', tool: 'python', preview: preview.slice(0, 80) })
         const result = await sandbox.runCommand({
           cmd:  'python3',
           args: [path],
@@ -102,22 +121,57 @@ export function makePythonTool(chatId: string) {
         const stderr = await result.stderr()
         const out = capText(stdout)
         const err = capText(stderr)
+        const durationMs = Date.now() - startedAt
+        onProgress?.({
+          phase: 'snippet-done',
+          tool: 'python',
+          ok: result.exitCode === 0,
+          durationMs,
+        })
         return {
           ok: result.exitCode === 0,
           exitCode: result.exitCode,
           stdout: out.text,
           stderr: err.text,
           truncated: out.truncated || err.truncated,
+          durationMs,
         }
       } catch (e) {
         const err = e as Error
         const isTimeout = /aborted|timeout/i.test(err.message ?? '')
+        if (isTimeout) {
+          onProgress?.({
+            phase: 'snippet-timeout',
+            tool: 'python',
+            durationMs: PYTHON_TIMEOUT_MS,
+          })
+          // Hand the model a structured timeout result so it knows
+          // exactly what happened and what to do next. The
+          // `suggestion` field is read by both the model (it's the
+          // most prominent field) AND the client UI, which surfaces
+          // a "Continue generation" button on this result that lets
+          // the user re-issue with the suggestion baked in.
+          return {
+            ok: false,
+            exitCode: -1,
+            stdout: '',
+            stderr:
+              'Python snippet exceeded the 180s wall-clock cap and was aborted. ' +
+              'The previous output (if any) was lost.',
+            kind: 'timeout',
+            durationMs: PYTHON_TIMEOUT_MS,
+            suggestion:
+              'Split the work into smaller chunks: build one slide / page / sheet ' +
+              'at a time and append to the file across multiple python calls. Avoid ' +
+              'rendering many high-resolution images in a single snippet.',
+          }
+        }
         return {
           ok: false,
           exitCode: -1,
           stdout: '',
           stderr: err.message ?? String(err),
-          kind: isTimeout ? 'timeout' : 'runtime',
+          kind: 'runtime',
         }
       }
     },
