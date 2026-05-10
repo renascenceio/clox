@@ -29,6 +29,30 @@
 
 import { Sandbox } from '@vercel/sandbox'
 
+/** Progress events the manager can emit while booting a sandbox or
+ *  installing the canonical Python package set. The route subscribes
+ *  to these and writes them as message annotations on the in-flight
+ *  assistant turn so the user sees friendly status text ("Starting
+ *  Python sandbox", "Installing python deps (~30-40s)") instead of
+ *  staring at a blank chat while the cold start runs.
+ *
+ *  Events are best-effort and idempotent in spirit: if a route
+ *  swallows them or the dataStream has already closed, nothing
+ *  breaks — they're cosmetic. The lifecycle still works without any
+ *  callback at all (early callsites pass `undefined`). */
+export type SandboxProgressEvent =
+  | { phase: 'sandbox-booting' }
+  | { phase: 'sandbox-ready'; durationMs: number }
+  | { phase: 'sandbox-failed'; error: string }
+  | { phase: 'deps-installing' }
+  | { phase: 'deps-ready'; durationMs: number }
+  | { phase: 'deps-failed'; error: string; durationMs: number }
+  | { phase: 'snippet-running'; tool: 'python' | 'bash'; preview: string }
+  | { phase: 'snippet-done';    tool: 'python' | 'bash'; ok: boolean; durationMs: number }
+  | { phase: 'snippet-timeout'; tool: 'python' | 'bash'; durationMs: number }
+
+export type SandboxProgressCallback = (event: SandboxProgressEvent) => void
+
 /** What the manager tracks per chat. We store the live `Sandbox`
  *  reference (not just the id) so we can reuse the same in-process
  *  command pipe and avoid a `Sandbox.get()` round trip on every tool
@@ -46,6 +70,14 @@ interface SandboxRecord {
   /** Files we've already collected from `/mnt/user-data/outputs/` on a
    *  previous turn, so we only surface NEW outputs in each round-trip. */
   collectedKeys: Set<string>
+  /** Memoised Promise resolved once the canonical Python package set
+   *  is installed in this sandbox. The python tool awaits this before
+   *  running each snippet so a model writing `from pptx import …` on
+   *  the first call doesn't hit ModuleNotFoundError. Reusing the same
+   *  Promise across concurrent calls collapses a thundering herd into
+   *  a single install pass. Snapshot-backed sandboxes resolve to
+   *  `null` immediately because packages are already baked in. */
+  packagesReady: Promise<void>
 }
 
 /** In-process map. Module scope means it survives across requests
@@ -79,10 +111,46 @@ const NETWORK_POLICY = {
 /** Optional snapshot containing the cloned `anthropics/skills` repo +
  *  pre-installed Python deps (built once via
  *  `scripts/build-skills-snapshot.ts`). When set we boot from the
- *  snapshot in <5s; when unset we boot a blank python3.13 sandbox so
- *  the route still works in dev — skill bundles just won't be present
- *  at `/mnt/skills/`. */
+ *  snapshot in <5s; when unset we boot a blank python3.13 sandbox and
+ *  install the canonical package set on first boot so the python tool
+ *  description ("python-pptx, pypdf, openpyxl … pre-installed") is
+ *  actually true. */
 const SKILLS_SNAPSHOT_ID = process.env.SANDBOX_SKILLS_SNAPSHOT_ID
+
+/** Canonical Python package set the document-handling skills depend
+ *  on. Trimmed to "things wheels exist for on PyPI" so `--prefer-binary`
+ *  always wins and we never block on a C-extension build. The split is:
+ *
+ *    Tier 1 — installed eagerly on first sandbox boot (this list).
+ *    Tier 2 — install on demand via `bash pip install <pkg>` when a
+ *             skill asks for it (weasyprint, ocrmypdf, etc.).
+ *
+ *  Why not put EVERYTHING in tier 1? pandas+numpy alone are ~25MB of
+ *  wheels and would push first-boot install past 60s on a cold cache.
+ *  Most chat sessions never need them — skip until needed.
+ *
+ *  Order matters: largest wheels first means pip starts the slowest
+ *  downloads earliest, so the parallel download phase finishes sooner. */
+const FALLBACK_PYTHON_PACKAGES: string[] = [
+  // PPTX skill (most common ask, must be present for "make me a deck").
+  'python-pptx>=1.0',
+  // Image handling — used by pptx for chart images, by canvas-design,
+  // by file-reading for thumbnails. Big wheel (~10MB).
+  'pillow>=10',
+  // PDF read/write (PDF skill family).
+  'pypdf>=4.0',
+  'reportlab>=4.0',
+  // Office docs.
+  'python-docx>=1.1',
+  'openpyxl>=3.1',
+  // Markdown / HTML pipelines (doc co-author, pdf creation).
+  'markdownify>=0.13',
+]
+
+/** First-boot pip-install timeout. With `--prefer-binary` and only
+ *  wheel-shipping packages we expect ~20-40s on a cold cache. Cap at
+ *  4 minutes so a wedged install doesn't pin the manager forever. */
+const PIP_INSTALL_TIMEOUT_MS = 4 * 60 * 1000
 
 /** Spin up a fresh sandbox seeded for chat use.
  *
@@ -117,7 +185,73 @@ async function createSandbox(): Promise<Sandbox> {
   return sandbox
 }
 
-export async function getOrCreateSandboxForChat(chatId: string): Promise<Sandbox> {
+/** Install the fallback Python package set in a freshly-created blank
+ *  sandbox. No-op when the snapshot is in use because the packages
+ *  are already baked in.
+ *
+ *  We pip-install in one pass with `--prefer-binary` so the resolver
+ *  only considers wheels. lxml/numpy etc. would otherwise download
+ *  source tarballs and burn 30-60s on C-extension compilation, which
+ *  is incompatible with the 5-minute end-to-end budget for "make me
+ *  a PPT" requests.
+ *
+ *  Errors are swallowed and logged — a failed install means the python
+ *  tool will still work for snippets that don't need the heavy deps,
+ *  and the model will get a real ModuleNotFoundError when it tries to
+ *  import something missing. That's better than failing the whole
+ *  sandbox boot. */
+async function installFallbackPackages(
+  sandbox: Sandbox,
+  onProgress?: SandboxProgressCallback,
+): Promise<void> {
+  if (SKILLS_SNAPSHOT_ID) return // Snapshot already has them baked in.
+  const startedAt = Date.now()
+  console.log('[v0] sandbox: installing python deps (cold start, expect ~30-40s)…')
+  onProgress?.({ phase: 'deps-installing' })
+  try {
+    const result = await sandbox.runCommand({
+      cmd:  'sh',
+      args: [
+        '-lc',
+        // `--prefer-binary` forces wheel use (no source builds).
+        // `--no-cache-dir`  keeps the sandbox image lean.
+        // `--quiet`         cuts the multi-screen pip progress noise.
+        // We do NOT upgrade pip; the bundled pip on python3.13 is
+        // recent enough and adds ~5s overhead per upgrade hop.
+        `python3 -m pip install --prefer-binary --no-cache-dir --quiet ${FALLBACK_PYTHON_PACKAGES
+          .map(p => `'${p}'`)
+          .join(' ')}`,
+      ],
+      signal: AbortSignal.timeout(PIP_INSTALL_TIMEOUT_MS),
+    })
+    const elapsed = Date.now() - startedAt
+    if (result.exitCode === 0) {
+      console.log(`[v0] sandbox: deps installed in ${elapsed}ms`)
+      onProgress?.({ phase: 'deps-ready', durationMs: elapsed })
+    } else {
+      const stderr = await result.stderr().catch(() => '')
+      console.error(
+        `[v0] sandbox: pip install exited ${result.exitCode} after ${elapsed}ms`,
+        stderr.slice(0, 500),
+      )
+      onProgress?.({
+        phase: 'deps-failed',
+        error: `pip exit ${result.exitCode}: ${stderr.slice(0, 160)}`,
+        durationMs: elapsed,
+      })
+    }
+  } catch (e) {
+    const elapsed = Date.now() - startedAt
+    const message = (e as Error).message ?? String(e)
+    console.error(`[v0] sandbox: pip install threw after ${elapsed}ms:`, message)
+    onProgress?.({ phase: 'deps-failed', error: message.slice(0, 160), durationMs: elapsed })
+  }
+}
+
+export async function getOrCreateSandboxForChat(
+  chatId: string,
+  onProgress?: SandboxProgressCallback,
+): Promise<Sandbox> {
   const existing = REGISTRY.get(chatId)
   if (existing) {
     // Best-effort liveness check. If the sandbox auto-stopped between
@@ -140,14 +274,72 @@ export async function getOrCreateSandboxForChat(chatId: string): Promise<Sandbox
     REGISTRY.delete(chatId)
   }
 
-  const sandbox = await createSandbox()
-  REGISTRY.set(chatId, {
+  // Cold path — emit boot progress so the user sees something is
+  // happening during the ~5-10s sandbox spin-up.
+  onProgress?.({ phase: 'sandbox-booting' })
+  const bootStartedAt = Date.now()
+  let sandbox: Sandbox
+  try {
+    sandbox = await createSandbox()
+  } catch (e) {
+    onProgress?.({ phase: 'sandbox-failed', error: (e as Error).message ?? String(e) })
+    throw e
+  }
+  onProgress?.({ phase: 'sandbox-ready', durationMs: Date.now() - bootStartedAt })
+
+  // Kick off pip-install in the background. We do NOT await it here so
+  // route handlers calling `getOrCreateSandboxForChat` for non-python
+  // reasons (e.g. mounting attachments early in the request) don't
+  // block on a 30-40s install they may never need. The python tool
+  // gates on this Promise via `waitForPackages` before each snippet.
+  const record: SandboxRecord = {
     sandbox,
     lastUsedAt: Date.now(),
     mountedKeys: new Set(),
     collectedKeys: new Set(),
-  })
+    packagesReady: installFallbackPackages(sandbox, onProgress),
+  }
+  REGISTRY.set(chatId, record)
   return sandbox
+}
+
+/** Block until the canonical Python deps are installed in this chat's
+ *  sandbox. The python tool calls this before executing each snippet
+ *  so first-call imports of `pptx` / `pypdf` / etc. just work.
+ *
+ *  Returns immediately on subsequent calls — the install Promise is
+ *  memoised on the record. Returns immediately when no record exists
+ *  yet (e.g. a python tool call ahead of any sandbox boot, which
+ *  shouldn't actually happen because the tool's `execute` calls
+ *  `getOrCreateSandboxForChat` first). */
+export async function waitForPackages(chatId: string): Promise<void> {
+  const record = REGISTRY.get(chatId)
+  if (!record) return
+  await record.packagesReady
+}
+
+/** Pre-warm the sandbox + start the package install for a chat
+ *  without waiting on either. Call this from the route handler the
+ *  moment we know the user's request will need the python tool, so
+ *  the cold-boot + install latency overlaps with model token
+ *  generation instead of stacking on top of the first tool call.
+ *
+ *  Errors are swallowed: pre-warm is best-effort — if it fails, the
+ *  on-demand path in `getOrCreateSandboxForChat` will retry on the
+ *  first real tool call. */
+export function prewarmSandbox(
+  chatId: string,
+  onProgress?: SandboxProgressCallback,
+): void {
+  // Fire-and-forget. The promise reference is tracked inside
+  // REGISTRY via the `packagesReady` field once create finishes.
+  // The progress callback is the only path the route has into the
+  // boot/install lifecycle once it's running asynchronously, so this
+  // is what makes "Starting sandbox…" / "Installing python deps…"
+  // chips visible to the user.
+  void getOrCreateSandboxForChat(chatId, onProgress).catch(e => {
+    console.error('[v0] sandbox prewarm failed:', (e as Error).message)
+  })
 }
 
 export interface AttachmentToMount {
