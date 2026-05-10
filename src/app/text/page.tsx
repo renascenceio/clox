@@ -1517,15 +1517,74 @@ export default function TextPage() {
       !!lastMsg && lastMsg.role === 'user' && !isStreaming && msgArr.length > 0
     const hasError = !!chatError
     if (hasError || lastWasUserOrphan) {
-      const errorMessage = (() => {
-        if (!chatError) {
-          return 'The model stopped without producing a response. ' +
-            'This usually means the request timed out, hit the token limit, ' +
-            'or the provider returned an error mid-stream.'
-        }
+      // ── Error categorisation ───────────────────────────────────────
+      // Anthropic / OpenAI / Google all phrase their errors very
+      // differently and stuff multi-paragraph rate-limit copy into
+      // the message. Showing the raw text in the chat surface is
+      // intimidating and the actionable fix isn't obvious. We bucket
+      // the error into a kind so the banner can render a one-line
+      // summary and the right recovery button.
+      //
+      // Buckets:
+      //   rate_limit  → 429 / "rate limit" / "TPM" / "tokens per minute"
+      //   overloaded  → "overloaded" / "529" — provider capacity hiccup
+      //   timeout     → request exceeded our maxDuration / model wall-clock
+      //   no_response → no chatError but the assistant turn is missing
+      //   generic     → anything else; we show the raw message
+      const rawMessage = (() => {
+        if (!chatError) return ''
         if (chatError instanceof Error) return chatError.message
-        try { return String(chatError?.message ?? chatError) } catch { return 'Unknown error' }
+        try { return String((chatError as { message?: unknown })?.message ?? chatError) }
+        catch { return 'Unknown error' }
       })()
+      const lower = rawMessage.toLowerCase()
+      const errorKind: 'rate_limit' | 'overloaded' | 'timeout' | 'no_response' | 'generic' =
+        !chatError                                                ? 'no_response'
+        : /rate.?limit|429|tokens? per (minute|second)|tpm|exceed/i.test(lower) ? 'rate_limit'
+        : /overload|529|temporarily unavailable|service unavail/i.test(lower)   ? 'overloaded'
+        : /timeout|timed out|aborted|deadline/i.test(lower)       ? 'timeout'
+        : 'generic'
+
+      // Friendly one-liner per kind. The raw provider text is appended
+      // for transparency / debugging but kept dimmed and small.
+      const friendly = (() => {
+        switch (errorKind) {
+          case 'rate_limit':
+            return `${selectedTextModel.name} hit its per-minute rate limit. ` +
+                   'Sonnet 4.6 has a much higher quota and works just as well for most ' +
+                   'tasks (slides, code, analysis). Switch & retry, or wait ~60s and retry on the same model.'
+          case 'overloaded':
+            return `${selectedTextModel.name} is temporarily overloaded on the provider side. ` +
+                   'Retrying usually works within a minute. Switching to a different ' +
+                   'model also bypasses provider-specific capacity issues.'
+          case 'timeout':
+            return 'The request timed out before the model finished. ' +
+                   'For long deliverables (PPTX, multi-page PDFs), break the work into ' +
+                   'smaller follow-up turns instead of one big request.'
+          case 'no_response':
+            return 'The model stopped without producing a response. ' +
+                   'This usually means the request timed out, hit the token limit, ' +
+                   'or the provider returned an error mid-stream.'
+          case 'generic':
+          default:
+            return rawMessage || 'The model returned an error.'
+        }
+      })()
+
+      // Show the "switch to Sonnet" button only when (a) the error is
+      // a provider-side capacity issue, AND (b) the user isn't already
+      // on Sonnet/Haiku within the Claude family — switching from
+      // Sonnet to Sonnet would be a no-op. We pick claude-sonnet-4.6
+      // because it's well-balanced (smarter than Haiku, far higher
+      // TPM than Opus) and has the same tool-calling reliability.
+      const isClaudeAlready =
+        selectedTextModel.provider === 'anthropic' &&
+        selectedTextModel.id !== 'claude-opus-4.6' &&
+        selectedTextModel.id !== 'claude-opus-4.7'
+      const canSuggestSwap =
+        (errorKind === 'rate_limit' || errorKind === 'overloaded') &&
+        !isClaudeAlready
+
       base.push({
         id: 'recovery-banner',
         who: 'ai' as const,
@@ -1546,20 +1605,76 @@ export default function TextPage() {
               textTransform: 'uppercase',
               opacity: 0.85,
             }}>
-              {hasError ? 'Stream error' : 'No response'}
+              {errorKind === 'rate_limit' ? 'Rate limited' :
+               errorKind === 'overloaded' ? 'Provider overloaded' :
+               errorKind === 'timeout'    ? 'Request timed out' :
+               errorKind === 'no_response' ? 'No response' :
+               'Stream error'}
             </div>
             <div style={{ opacity: 0.85 }}>
-              {errorMessage}
+              {friendly}
             </div>
+            {/* Raw provider text — kept available for debugging
+                but visually de-emphasised so it doesn't crowd the
+                actionable copy above. */}
+            {errorKind !== 'generic' && errorKind !== 'no_response' && rawMessage && (
+              <details style={{ opacity: 0.55, fontSize: 10, fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
+                <summary style={{ cursor: 'pointer' }}>Provider details</summary>
+                <div style={{ marginTop: 6, whiteSpace: 'pre-wrap' }}>{rawMessage}</div>
+              </details>
+            )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {canSuggestSwap && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Switch the picker UI to Sonnet 4.6 so future
+                    // turns also use the lower-rate-limit model, and
+                    // hand reload() an explicit body override so the
+                    // first re-attempt doesn't race React state.
+                    const sonnet = TEXT_MODELS.find(m => m.id === 'claude-sonnet-4.6')
+                    if (sonnet) setSelectedTextModel(sonnet)
+                    try {
+                      chatReload?.({
+                        body: {
+                          model: 'claude-sonnet-4.6',
+                          provider: 'anthropic',
+                          systemPrompt: composedSystemPrompt,
+                          temperature,
+                          maxTokens,
+                          apiKey: currentApiKey,
+                          tools: enabledToolIds,
+                        },
+                      })
+                    } catch (e) {
+                      console.error('[v0] swap-and-retry failed', e)
+                    }
+                  }}
+                  disabled={isStreaming}
+                  style={{
+                    padding: '4px 12px',
+                    border: '1px solid currentColor',
+                    borderRadius: 2,
+                    background: 'currentColor',
+                    color: 'var(--paper, #fff)',
+                    cursor: isStreaming ? 'not-allowed' : 'pointer',
+                    fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                    fontSize: 11,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    opacity: isStreaming ? 0.5 : 1,
+                  }}
+                >
+                  Switch to Sonnet 4.6 &amp; retry
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
-                  // useChat.reload re-sends the LAST user message
+                  // Plain reload — re-sends the last user message
                   // with full prior history attached, so any
                   // intermediate progress (e.g. slide 1 already
-                  // generated) is still in context. The model picks
-                  // up from where it stopped.
+                  // generated) is still in context.
                   try { chatReload?.() } catch (e) {
                     console.error('[v0] retry failed', e)
                   }
@@ -1579,7 +1694,7 @@ export default function TextPage() {
                   opacity: isStreaming ? 0.5 : 1,
                 }}
               >
-                Retry last message
+                Retry on {selectedTextModel.name}
               </button>
             </div>
           </div>
@@ -1587,7 +1702,13 @@ export default function TextPage() {
       })
     }
     return base
-  }, [messages, selectedModel.version, selectedModel.name, chatError, isStreaming, chatReload])
+  }, [
+    messages, selectedModel.version, selectedModel.name,
+    chatError, isStreaming, chatReload,
+    selectedTextModel, setSelectedTextModel,
+    composedSystemPrompt, temperature, maxTokens,
+    currentApiKey, enabledToolIds,
+  ])
 
   const nav: RailNavItem[] = [
     { id: 'projects', label: 'Projects', icon: I.proj, onClick: () => router.push('/projects') },
