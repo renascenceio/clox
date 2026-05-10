@@ -62,6 +62,9 @@ const EXTEND_TIMEOUT_MS  = 30 * 60 * 1000
  *  Gateway in case a future skill calls back through it. We never
  *  allow generic outbound HTTP. */
 const NETWORK_POLICY = {
+  // The SDK types this as `string[]` (mutable). Keeping it as a plain
+  // array literal — `as const` would widen it to a readonly tuple and
+  // the `Sandbox.create` overload rejects that.
   allow: [
     'pypi.org',
     'files.pythonhosted.org',
@@ -70,8 +73,8 @@ const NETWORK_POLICY = {
     'codeload.github.com',
     'objects.githubusercontent.com',
     'ai-gateway.vercel.sh',
-  ],
-} as const
+  ] as string[],
+}
 
 /** Optional snapshot containing the cloned `anthropics/skills` repo +
  *  pre-installed Python deps (built once via
@@ -89,14 +92,22 @@ const SKILLS_SNAPSHOT_ID = process.env.SANDBOX_SKILLS_SNAPSHOT_ID
  *    - When a snapshot is set, `/mnt/skills/` already contains the
  *      cloned Anthropic skills repo. */
 async function createSandbox(): Promise<Sandbox> {
-  const sandbox = await Sandbox.create({
-    runtime: 'python3.13',
-    timeout: INITIAL_TIMEOUT_MS,
-    networkPolicy: NETWORK_POLICY,
-    ...(SKILLS_SNAPSHOT_ID
-      ? { source: { type: 'snapshot' as const, snapshotId: SKILLS_SNAPSHOT_ID } }
-      : {}),
-  })
+  // The SDK splits `CreateSandboxParams` into two variants: one with
+  // `runtime` (no `source`, or `source: git | tarball`) and one with
+  // `source: { type: 'snapshot', snapshotId }` (which OMITS `runtime`
+  // because the runtime is baked into the snapshot). We can't share
+  // a single options object between the two — pick the right shape.
+  const sandbox = SKILLS_SNAPSHOT_ID
+    ? await Sandbox.create({
+        timeout: INITIAL_TIMEOUT_MS,
+        networkPolicy: NETWORK_POLICY,
+        source: { type: 'snapshot' as const, snapshotId: SKILLS_SNAPSHOT_ID },
+      })
+    : await Sandbox.create({
+        runtime: 'python3.13',
+        timeout: INITIAL_TIMEOUT_MS,
+        networkPolicy: NETWORK_POLICY,
+      })
 
   // Make sure the conventional folders exist even if the snapshot is
   // out of date. `mkdir -p` is idempotent so we can run it on every

@@ -106,6 +106,31 @@ const PHRASE_TO_TAG: Array<{ patterns: RegExp[]; tag: string }> = [
 
   // Skill Author — meta: making more skills.
   { patterns: [/\b(create\s*(?:a\s*)?skill|author\s*(?:a\s*)?skill|add\s*(?:a\s*)?skill|skill\s*creator|skill\.md)\b/i], tag: 'skill' },
+
+  // ── Agentic file-handling skills (seeded by migration 004) ───────────
+  // The new sandbox-backed skills both READ and WRITE files. The
+  // creation-side phrases ("make me a PDF", "build a deck") already fire
+  // via the base `pdf` / `powerpoint` / `excel` / `word` tags above —
+  // these patterns specifically target READING / EXTRACTING / FILLING /
+  // MERGING workflows so the right "read & write" skill picks itself.
+
+  // Generic "read this file" — catches whichever uploaded type is present.
+  { patterns: [/\b(read|parse|extract|summari[sz]e|analy[sz]e)\s+(?:this|the|my|attached)\s+(?:file|document|attachment)\b/i], tag: 'reading' },
+  { patterns: [/\b(what(?:'s|\s+is|\s+does)\s+(?:in|this|the))\s+(?:file|pdf|spreadsheet|deck|document)\b/i], tag: 'reading' },
+  { patterns: [/\bocr\b|\bscanned\s*(?:pdf|document)\b/i],                       tag: 'ocr' },
+
+  // PDF-specific manipulation verbs.
+  { patterns: [/\b(merge\s*pdfs?|split\s*(?:a\s*)?pdf|fill\s*(?:a\s*)?pdf\s*form|watermark\s*(?:a\s*)?pdf|encrypt\s*(?:a\s*)?pdf)\b/i], tag: 'pdf' },
+  { patterns: [/\bextract\s+tables?\s+from\s+(?:the\s+)?pdf\b/i],                tag: 'pdf' },
+
+  // Excel-specific verbs.
+  { patterns: [/\b(pivot\s*table|sum(?:mari[sz]e)?\s*(?:this|the)\s*(?:sheet|workbook)|aggregate\s+(?:by|across))\b/i], tag: 'excel' },
+
+  // PowerPoint-specific verbs.
+  { patterns: [/\b(rebuild|update|edit|tweak)\s+(?:this|the|my)\s+(?:deck|presentation|slides?)\b/i], tag: 'powerpoint' },
+
+  // Word-specific verbs.
+  { patterns: [/\b(track\s*changes|insert\s*comment|reformat\s*(?:this|the)\s*doc)\b/i], tag: 'word' },
 ]
 
 /**
