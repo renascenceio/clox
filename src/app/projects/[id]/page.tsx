@@ -31,11 +31,18 @@ export default function ProjectWorkspacePage({
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('chats')
 
-  // Recent text chats for the left rail — identical recipe to /history,
-  // /skills, etc. Click jumps to /text on the selected thread.
+  // Recent chats for the left rail — SCOPED to this project.
+  //
+  // /history, /gallery and the composers show globally-recent chats here.
+  // On a project detail page that would be confusing: the user is looking
+  // at Project X but the rail surfaces chats from Project Y and unfiled
+  // chats too. Filtering by `projectId === id` makes the rail a true
+  // drill-down ("Projects → this Project → its chats"), which is what the
+  // user expects after clicking a project in the /projects index rail.
   const recent: RailRecentItem[] = useMemo(() => {
     return listChats()
       .filter(c => (c.modality ?? 'text') === 'text')
+      .filter(c => c.projectId === id)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 8)
       .map(c => ({
@@ -49,7 +56,7 @@ export default function ProjectWorkspacePage({
           chrome.router.push('/text')
         },
       }))
-  }, [chrome.router])
+  }, [id, chrome.router])
 
   const load = useCallback(async () => {
     try {
@@ -165,6 +172,21 @@ export default function ProjectWorkspacePage({
         onDeleteAccount={chrome.handleDeleteAccount}
         nav={chrome.nav}
         recent={recent}
+        // Honest caption — the rail here is project-scoped (chats from
+        // this project only), not the global recent list. Distinguishing
+        // it visually keeps the projects-as-folders mental model intact.
+        recentLabel="chats in project"
+        // "See all →" on a project detail page should reveal every chat
+        // belonging to this project — i.e. switch to the Chats tab and
+        // scroll to it. Falling back to /history (the global default)
+        // would lose the project filter entirely, which is the opposite
+        // of what the user wants when drilling INTO a project.
+        onSeeAllRecent={() => {
+          setTab('chats')
+          if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+          }
+        }}
         onNewChat={chrome.onNewChat}
         breadcrumb={project ? `workspaces · ${project.title}` : 'workspaces · project'}
         title={project?.title ?? 'Project'}

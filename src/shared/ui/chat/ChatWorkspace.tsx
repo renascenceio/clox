@@ -154,6 +154,12 @@ export interface ChatWorkspaceProps {
   // rail
   nav: RailNavItem[]
   recent: RailRecentItem[]
+  /** Caption above the recent list. Defaults to "recent" — surfaces that
+   *  show non-chat items in this slot (e.g. /projects shows recent
+   *  projects) override this to be honest about what the list contains.
+   *  Always rendered upper-case + tracked, so callers pass the lowercase
+   *  word(s) without manually applying the casing. */
+  recentLabel?: string
   onSeeAllRecent?: () => void
   onNewChat?: () => void
   onOpenCmdK?: () => void
@@ -260,6 +266,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     bodySlot,
     nav,
     recent,
+    recentLabel,
     onSeeAllRecent,
     onNewChat,
     onOpenCmdK,
@@ -373,6 +380,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
         brandVersion={brandVersion}
         nav={nav}
         recent={recent}
+        recentLabel={recentLabel}
         user={user}
         onNewChat={onNewChat}
         onOpenSettings={onOpenSettings}
@@ -619,7 +627,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
 function LeftRail({
   p, mono, serif,
   brandName, brandVersion,
-  nav, recent, user,
+  nav, recent, recentLabel, user,
   onNewChat, onOpenSettings, onOpenCmdK, onSeeAllRecent,
   theme, onChangeTheme,
   language = 'en', onChangeLanguage,
@@ -632,6 +640,7 @@ function LeftRail({
   brandVersion: string
   nav: RailNavItem[]
   recent: RailRecentItem[]
+  recentLabel?: string
   user: { initial: string; name: string; plan: string; email?: string }
   onNewChat?: () => void
   onOpenSettings?: () => void
@@ -720,7 +729,9 @@ function LeftRail({
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '10px 18px 6px',
         }}>
-          <span style={{ fontFamily: mono, fontSize: 9.5, letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted }}>recent</span>
+          <span style={{ fontFamily: mono, fontSize: 9.5, letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted }}>
+            {recentLabel ?? 'recent'}
+          </span>
           <button
             onClick={onSeeAllRecent}
             style={{ background: 'none', border: 'none', padding: 0, fontFamily: mono, fontSize: 9.5, color: p.inkMuted, letterSpacing: '0.06em', cursor: 'pointer' }}
@@ -749,8 +760,18 @@ function LeftRail({
             </button>
           ))}
           {recent.length === 0 && (
+            // Empty-state copy follows the label: surfaces showing
+            // "recent projects" should not say "no recent threads", and
+            // surfaces showing "chats in project" need a different
+            // call-to-action than the global "press ⌘N for a new chat".
+            // We default to the original chat copy when no override label
+            // is set so existing surfaces are unchanged.
             <div style={{ padding: '10px 18px', fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>
-              no recent threads — press ⌘N
+              {recentLabel === 'recent projects'
+                ? 'no projects yet'
+                : recentLabel === 'chats in project'
+                  ? 'no chats in this project yet'
+                  : 'no recent threads — press ⌘N'}
             </div>
           )}
         </div>
