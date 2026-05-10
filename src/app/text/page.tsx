@@ -411,6 +411,53 @@ export default function TextPage() {
      reloads. */
   const pendingModelRef = useRef<string[]>([])
 
+  /* ----- tools state -------------------------------------------------
+     Two real, model-callable tools the chat composer exposes through the
+     slash menu. Both default to OFF so a vanilla chat behaves identically
+     to before — the user has to opt in. Selection is persisted to
+     localStorage so a refresh doesn't silently disarm what the user
+     turned on. Declared HERE (above useChat) because the useChat body
+     references `enabledToolIds` and JS hoisting only catches function
+     declarations, not const/let.
+     Slash-menu copy is "web search" / "code execute"; the API route
+     speaks `web_search` / `run_javascript`. The mapping happens once,
+     in `enabledToolIds`. */
+  const [toolsState, setToolsState] = useState<{ label: string; on: boolean }[]>(() => {
+    const TOOL_LABELS = ['web search', 'code execute'] as const
+    if (typeof window === 'undefined') {
+      return TOOL_LABELS.map(label => ({ label, on: false }))
+    }
+    try {
+      const saved = JSON.parse(localStorage.getItem('clox:toolsState') ?? 'null')
+      if (Array.isArray(saved)) {
+        // Reconcile: keep any saved on-states for known labels; drop unknowns.
+        return TOOL_LABELS.map(label => ({
+          label,
+          on: Boolean(saved.find((s: { label: string; on: boolean }) => s.label === label)?.on),
+        }))
+      }
+    } catch { /* fall through to defaults */ }
+    return TOOL_LABELS.map(label => ({ label, on: false }))
+  })
+
+  function handleToggleTool(label: string) {
+    setToolsState(curr => {
+      const next = curr.map(t => (t.label === label ? { ...t, on: !t.on } : t))
+      try { localStorage.setItem('clox:toolsState', JSON.stringify(next)) } catch { /* quota */ }
+      return next
+    })
+  }
+
+  const enabledToolIds = useMemo(() => {
+    const ids: string[] = []
+    for (const t of toolsState) {
+      if (!t.on) continue
+      if (t.label === 'web search')   ids.push('web_search')
+      if (t.label === 'code execute') ids.push('run_javascript')
+    }
+    return ids
+  }, [toolsState])
+
   const chat = useChat({
     id: activeChatId,
     api: '/api/chat',
@@ -501,55 +548,6 @@ export default function TextPage() {
   function handleRemoveAttachment(id: string) {
     setAttachments(curr => curr.filter(a => a.id !== id))
   }
-
-  /* ----- tools state -------------------------------------------------
-     Two real, model-callable tools the chat composer exposes through the
-     slash menu. Both default to OFF so a vanilla chat behaves identically
-     to before — the user has to opt in. Selection is persisted to
-     localStorage so a refresh doesn't silently disarm what the user
-     turned on. We keep the labels here in lowercase to match the rest
-     of the slash-menu copy (`web search`, `code execute`); when we
-     forward the state to the API we translate to the canonical tool ids
-     (`web_search`, `run_javascript`) the route understands. */
-  type ToolLabel = 'web search' | 'code execute'
-  const TOOL_LABELS: ToolLabel[] = ['web search', 'code execute']
-  const [toolsState, setToolsState] = useState<{ label: string; on: boolean }[]>(() => {
-    if (typeof window === 'undefined') {
-      return TOOL_LABELS.map(label => ({ label, on: false }))
-    }
-    try {
-      const saved = JSON.parse(localStorage.getItem('clox:toolsState') ?? 'null')
-      if (Array.isArray(saved)) {
-        // Reconcile: keep any saved on-states for known labels; drop unknowns.
-        return TOOL_LABELS.map(label => ({
-          label,
-          on: Boolean(saved.find((s: { label: string; on: boolean }) => s.label === label)?.on),
-        }))
-      }
-    } catch { /* fall through to defaults */ }
-    return TOOL_LABELS.map(label => ({ label, on: false }))
-  })
-
-  function handleToggleTool(label: string) {
-    setToolsState(curr => {
-      const next = curr.map(t => (t.label === label ? { ...t, on: !t.on } : t))
-      try { localStorage.setItem('clox:toolsState', JSON.stringify(next)) } catch { /* quota */ }
-      return next
-    })
-  }
-
-  /** Map slash-menu labels to the canonical tool ids the API route
-   *  understands. Centralised so the API route, request body, and any
-   *  future tool-call rendering all agree on the same vocabulary. */
-  const enabledToolIds = useMemo(() => {
-    const ids: string[] = []
-    for (const t of toolsState) {
-      if (!t.on) continue
-      if (t.label === 'web search')   ids.push('web_search')
-      if (t.label === 'code execute') ids.push('run_javascript')
-    }
-    return ids
-  }, [toolsState])
 
   /* ----- per-modality params ---------------------------------------
      One bag per modality so flipping back and forth keeps the user's
