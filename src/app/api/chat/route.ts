@@ -1,9 +1,13 @@
-import { streamText } from 'ai'
+import { streamText, createDataStreamResponse } from 'ai'
 import { resolveLanguageModel, AIProvider } from '@/domains/text-generation/services/model-router'
 import { assertBudget } from '@/lib/projects/server'
 import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
 import { webSearchTool } from '@/lib/tools/web-search'
 import { runJavaScriptTool } from '@/lib/tools/run-javascript'
+import { makeBashTool } from '@/lib/tools/sandbox-bash'
+import { makePythonTool } from '@/lib/tools/sandbox-python'
+import { mountAttachments, collectOutputs, type AttachmentToMount } from '@/lib/sandbox/manager'
+import { uploadChatOutput } from '@/lib/storage/chat-outputs'
 
 export const maxDuration = 60
 
@@ -268,6 +272,42 @@ async function inflateAttachments(raw: unknown): Promise<unknown> {
 }
 
 /**
+ * Pull the raw bytes for every non-image attachment on every message
+ * the client sent, deduped by `(name, size)`. We feed these to the
+ * sandbox manager so the model can read them via the `bash` / `python`
+ * tools at `/mnt/user-data/uploads/<name>`.
+ *
+ * Image attachments get rendered straight into the model's vision
+ * channel by the existing `inflateAttachments` path — there's no
+ * benefit to also writing them into the sandbox, so we skip them. */
+function extractAttachmentBuffers(messages: unknown[]): AttachmentToMount[] {
+  const out: AttachmentToMount[] = []
+  const seen = new Set<string>()
+  for (const raw of messages) {
+    const m = raw as IncomingMessage
+    const atts = m.experimental_attachments
+    if (!Array.isArray(atts)) continue
+    for (const att of atts) {
+      if (!att?.url) continue
+      const ct = att.contentType ?? ''
+      if (ct.startsWith('image/')) continue
+      const name = att.name ?? 'file'
+      const decoded = dataUrlToBuffer(att.url)
+      if (!decoded) continue
+      const key = `${name}::${decoded.buf.byteLength}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({
+        name,
+        contentType: ct || decoded.mime,
+        content: decoded.buf,
+      })
+    }
+  }
+  return out
+}
+
+/**
  * Baseline capabilities preamble injected ahead of the user's system
  * prompt on every chat request.
  *
@@ -469,78 +509,153 @@ export async function POST(req: Request) {
     // Build the tools bag for THIS request based on what the user has
     // armed in the slash menu. We allow-list known ids — a malicious
     // body claiming `tools: ['delete_database']` simply gets ignored
-    // because the id has no entry in this map.
+    // because the id has no entry in this map. Sandbox tools are
+    // factories because they need to bind the chatId to find the
+    // right per-conversation microVM.
     const enabledTools: Record<string, unknown> = {}
+    const sandboxArmed =
+      Array.isArray(requestedTools) &&
+      Boolean(chatId) &&
+      (requestedTools.includes('bash') || requestedTools.includes('python'))
     if (Array.isArray(requestedTools)) {
       if (requestedTools.includes('web_search'))     enabledTools.web_search     = webSearchTool
       if (requestedTools.includes('run_javascript')) enabledTools.run_javascript = runJavaScriptTool
+      if (sandboxArmed && chatId) {
+        if (requestedTools.includes('bash'))   enabledTools.bash   = makeBashTool(chatId)
+        if (requestedTools.includes('python')) enabledTools.python = makePythonTool(chatId)
+      }
     }
     const hasTools = Object.keys(enabledTools).length > 0
 
-    const result = streamText({
-      // `resolved` is always a LanguageModelV1 instance now (gateway strings
-      // were removed). The cast satisfies the streamText prop type without
-      // pulling the full v1 union into this file.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      model: resolved as any,
-      messages: [
-        { role: 'system', content: composedSystem },
-        ...(inflatedMessages as never[]),
-      ],
-      temperature,
-      maxTokens,
-      // Only attach tools when at least one is armed. Passing an empty
-      // map confuses some providers (Anthropic in particular emits a
-      // 400 when `tools: {}` is sent), so we keep the request shape
-      // identical to the pre-tools path when nothing is on.
-      ...(hasTools
-        ? {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            tools: enabledTools as any,
-            // Cap the number of model<->tool round trips so a runaway
-            // chain (model keeps calling search forever) can't drain
-            // the user's budget. 4 is plenty for "search → reason →
-            // execute → answer" workflows.
-            maxSteps: 4,
-          }
-        : {}),
-      onFinish: async ({ usage }) => {
-        if (!caller) return
-        try {
-          await recordUsage({
-            userId: caller.userId,
-            domain: caller.domain,
-            provider: String(provider),
-            model,
-            modality: 'text',
-            chatType: 'text',
-            promptTokens: usage?.promptTokens,
-            completionTokens: usage?.completionTokens,
-            projectId: projectId ?? null,
-            chatId: chatId ?? null,
-          })
-        } catch (e) {
-          console.error('[v0] usage log failed:', (e as Error).message)
-        }
-      },
-    })
+    // If the user armed the sandbox tools and attached files, mount the
+    // raw bytes into the per-chat sandbox so Python can open them at
+    // `/mnt/user-data/uploads/<name>`. We do this BEFORE streaming
+    // starts so the model can call `python` immediately on its first
+    // turn without a round-trip waiting for the upload to land.
+    // The existing `inflateAttachments` path still inlines extracted
+    // text into the prompt — the sandbox mount is additive, not a
+    // replacement, so vision and inline-text behaviours are unchanged.
+    if (sandboxArmed && chatId) {
+      try {
+        const buffers = extractAttachmentBuffers(Array.isArray(messages) ? messages : [])
+        if (buffers.length > 0) await mountAttachments(chatId, buffers)
+      } catch (e) {
+        // Mounting failure is non-fatal — the model will still try, get
+        // an empty uploads dir, and tell the user. We log so an
+        // operator notices repeated failures.
+        console.error('[v0] sandbox mount failed:', (e as Error).message)
+      }
+    }
 
-    return result.toDataStreamResponse({
-      // By default `toDataStreamResponse` masks every server-side error with
-      // the literal string "An error occurred." which then fires through the
-      // `useChat` `onError` handler with no context. That's why historical
-      // failures (model 404s, missing keys, Anthropic auth) all surfaced in
-      // the browser as the same useless message. We forward the real cause
-      // so debugging — both ours and the user's — actually works.
-      getErrorMessage: (error: unknown) => {
+    // We use `createDataStreamResponse` (not the simpler
+    // `result.toDataStreamResponse`) because it gives us a `dataStream`
+    // handle we can write per-message annotations to from inside
+    // `onFinish`. The annotations carry the list of files the sandbox
+    // produced, so `<DownloadStrip>` can render chips below the
+    // assistant's reply.
+    return createDataStreamResponse({
+      // Mirror the previous error-forwarding behaviour. By default the
+      // SDK masks every server-side error with "An error occurred."
+      // and the user-facing `onError` handler in useChat gets no
+      // context. We surface the real cause so debugging works.
+      onError: (error: unknown) => {
         if (error == null) return 'Unknown chat error'
         if (typeof error === 'string') return error
         if (error instanceof Error) return error.message
-        try {
-          return JSON.stringify(error)
-        } catch {
-          return String(error)
-        }
+        try { return JSON.stringify(error) } catch { return String(error) }
+      },
+      execute: dataStream => {
+        const result = streamText({
+          // `resolved` is always a LanguageModelV1 instance now (gateway
+          // strings were removed). The cast satisfies the streamText prop
+          // type without pulling the full v1 union into this file.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          model: resolved as any,
+          messages: [
+            { role: 'system', content: composedSystem },
+            ...(inflatedMessages as never[]),
+          ],
+          temperature,
+          maxTokens,
+          // Only attach tools when at least one is armed. Passing an empty
+          // map confuses some providers (Anthropic in particular emits a
+          // 400 when `tools: {}` is sent), so we keep the request shape
+          // identical to the pre-tools path when nothing is on.
+          ...(hasTools
+            ? {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                tools: enabledTools as any,
+                // Cap the number of model<->tool round trips so a runaway
+                // chain (model keeps calling its tools forever) can't
+                // drain the user's budget. 8 covers "list uploads → read
+                // → process → write → list outputs → answer" comfortably
+                // for the document skills.
+                maxSteps: sandboxArmed ? 8 : 4,
+              }
+            : {}),
+          onFinish: async ({ usage }) => {
+            // (1) Usage accounting — unchanged from the old route.
+            if (caller) {
+              try {
+                await recordUsage({
+                  userId: caller.userId,
+                  domain: caller.domain,
+                  provider: String(provider),
+                  model,
+                  modality: 'text',
+                  chatType: 'text',
+                  promptTokens: usage?.promptTokens,
+                  completionTokens: usage?.completionTokens,
+                  projectId: projectId ?? null,
+                  chatId: chatId ?? null,
+                })
+              } catch (e) {
+                console.error('[v0] usage log failed:', (e as Error).message)
+              }
+            }
+
+            // (2) Sandbox-output collection. We diff the outputs dir
+            // against everything we already know about for this chat
+            // and surface only the NEW files. Each file is uploaded to
+            // the per-user folder in the `chat-outputs` Supabase bucket
+            // and a signed URL is written to the assistant message's
+            // annotations array so the client can render a download
+            // chip without polling.
+            if (sandboxArmed && chatId && caller) {
+              try {
+                const outputs = await collectOutputs(chatId)
+                for (const o of outputs) {
+                  try {
+                    const uploaded = await uploadChatOutput({
+                      userId: caller.userId,
+                      chatId,
+                      filename: o.filename,
+                      content: o.content,
+                      contentType: o.mime,
+                    })
+                    dataStream.writeMessageAnnotation({
+                      type: 'output-file',
+                      filename: uploaded.filename,
+                      url: uploaded.signedUrl,
+                      mime: uploaded.mime,
+                      size: uploaded.size,
+                    })
+                  } catch (e) {
+                    console.error('[v0] chat-output upload failed:', (e as Error).message)
+                  }
+                }
+              } catch (e) {
+                console.error('[v0] sandbox collect failed:', (e as Error).message)
+              }
+            }
+          },
+        })
+
+        // Pipe the model stream into the data stream the route owns.
+        // `mergeIntoDataStream` forwards every text chunk, tool call,
+        // and tool result; our annotations from `onFinish` arrive
+        // alongside in the same data envelope.
+        result.mergeIntoDataStream(dataStream)
       },
     })
   } catch (error) {

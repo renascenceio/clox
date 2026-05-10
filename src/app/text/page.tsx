@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import { CodeArtifact } from '@/shared/ui/components/CodeArtifact'
+import { DownloadStrip, type DownloadStripFile } from '@/shared/ui/components/DownloadStrip'
 
 import ChatWorkspace, {
   type Attachment,
@@ -448,7 +449,17 @@ export default function TextPage() {
      speaks `web_search` / `run_javascript`. The mapping happens once,
      in `enabledToolIds`. */
   const [toolsState, setToolsState] = useState<{ label: string; on: boolean }[]>(() => {
-    const TOOL_LABELS = ['web search', 'code execute'] as const
+    // Three real, model-callable tool toggles:
+    //   "web search"     →  web_search       (Tavily — sub-second, free tier)
+    //   "code execute"   →  run_javascript   (in-process Node vm, 1s timeout)
+    //   "python sandbox" →  bash + python    (Vercel Sandbox microVM, full
+    //                                         filesystem + Python 3.13 with
+    //                                         the Anthropic skills bundle —
+    //                                         the heavy-but-capable option)
+    // The two sandbox tool ids ride on a single composer toggle because a
+    // user enabling Python almost always wants `bash` for filesystem ops too,
+    // and surfacing them as separate switches just adds a footgun.
+    const TOOL_LABELS = ['web search', 'code execute', 'python sandbox'] as const
     if (typeof window === 'undefined') {
       return TOOL_LABELS.map(label => ({ label, on: false }))
     }
@@ -477,8 +488,12 @@ export default function TextPage() {
     const ids: string[] = []
     for (const t of toolsState) {
       if (!t.on) continue
-      if (t.label === 'web search')   ids.push('web_search')
-      if (t.label === 'code execute') ids.push('run_javascript')
+      if (t.label === 'web search')     ids.push('web_search')
+      if (t.label === 'code execute')   ids.push('run_javascript')
+      // "python sandbox" arms BOTH server-side tool ids; the route binds
+      // them to the same per-chat microVM and the model picks `bash` vs
+      // `python` per call.
+      if (t.label === 'python sandbox') ids.push('bash', 'python')
     }
     return ids
   }, [toolsState])
@@ -1051,10 +1066,31 @@ export default function TextPage() {
       const toolInvocations: ToolInvocation[] = Array.isArray(m.toolInvocations)
         ? m.toolInvocations
         : []
+
+      // Pull sandbox-output annotations off the message. The chat
+      // route writes them via `dataStream.writeMessageAnnotation` from
+      // inside `streamText.onFinish`, so they land on the assistant
+      // message in `useChat`'s `messages` array as `annotations: any[]`.
+      // We filter for our `output-file` shape and ignore anything else
+      // — the array is forward-compatible with future annotation kinds.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const annotations = Array.isArray((m as any).annotations) ? (m as any).annotations : []
+      const outputFiles: DownloadStripFile[] = annotations
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((a: any) => a && a.type === 'output-file' && typeof a.url === 'string')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((a: any) => ({
+          filename: String(a.filename ?? 'output'),
+          url:      String(a.url),
+          mime:     String(a.mime ?? 'application/octet-stream'),
+          size:     typeof a.size === 'number' ? a.size : 0,
+        }))
+
       let bodyWithTools: React.ReactNode = body
-      if (toolInvocations.length > 0) {
+      if (toolInvocations.length > 0 || outputFiles.length > 0) {
         bodyWithTools = (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {toolInvocations.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {toolInvocations.map((inv, ti) => {
                 const name = String(inv.toolName ?? 'tool')
@@ -1077,6 +1113,19 @@ export default function TextPage() {
                   // dumping the whole snippet into the chat.
                   const firstLine = code.split('\n').find(l => l.trim().length > 0) ?? ''
                   detail = firstLine ? firstLine.slice(0, 80) : null
+                } else if (name === 'bash') {
+                  title = isRunning ? `Running shell…` : `Ran shell`
+                  const cmd = String(inv.args?.command ?? '')
+                  // Show the first non-empty line so the user can scan
+                  // what the model asked the sandbox to do (e.g.
+                  // `pdfinfo /mnt/user-data/uploads/x.pdf`).
+                  const firstLine = cmd.split('\n').find(l => l.trim().length > 0) ?? ''
+                  detail = firstLine ? firstLine.slice(0, 80) : null
+                } else if (name === 'python') {
+                  title = isRunning ? `Running Python…` : `Ran Python`
+                  const code = String(inv.args?.code ?? '')
+                  const firstLine = code.split('\n').find(l => l.trim().length > 0) ?? ''
+                  detail = firstLine ? firstLine.slice(0, 80) : null
                 } else {
                   title = isRunning ? `Calling ${name}…` : `Called ${name}`
                 }
@@ -1097,6 +1146,25 @@ export default function TextPage() {
                     const r = inv.result
                     if (r?.ok === false) preview = `Error: ${String(r.error ?? '').slice(0, 120)}`
                     else if (r?.result !== undefined) preview = `→ ${String(r.result).slice(0, 120)}`
+                  } else if (name === 'bash' || name === 'python') {
+                    // Sandbox tools share the same result envelope:
+                    //   { ok, exitCode, stdout, stderr, ... }
+                    // Surface either the first line of stdout (success
+                    // case) or the truncated stderr (failure case) so
+                    // the user gets a clear at-a-glance signal of what
+                    // happened without scrolling.
+                    const r = inv.result
+                    if (r?.ok === false) {
+                      const errLine = String(r?.stderr ?? '').split('\n').find((l: string) => l.trim()) ?? ''
+                      preview = errLine
+                        ? `Error (exit ${r?.exitCode ?? '?'}): ${errLine.slice(0, 120)}`
+                        : `Error (exit ${r?.exitCode ?? '?'})`
+                    } else if (r?.stdout) {
+                      const firstOut = String(r.stdout).split('\n').find((l: string) => l.trim()) ?? ''
+                      preview = firstOut ? `→ ${firstOut.slice(0, 120)}` : `→ exit ${r?.exitCode ?? 0}`
+                    } else if (r?.exitCode !== undefined) {
+                      preview = `→ exit ${r.exitCode}`
+                    }
                   }
                 }
 
@@ -1139,7 +1207,9 @@ export default function TextPage() {
                 )
               })}
             </div>
+            )}
             {body}
+            {outputFiles.length > 0 && <DownloadStrip files={outputFiles} />}
           </div>
         )
       }
