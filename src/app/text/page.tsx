@@ -34,6 +34,7 @@ import {
   type SkillModality,
 } from '@/lib/skills-registry'
 import { useUserSkills } from '@/lib/hooks/useUserSkills'
+import { detectAutoSkills } from '@/lib/skills-auto-detect'
 import { useAvailableModels } from '@/lib/use-available-models'
 import { getAdminSettings, getProviderApiKey } from '@/lib/admin-settings'
 import { createClient } from '@/lib/supabase/client'
@@ -420,6 +421,11 @@ export default function TextPage() {
       temperature,
       maxTokens,
       apiKey: currentApiKey,
+      // Forward the user's enabled tools so /api/chat can attach the
+      // matching tool definitions to streamText. Sending an empty list
+      // is cheap and explicit; the route reads `tools: []` as "no
+      // tools, behave like a plain chat" with zero overhead.
+      tools: enabledToolIds,
     },
     onError: error => console.error('[v0] chat api error:', error),
     onFinish: (message: { id?: string }) => {
@@ -496,6 +502,55 @@ export default function TextPage() {
     setAttachments(curr => curr.filter(a => a.id !== id))
   }
 
+  /* ----- tools state -------------------------------------------------
+     Two real, model-callable tools the chat composer exposes through the
+     slash menu. Both default to OFF so a vanilla chat behaves identically
+     to before — the user has to opt in. Selection is persisted to
+     localStorage so a refresh doesn't silently disarm what the user
+     turned on. We keep the labels here in lowercase to match the rest
+     of the slash-menu copy (`web search`, `code execute`); when we
+     forward the state to the API we translate to the canonical tool ids
+     (`web_search`, `run_javascript`) the route understands. */
+  type ToolLabel = 'web search' | 'code execute'
+  const TOOL_LABELS: ToolLabel[] = ['web search', 'code execute']
+  const [toolsState, setToolsState] = useState<{ label: string; on: boolean }[]>(() => {
+    if (typeof window === 'undefined') {
+      return TOOL_LABELS.map(label => ({ label, on: false }))
+    }
+    try {
+      const saved = JSON.parse(localStorage.getItem('clox:toolsState') ?? 'null')
+      if (Array.isArray(saved)) {
+        // Reconcile: keep any saved on-states for known labels; drop unknowns.
+        return TOOL_LABELS.map(label => ({
+          label,
+          on: Boolean(saved.find((s: { label: string; on: boolean }) => s.label === label)?.on),
+        }))
+      }
+    } catch { /* fall through to defaults */ }
+    return TOOL_LABELS.map(label => ({ label, on: false }))
+  })
+
+  function handleToggleTool(label: string) {
+    setToolsState(curr => {
+      const next = curr.map(t => (t.label === label ? { ...t, on: !t.on } : t))
+      try { localStorage.setItem('clox:toolsState', JSON.stringify(next)) } catch { /* quota */ }
+      return next
+    })
+  }
+
+  /** Map slash-menu labels to the canonical tool ids the API route
+   *  understands. Centralised so the API route, request body, and any
+   *  future tool-call rendering all agree on the same vocabulary. */
+  const enabledToolIds = useMemo(() => {
+    const ids: string[] = []
+    for (const t of toolsState) {
+      if (!t.on) continue
+      if (t.label === 'web search')   ids.push('web_search')
+      if (t.label === 'code execute') ids.push('run_javascript')
+    }
+    return ids
+  }, [toolsState])
+
   /* ----- per-modality params ---------------------------------------
      One bag per modality so flipping back and forth keeps the user's
      knobs intact. The ConfigDrawer reads from / writes to the slot that
@@ -547,13 +602,70 @@ export default function TextPage() {
       pendingModelRef.current.push(
         shortName(selectedTextModel.version, selectedTextModel.name),
       )
+
+      // ── Auto-apply curated skills ───────────────────────────────────
+      // Match the prompt against the catalogue's tags + a phrase map so
+      // "make me a pdf report" picks up the PDF Document Specialist
+      // without the user opening the picker. The matches ride along this
+      // ONE submission only — nothing gets persisted to user_skills.
+      // We pass them through `handleSubmit`'s per-submit `body` override
+      // so the request gets the augmented systemPrompt without disturbing
+      // the useChat options closure.
+      const autoSkills = detectAutoSkills(
+        promptText,
+        dbSkills.skills,
+        dbSkills.activeIds,
+      )
+      const autoBlock = buildDbSkillsBlock(autoSkills)
+      const augmentedSystemPrompt = autoBlock
+        ? `${composedSystemPrompt}\n\n${autoBlock}`
+        : composedSystemPrompt
+
       const expAttachments = attachments.length > 0
         ? attachments.map(a => ({ name: a.name, contentType: a.contentType, url: a.dataUrl }))
         : undefined
+
+      // Build the second-arg options. AI SDK 4's `ChatRequestOptions`
+      // accepts a `body` override that is shallow-merged on top of the
+      // useChat options.body for THIS submission — exactly the slot we
+      // need for per-message system prompt augmentation.
+      const submitOptions: Record<string, unknown> = {}
+      if (expAttachments) submitOptions.experimental_attachments = expAttachments
+      if (autoSkills.length > 0) {
+        submitOptions.body = { systemPrompt: augmentedSystemPrompt }
+      }
+
       handleSubmit?.(
         new Event('submit') as unknown as React.FormEvent<HTMLFormElement>,
-        expAttachments ? { experimental_attachments: expAttachments } : undefined,
+        Object.keys(submitOptions).length > 0 ? submitOptions : undefined,
       )
+
+      // Stamp the just-submitted user message so the transcript can
+      // render "Applied: <skill names>" above it. handleSubmit appends
+      // synchronously, so the latest user message in `messages` is the
+      // one we just sent. We use a microtask so React has flushed the
+      // append before we patch — otherwise setMessages would race the
+      // pending update useChat just queued.
+      if (autoSkills.length > 0 && setMessages) {
+        const skillNames = autoSkills.map(s => s.name)
+        queueMicrotask(() => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setMessages((prev: any[]) => {
+            // Find the LAST user message without an existing stamp and
+            // attach the names. Walking from the end is robust against
+            // any message reorder useChat does internally.
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i]?.role === 'user' && !prev[i].clox_auto_skills) {
+                const next = [...prev]
+                next[i] = { ...next[i], clox_auto_skills: skillNames }
+                return next
+              }
+            }
+            return prev
+          })
+        })
+      }
+
       setAttachments([])
       return
     }
@@ -702,12 +814,51 @@ export default function TextPage() {
         const msgAttachments: Array<{ name?: string; contentType?: string; url?: string }> =
           Array.isArray(m.experimental_attachments) ? m.experimental_attachments : []
         const text = String(m.content ?? '')
+        // `clox_auto_skills` is stamped by handleSend right after submit; it
+        // surfaces the curated skills the prompt auto-triggered (e.g. "PDF
+        // Document Specialist" for "make me a pdf report") so the user sees
+        // exactly what extra craft guidance the model got. Empty / absent
+        // means no auto-application happened — the badge stays hidden.
+        const autoSkillNames: string[] = Array.isArray(m.clox_auto_skills)
+          ? (m.clox_auto_skills as string[])
+          : []
         return {
           id: m.id ?? `u-${i}`,
           who: 'you' as const,
           time,
           body: (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {autoSkillNames.length > 0 && (
+                // Skill badge — small mono pill matching the same
+                // letter-spacing & casing the rest of the app uses for
+                // metadata. Sits above the message body so it reads as
+                // "context for the next bubble" rather than as part of
+                // the user's words.
+                <div
+                  style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+                    fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                    fontSize: 10, letterSpacing: '0.08em',
+                    opacity: 0.75,
+                  }}
+                >
+                  <span style={{ textTransform: 'uppercase', letterSpacing: '0.16em' }}>
+                    Applied
+                  </span>
+                  {autoSkillNames.map((name, ai) => (
+                    <span
+                      key={ai}
+                      style={{
+                        padding: '2px 6px',
+                        border: '1px solid currentColor',
+                        borderRadius: 2,
+                      }}
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              )}
               {msgAttachments.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {msgAttachments.map((a, ai) => {
@@ -833,12 +984,125 @@ export default function TextPage() {
       // `onFinish` yet (i.e. it never got `clox_model` stamped).
       const stampedModel = typeof m.clox_model === 'string' ? m.clox_model : undefined
 
+      // ── Tool-invocation strip ──────────────────────────────────────
+      // useChat surfaces tool calls on the assistant message under
+      // `toolInvocations`. We render each one as a small status pill
+      // ABOVE the message body so the user sees both the action the
+      // model took ("Searching the web for: AI SDK 6 release date") and
+      // a one-line preview of the result. Pills sit above the body
+      // because they're context for the answer that follows; rendering
+      // them below would feel like an after-thought.
+      type ToolInvocation = {
+        toolCallId?: string
+        toolName?: string
+        state?: 'partial-call' | 'call' | 'result'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        args?: any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        result?: any
+      }
+      const toolInvocations: ToolInvocation[] = Array.isArray(m.toolInvocations)
+        ? m.toolInvocations
+        : []
+      let bodyWithTools: React.ReactNode = body
+      if (toolInvocations.length > 0) {
+        bodyWithTools = (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {toolInvocations.map((inv, ti) => {
+                const name = String(inv.toolName ?? 'tool')
+                const isRunning = inv.state !== 'result'
+                // Pretty-print the tool call header so users see exactly
+                // what the model asked for. We special-case the two
+                // tools we ship — generic args dumps work but read as
+                // noise; tailored summaries read as feedback.
+                let title: string
+                let detail: string | null = null
+                if (name === 'web_search') {
+                  const q = String(inv.args?.query ?? '')
+                  title = isRunning ? `Searching the web…` : `Searched the web`
+                  detail = q ? `“${q}”` : null
+                } else if (name === 'run_javascript') {
+                  title = isRunning ? `Running JavaScript…` : `Ran JavaScript`
+                  const code = String(inv.args?.code ?? '')
+                  // Show the first non-empty line as the detail so the
+                  // user gets a hint of what executed without us
+                  // dumping the whole snippet into the chat.
+                  const firstLine = code.split('\n').find(l => l.trim().length > 0) ?? ''
+                  detail = firstLine ? firstLine.slice(0, 80) : null
+                } else {
+                  title = isRunning ? `Calling ${name}…` : `Called ${name}`
+                }
+
+                // Result preview — a small, readable summary line under
+                // the title once the tool has finished. We deliberately
+                // keep it terse; the model's prose answer is still the
+                // primary surface.
+                let preview: string | null = null
+                if (!isRunning && inv.result) {
+                  if (name === 'web_search') {
+                    const r = inv.result
+                    if (r?.error) preview = `Error: ${String(r.error).slice(0, 120)}`
+                    else if (Array.isArray(r?.results)) {
+                      preview = `${r.results.length} result${r.results.length === 1 ? '' : 's'}`
+                    }
+                  } else if (name === 'run_javascript') {
+                    const r = inv.result
+                    if (r?.ok === false) preview = `Error: ${String(r.error ?? '').slice(0, 120)}`
+                    else if (r?.result !== undefined) preview = `→ ${String(r.result).slice(0, 120)}`
+                  }
+                }
+
+                return (
+                  <div
+                    key={inv.toolCallId ?? ti}
+                    style={{
+                      display: 'flex', flexDirection: 'column', gap: 2,
+                      padding: '6px 10px',
+                      border: '1px solid currentColor',
+                      borderRadius: 2,
+                      opacity: isRunning ? 0.75 : 0.95,
+                      fontSize: 12,
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                      fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
+                    }}>
+                      <span>{title}</span>
+                      {isRunning && (
+                        <span style={{ opacity: 0.7 }}>●</span>
+                      )}
+                    </div>
+                    {detail && (
+                      <div style={{ opacity: 0.85, fontStyle: 'italic' }}>
+                        {detail}
+                      </div>
+                    )}
+                    {preview && (
+                      <div style={{
+                        opacity: 0.7, fontSize: 11,
+                        fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                      }}>
+                        {preview}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            {body}
+          </div>
+        )
+      }
+
       return {
         id: m.id ?? `a-${i}`,
         who: 'ai' as const,
         time,
         model: stampedModel ?? shortName(selectedModel.version, selectedModel.name),
-        body,
+        body: bodyWithTools,
       }
     })
   }, [messages, selectedModel.version, selectedModel.name])
@@ -1096,7 +1360,9 @@ export default function TextPage() {
         attachments={attachments}
         onAttach={handleAttach}
         onRemoveAttachment={handleRemoveAttachment}
-        toolsCount={0}
+        toolsState={toolsState}
+        onToggleTool={handleToggleTool}
+        toolsCount={enabledToolIds.length}
         cmdkGroups={cmdkGroups}
         systemPrompt={systemPrompt}
         onChangeSystemPrompt={setSystemPrompt}
