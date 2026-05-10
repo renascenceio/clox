@@ -1628,18 +1628,67 @@ export default function TextPage() {
         : /timeout|timed out|aborted|deadline/i.test(lower)       ? 'timeout'
         : 'generic'
 
-      // Friendly one-liner per kind. The raw provider text is appended
-      // for transparency / debugging but kept dimmed and small.
+      // Pick a sensible ALTERNATE model to suggest after a rate-limit
+      // or overload. The previous code hardcoded "Sonnet 4.6" — which
+      // produced the absurd "Sonnet hit its limit, retry on Sonnet"
+      // banner the user complained about. The picker now reads:
+      //
+      //   - Same-family escalation when it actually helps:
+      //       Opus  → Sonnet  (~8x TPM, same provider, same skills)
+      //       Sonnet → Haiku  (cheaper / faster within Claude)
+      //   - Cross-provider escape for everything else, defaulting to
+      //     Gemini 2.5 Flash because it has the highest published
+      //     TPM ceiling (1M+) and zero cold-start tax via the AI
+      //     Gateway. The exception is when the user is already on
+      //     Google — then we hop to GPT-4o.
+      //
+      // The picker returns null when there's no good alternate (e.g.
+      // user is already on the recommended fallback), in which case
+      // we hide the swap button entirely and show only "Retry on
+      // <same model>" + the wait-60s advice.
+      const alternateModel = (() => {
+        const id = selectedTextModel.id
+        if (id === 'claude-opus-4.6' || id === 'claude-opus-4.7') {
+          return TEXT_MODELS.find(m => m.id === 'claude-sonnet-4.6') ?? null
+        }
+        if (id === 'claude-sonnet-4.6') {
+          return TEXT_MODELS.find(m => m.id === 'claude-haiku-4.5') ?? null
+        }
+        // Already on Google → escape to OpenAI rather than recommend
+        // the same family.
+        if (selectedTextModel.provider === 'google') {
+          return TEXT_MODELS.find(m => m.id === 'gpt-4o') ?? null
+        }
+        // Already on the high-TPM fallback → no swap to suggest.
+        if (id === 'gemini-2.5-flash') return null
+        return TEXT_MODELS.find(m => m.id === 'gemini-2.5-flash') ?? null
+      })()
+
+      // Friendly one-liner per kind. References the picked alternate
+      // by name when one exists, so the copy and the button always
+      // agree. The raw provider text is appended (collapsed) for
+      // debugging.
       const friendly = (() => {
         switch (errorKind) {
           case 'rate_limit':
+            if (alternateModel) {
+              return `${selectedTextModel.name} hit its per-minute rate limit. ` +
+                     `${alternateModel.brandName} ${alternateModel.name} has a much higher quota ` +
+                     'and works just as well for most tasks (slides, code, analysis). ' +
+                     'Switch & retry, or wait ~60s and retry on the same model.'
+            }
             return `${selectedTextModel.name} hit its per-minute rate limit. ` +
-                   'Sonnet 4.6 has a much higher quota and works just as well for most ' +
-                   'tasks (slides, code, analysis). Switch & retry, or wait ~60s and retry on the same model.'
+                   'Wait ~60s and retry, or pick a different model from the ' +
+                   'composer dropdown. You\'re already on the highest-TPM model ' +
+                   'we know about, so a cross-provider hop usually doesn\'t help here.'
           case 'overloaded':
+            if (alternateModel) {
+              return `${selectedTextModel.name} is temporarily overloaded on the provider side. ` +
+                     `Retrying usually works within a minute. Switching to ${alternateModel.brandName} ` +
+                     `${alternateModel.name} bypasses provider-specific capacity issues entirely.`
+            }
             return `${selectedTextModel.name} is temporarily overloaded on the provider side. ` +
-                   'Retrying usually works within a minute. Switching to a different ' +
-                   'model also bypasses provider-specific capacity issues.'
+                   'Retrying usually works within a minute.'
           case 'timeout':
             return 'The request timed out before the model finished. ' +
                    'For long deliverables (PPTX, multi-page PDFs), break the work into ' +
@@ -1654,19 +1703,11 @@ export default function TextPage() {
         }
       })()
 
-      // Show the "switch to Sonnet" button only when (a) the error is
-      // a provider-side capacity issue, AND (b) the user isn't already
-      // on Sonnet/Haiku within the Claude family — switching from
-      // Sonnet to Sonnet would be a no-op. We pick claude-sonnet-4.6
-      // because it's well-balanced (smarter than Haiku, far higher
-      // TPM than Opus) and has the same tool-calling reliability.
-      const isClaudeAlready =
-        selectedTextModel.provider === 'anthropic' &&
-        selectedTextModel.id !== 'claude-opus-4.6' &&
-        selectedTextModel.id !== 'claude-opus-4.7'
+      // Show the swap button only when there's actually a different
+      // model to swap to AND the error is the kind a swap fixes.
       const canSuggestSwap =
         (errorKind === 'rate_limit' || errorKind === 'overloaded') &&
-        !isClaudeAlready
+        alternateModel != null
 
       base.push({
         id: 'recovery-banner',
@@ -1707,21 +1748,37 @@ export default function TextPage() {
               </details>
             )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {canSuggestSwap && (
+              {canSuggestSwap && alternateModel && (
                 <button
                   type="button"
                   onClick={() => {
-                    // Switch the picker UI to Sonnet 4.6 so future
-                    // turns also use the lower-rate-limit model, and
-                    // hand reload() an explicit body override so the
-                    // first re-attempt doesn't race React state.
-                    const sonnet = TEXT_MODELS.find(m => m.id === 'claude-sonnet-4.6')
-                    if (sonnet) setSelectedTextModel(sonnet)
+                    // Switch the picker UI to the alternate model so
+                    // future turns also use it, and hand reload() an
+                    // explicit body override so the first re-attempt
+                    // doesn't race React state.
+                    setSelectedTextModel(alternateModel)
+
+                    // CRITICAL: rewrite the head of pendingModelRef so
+                    // when this retry's `onFinish` fires it stamps the
+                    // assistant message with the ACTUAL responding
+                    // model. Without this, the original send's label
+                    // (e.g. "Sonnet 4.6", queued at submit-time and
+                    // never popped because the request errored) sits
+                    // stale at the head of the FIFO and gets popped by
+                    // the retry's onFinish — which is why retries on
+                    // GPT-4o were rendering with a Sonnet 4.6 byline.
+                    const altLabel = shortName(alternateModel.version, alternateModel.name)
+                    if (pendingModelRef.current.length > 0) {
+                      pendingModelRef.current[0] = altLabel
+                    } else {
+                      pendingModelRef.current.push(altLabel)
+                    }
+
                     try {
                       chatReload?.({
                         body: {
-                          model: 'claude-sonnet-4.6',
-                          provider: 'anthropic',
+                          model: alternateModel.id,
+                          provider: alternateModel.provider,
                           systemPrompt: composedSystemPrompt,
                           temperature,
                           maxTokens,
@@ -1759,7 +1816,7 @@ export default function TextPage() {
                     opacity: isStreaming ? 0.5 : 1,
                   }}
                 >
-                  Switch to Sonnet 4.6 &amp; retry
+                  Switch to {alternateModel.brandName} {alternateModel.name} &amp; retry
                 </button>
               )}
               <button
@@ -1769,6 +1826,18 @@ export default function TextPage() {
                   // with full prior history attached, so any
                   // intermediate progress (e.g. slide 1 already
                   // generated) is still in context.
+                  //
+                  // Same FIFO fix as the swap button: rewrite the head
+                  // of pendingModelRef to the CURRENTLY selected model
+                  // so the retry's onFinish stamps the right byline,
+                  // even if the user manually changed the picker
+                  // between the original failed send and this retry.
+                  const curLabel = shortName(selectedTextModel.version, selectedTextModel.name)
+                  if (pendingModelRef.current.length > 0) {
+                    pendingModelRef.current[0] = curLabel
+                  } else {
+                    pendingModelRef.current.push(curLabel)
+                  }
                   try { chatReload?.() } catch (e) {
                     console.error('[v0] retry failed', e)
                   }
