@@ -603,13 +603,27 @@ export async function POST(req: Request) {
         // events are never fatal.
         const writeProgress = (event: Record<string, unknown>) => {
           try {
+            // Log every progress event server-side so we can verify
+            // the pipeline by inspecting deployment logs. The user
+            // reported the client never sees these — without server
+            // logs we can't tell whether the events fire at all or
+            // are firing fine and getting lost in transit. Cheap
+            // tracing buys us that signal.
+            console.log('[v0] sandbox progress:', JSON.stringify(event))
             dataStream.writeMessageAnnotation({
               type: 'sandbox-progress',
               ts:   Date.now(),
               ...event,
             })
-          } catch {
-            /* stream closed; ignore */
+          } catch (e) {
+            // Stream closed (model finished before this background
+            // event fired) — log so we know which events are getting
+            // dropped, but never throw.
+            console.warn(
+              '[v0] sandbox progress dropped:',
+              JSON.stringify(event),
+              (e as Error).message,
+            )
           }
         }
         // Bind sandbox tools NOW so they capture the live writeProgress

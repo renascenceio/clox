@@ -1043,14 +1043,18 @@ export default function TextPage() {
         }))
 
       // ── Sandbox progress strip ─────────────────────────────────────
-      // Live phase events the chat route streams for sandbox boot +
-      // pip install + tool execution. Snippet-running / snippet-done
-      // events are skipped here because the tool-invocation pills
-      // below already render that state — we'd be doubling up. What
-      // the strip DOES surface is the lifecycle the user wouldn't
-      // otherwise see: "Starting Python sandbox" → "Installing python
-      // deps (~30-40s)" → "Packages ready (32s)". On a warm sandbox
-      // the strip is empty, which is what we want.
+      // We surface three kinds of progress so the user always sees
+      // SOMETHING moving when the sandbox is at work:
+      //
+      //   1. Server-streamed `sandbox-progress` annotations
+      //      (boot / install lifecycle from the manager + tool calls).
+      //   2. Per-tool-invocation status from useChat itself
+      //      (`state: 'partial-call' | 'call' | 'result'`).
+      //   3. A fallback "Working in Python sandbox…" pulse on the
+      //      in-flight last assistant message even before any of the
+      //      above arrive — annotations can be late or buffered, and
+      //      a totally blank chat while the user waits 10s for the
+      //      microVM to boot is the symptom they keep reporting.
       type ProgressEvent = {
         type: 'sandbox-progress'
         phase:
@@ -1086,15 +1090,50 @@ export default function TextPage() {
         }
       }
 
-      // ── Timeout detection ──────────────────────────────────────────
-      // When a sandbox tool returns a structured timeout result we
-      // want to give the user a single-click "Continue generation"
-      // affordance instead of forcing them to type "continue" by
-      // hand. The button lives below the message body and just
-      // appends a user message that nudges the model to resume with
-      // a smaller chunk size — full chat history (including any
-      // partial outputs) is preserved by useChat, so the model has
-      // the context it needs to pick up where it left off.
+      // Last-message + in-flight detection. `isStreaming` is the
+      // route's own status; the message at the tail of `messages` is
+      // the assistant turn currently being filled in. Only this
+      // message gets the "Working…" fallback strip and the post-stream
+      // continue button — older completed turns shouldn't show those
+      // affordances.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const isLastMessage = i === ((messages as any[]).length - 1)
+      const isInFlight    = isStreaming && isLastMessage
+
+      // Tool the model is actively executing. v4 uses these states:
+      //   partial-call → arguments still streaming
+      //   call         → arguments complete, execute() running
+      //   result       → execute() returned (or threw)
+      const inFlightTool = toolInvocations.find(inv => inv.state !== 'result')
+      const inFlightToolPreview = (() => {
+        if (!inFlightTool) return null
+        const name = String(inFlightTool.toolName ?? '')
+        if (name === 'python') {
+          const code = String(inFlightTool.args?.code ?? '')
+          const firstLine = code.split('\n').map(l => l.trim()).find(l => l.length > 0 && !l.startsWith('#')) ?? ''
+          return firstLine ? `Running Python — ${firstLine.slice(0, 80)}` : 'Running Python…'
+        }
+        if (name === 'bash') {
+          const cmd = String(inFlightTool.args?.command ?? '')
+          const firstLine = cmd.split('\n').map(l => l.trim()).find(l => l.length > 0) ?? ''
+          return firstLine ? `Running shell — ${firstLine.slice(0, 80)}` : 'Running shell…'
+        }
+        if (name === 'web_search') {
+          const q = String(inFlightTool.args?.query ?? '')
+          return q ? `Searching the web — “${q}”` : 'Searching the web…'
+        }
+        if (name === 'run_javascript') return 'Running JavaScript…'
+        return name ? `Running ${name}…` : null
+      })()
+
+      // ── Timeout / cut-off detection ────────────────────────────────
+      // Three failure modes we want to recover from with one click:
+      //   (a) A tool returned the structured `kind: 'timeout'` shape
+      //       (python / bash hit their 180s wall-clock cap).
+      //   (b) Stream finished but a tool is still in a non-result
+      //       state (server cut off mid-execution).
+      //   (c) Stream finished with no body and no successful tools
+      //       (something silently failed upstream).
       const timedOutTool = toolInvocations.find(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         inv => (inv.result as any)?.kind === 'timeout',
@@ -1104,6 +1143,13 @@ export default function TextPage() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ? String((timedOutTool.result as any)?.suggestion ?? '')
         : null
+      const wasStreamCutOff =
+        isLastMessage && !isStreaming && Boolean(inFlightTool)
+      const wasEmptyOutput =
+        isLastMessage && !isStreaming && !inFlightTool && toolInvocations.length === 0 &&
+        String(m.content ?? '').trim().length === 0
+      const showContinueButton = Boolean(timedOutTool) || wasStreamCutOff || wasEmptyOutput
+
       const onContinueClick = () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const append = (chat as any).append as
@@ -1114,24 +1160,101 @@ export default function TextPage() {
           timeoutSuggestion ||
           'Split the work into smaller chunks (one slide / page / sheet ' +
           'per python call) and continue from where you left off.'
+        const reason = timedOutTool
+          ? 'The previous step timed out before it could finish.'
+          : wasStreamCutOff
+            ? 'The previous response was cut off mid-tool-call.'
+            : 'The previous response came back empty.'
         void append({
           role: 'user',
-          content:
-            'The previous step timed out before it could finish. ' +
-            'Continue from where you stopped — ' + hint,
+          content: `${reason} Continue from where you stopped — ${hint}`,
         })
       }
-      const showContinueButton = Boolean(timedOutTool)
 
       let bodyWithTools: React.ReactNode = body
       if (
         toolInvocations.length > 0 ||
         outputFiles.length > 0 ||
         progressEvents.length > 0 ||
-        showContinueButton
+        showContinueButton ||
+        // Render the wrapper while in-flight so the fallback "Working
+        // in Python sandbox…" pulse below has a chance to appear even
+        // before the model has emitted its first tool call. Without
+        // this gate the assistant message would be visually empty for
+        // 5–40s during a cold sandbox boot, which is exactly the
+        // "stuck" complaint we're trying to fix.
+        isInFlight
       ) {
         bodyWithTools = (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {isInFlight && progressEvents.length === 0 && !inFlightTool && (
+              // Annotation-free fallback: the moment the assistant
+              // starts streaming, before any sandbox event has
+              // arrived, show a single pulsing line so the chat is
+              // never blank. Replaced as soon as a real progress
+              // event or tool invocation comes through (the
+              // `progressEvents.length === 0 && !inFlightTool` guard
+              // collapses this away once richer signal arrives).
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 10px',
+                  border: '1px dashed currentColor',
+                  borderRadius: 2,
+                  opacity: 0.75,
+                  fontSize: 11,
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    display: 'inline-block', width: 6, height: 6, borderRadius: 999,
+                    background: 'currentColor',
+                    animation: 'cloxPulse 1.4s ease-in-out infinite',
+                  }}
+                />
+                <span>Working in Python sandbox — this can take 30–60s on a cold start</span>
+                {/* Inline keyframes — declared here so we don't have
+                    to add a new globals.css rule for a one-off
+                    animation that's only used by this fallback. */}
+                <style>{`@keyframes cloxPulse { 0%,100%{opacity:1} 50%{opacity:.25} }`}</style>
+              </div>
+            )}
+            {isInFlight && inFlightTool && (
+              // Live current-step strip — what the model is doing
+              // right now. Only renders while in flight, so old
+              // messages don't grow stale "Running…" labels. The
+              // tool-invocation pills below also show this same
+              // tool, but with much less prominence — this strip
+              // is the reassurance signal: "yes, the answer IS
+              // still being worked on, here's the current step".
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 10px',
+                  border: '1px solid currentColor',
+                  borderRadius: 2,
+                  fontSize: 12,
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    display: 'inline-block', width: 6, height: 6, borderRadius: 999,
+                    background: 'currentColor',
+                    animation: 'cloxPulse 1.4s ease-in-out infinite',
+                  }}
+                />
+                <span style={{ flex: 1 }}>{inFlightToolPreview}</span>
+                <style>{`@keyframes cloxPulse { 0%,100%{opacity:1} 50%{opacity:.25} }`}</style>
+              </div>
+            )}
             {progressEvents.length > 0 && (
               // Progress timeline. Rendered above the tool-invocation
               // pills because conceptually it's "what happened in the
@@ -1291,15 +1414,15 @@ export default function TextPage() {
             )}
             {body}
             {showContinueButton && (
-              // Click-to-continue affordance. Surfaces below the
-              // partial answer / error explanation so the user reads
-              // the timeout context first, then has a one-click way
-              // to resume. The handler appends a user message that
-              // carries the model's own suggestion (e.g. "split into
-              // smaller chunks") forward — chat history preserves
-              // anything the model already produced before timing
-              // out, so it picks up where it left off without
-              // starting over.
+              // Click-to-continue affordance. Three failure modes
+              // resolve to the same UI: (a) explicit timeout from the
+              // python/bash tool, (b) the stream was cut off mid-
+              // tool-call, (c) the assistant produced nothing visible.
+              // The handler appends a user message that carries the
+              // model's own suggestion forward (or a generic chunking
+              // hint when none is available) — chat history preserves
+              // any partial work the model produced before the
+              // failure, so it resumes instead of starting over.
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -1316,13 +1439,16 @@ export default function TextPage() {
                   textTransform: 'uppercase',
                   opacity: 0.85,
                 }}>
-                  Step timed out
+                  {timedOutTool ? 'Step timed out' :
+                   wasStreamCutOff ? 'Response cut off' :
+                   'Empty response'}
                 </div>
-                {timeoutSuggestion && (
-                  <div style={{ opacity: 0.85, fontStyle: 'italic' }}>
-                    {timeoutSuggestion}
-                  </div>
-                )}
+                <div style={{ opacity: 0.85, fontStyle: 'italic' }}>
+                  {timeoutSuggestion ||
+                   (wasStreamCutOff
+                     ? 'The assistant was still running a tool when the response ended.'
+                     : 'The assistant returned without producing visible output.')}
+                </div>
                 <button
                   type="button"
                   onClick={onContinueClick}

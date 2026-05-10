@@ -22,6 +22,10 @@ import {
   type ReactNode,
 } from 'react'
 import { I } from './icons'
+// Profile avatar (Dicebear-backed). Renders the same SVG the /settings
+// "Regenerate avatar" button persists into `profiles.avatar_seed`, so the
+// rail footer chip stays in sync with whatever the user saved last.
+import Avatar from '@/shared/ui/components/Avatar'
 import { useDictation, type DictationState } from './useDictation'
 import { useFileDrop } from './useFileDrop'
 import {
@@ -140,12 +144,18 @@ export interface ChatWorkspaceProps {
   brandVersion?: string
 
   // user (rail footer)
-  user: { initial: string; name: string; plan: string; email?: string }
+  user: { initial: string; name: string; plan: string; email?: string; avatarSeed?: string }
   /** Legacy: opens platform settings. Kept for back-compat — clicking "Settings"
    *  in the avatar dropdown still calls this so existing pages don't break. */
   onOpenSettings?: () => void
   /** Avatar-dropdown specific actions. When provided, the rail footer renders
-   *  a clickable avatar that opens the menu shown in the design reference. */
+   *  a clickable avatar that opens the menu shown in the design reference.
+   *
+   *  `user.avatarSeed` is the same `profiles.avatar_seed` value the /settings
+   *  page persists when the user clicks "Regenerate avatar". When present we
+   *  render the Dicebear avatar; when missing we fall back to the italic
+   *  letter chip so the rail still has a visual anchor for signed-out /
+   *  pre-load states. */
   language?: AppLanguage
   onChangeLanguage?: (l: AppLanguage) => void
   onOpenSuperAdmin?: () => void
@@ -659,7 +669,7 @@ function LeftRail({
   nav: RailNavItem[]
   recent: RailRecentItem[]
   recentLabel?: string
-  user: { initial: string; name: string; plan: string; email?: string }
+  user: { initial: string; name: string; plan: string; email?: string; avatarSeed?: string }
   onNewChat?: () => void
   onOpenSettings?: () => void
   onOpenCmdK?: () => void
@@ -828,13 +838,32 @@ function LeftRail({
             transition: 'background .15s',
           }}
         >
-          <div style={{
-            width: 26, height: 26, borderRadius: '50%',
-            background: p.ink, color: p.bg,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: serif, fontStyle: 'italic', fontSize: 13,
-            flex: '0 0 26px',
-          }}>{user.initial}</div>
+          {user.avatarSeed ? (
+            // Dicebear-backed avatar generated from the seed the user
+            // saved on /settings. We wrap in a fixed-size flex shell so
+            // the image never collapses against the name/plan column,
+            // and we round it here (rather than relying on Avatar's
+            // own `rounded-full`) so the surrounding chip looks
+            // identical to the legacy initial circle in every theme.
+            <div style={{
+              width: 26, height: 26, flex: '0 0 26px',
+              borderRadius: '50%', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Avatar seed={user.avatarSeed} size={26} />
+            </div>
+          ) : (
+            // Pre-auth / pre-load fallback. Same shape and typography
+            // as the rest of the rail so a flicker between this and
+            // the Dicebear image is visually quiet.
+            <div style={{
+              width: 26, height: 26, borderRadius: '50%',
+              background: p.ink, color: p.bg,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: serif, fontStyle: 'italic', fontSize: 13,
+              flex: '0 0 26px',
+            }}>{user.initial}</div>
+          )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12.5, lineHeight: 1.2, color: p.ink, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{user.name}</div>
             <div style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>{user.plan}</div>
