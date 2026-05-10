@@ -1023,7 +1023,18 @@ export default function TextPage() {
         // backtick) is left alone — only display blocks become
         // artifacts.
         body = (
-          <div className="prose prose-sm max-w-none prose-p:my-2 prose-p:leading-[1.6]">
+          // `dark:prose-invert` is REQUIRED. Without it, the Tailwind
+          // typography plugin hardcodes prose body / heading / link
+          // colours to dark grays via `--tw-prose-body` etc. — which
+          // means the assistant's prose lines render as dark text on
+          // top of the dark-mode canvas and become invisible. The
+          // chat artifact frame is fine (it uses its own inline
+          // tokens off `--ink-rgb`), but ReactMarkdown's plain
+          // paragraphs / lists / headings are all driven by the
+          // `prose` cascade, so they need the dark-mode flip
+          // explicitly. `prose-zinc` keeps the colour palette neutral
+          // rather than blue-tinted, matching the editorial chrome.
+          <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none prose-p:my-2 prose-p:leading-[1.6]">
             <ReactMarkdown
               components={{
                 code: CodeArtifact,
@@ -1945,20 +1956,48 @@ export default function TextPage() {
 
   const breadcrumb = `chats · ${selectedModel.brandName?.toLowerCase() ?? selectedModel.provider}`
 
-  /* ----- user identity (live profile from Supabase) ----------------- */
-  const [user, setUser] = useState<{ initial: string; name: string; plan: string; email?: string }>(
-    { initial: '·', name: 'Signed out', plan: 'guest' },
-  )
+  /* ----- user identity (live profile from Supabase) -----------------
+   *
+   * Loaded on mount AND re-fetched whenever any surface dispatches
+   * `clox-profile-changed` (same-tab) or bumps the `clox.profile.tick`
+   * sentinel in localStorage (cross-tab). /settings dispatches both
+   * after a successful profile save / avatar regenerate. Without
+   * these listeners — AND without selecting `avatar_seed` — the
+   * /text rail-footer would render the letter-fallback Avatar
+   * forever, even though every other surface (history, gallery,
+   * /settings itself, the AppLayout-wrapped pages) already shows
+   * the saved Dicebear avatar correctly. That asymmetry was the
+   * "my avatar is the first letter on /text but not anywhere else"
+   * bug the user kept hitting.
+   *
+   * `avatarSeed` defaults to the auth email when the profile row
+   * doesn't have one yet, matching the contract `useChatChrome`
+   * uses on every other surface — so a fresh sign-up still gets a
+   * deterministic Dicebear avatar instead of the letter fallback.
+   */
+  const [user, setUser] = useState<{
+    initial: string
+    name: string
+    plan: string
+    email?: string
+    avatarSeed?: string
+  }>({ initial: '·', name: 'Signed out', plan: 'guest' })
+
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
+
+    async function load() {
       try {
         const supabase = createClient()
         const { data: { user: authUser } } = await supabase.auth.getUser()
         if (!authUser || cancelled) return
 
         const [profile, credits] = await Promise.all([
-          supabase.from('profiles').select('first_name, last_name, plan').eq('id', authUser.id).single(),
+          supabase
+            .from('profiles')
+            .select('first_name, last_name, plan, avatar_seed')
+            .eq('id', authUser.id)
+            .single(),
           supabase.from('credits').select('balance_usd').eq('user_id', authUser.id).single(),
         ])
         if (cancelled) return
@@ -1976,12 +2015,31 @@ export default function TextPage() {
           plan = `free · $${parseFloat(String(credits.data.balance_usd)).toFixed(2)}`
         } else plan = 'free'
 
-        setUser({ initial, name: fullName, plan, email: authUser.email ?? undefined })
+        setUser({
+          initial,
+          name: fullName,
+          plan,
+          email: authUser.email ?? undefined,
+          avatarSeed: profile.data?.avatar_seed ?? authUser.email ?? undefined,
+        })
       } catch (e) {
         console.error('[v0] /text profile load failed', e)
       }
-    })()
-    return () => { cancelled = true }
+    }
+
+    load()
+
+    const onProfileChanged = () => { if (!cancelled) void load() }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'clox.profile.tick' && !cancelled) void load()
+    }
+    window.addEventListener('clox-profile-changed', onProfileChanged)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      cancelled = true
+      window.removeEventListener('clox-profile-changed', onProfileChanged)
+      window.removeEventListener('storage', onStorage)
+    }
   }, [])
 
   /* ── Live input-token meter ─────────────────────────────────────────
