@@ -6,10 +6,20 @@ import { webSearchTool } from '@/lib/tools/web-search'
 import { runJavaScriptTool } from '@/lib/tools/run-javascript'
 import { makeBashTool } from '@/lib/tools/sandbox-bash'
 import { makePythonTool } from '@/lib/tools/sandbox-python'
-import { mountAttachments, collectOutputs, type AttachmentToMount } from '@/lib/sandbox/manager'
+import { mountAttachments, collectOutputs, prewarmSandbox, type AttachmentToMount } from '@/lib/sandbox/manager'
 import { uploadChatOutput } from '@/lib/storage/chat-outputs'
 
-export const maxDuration = 60
+// Streaming chat responses can legitimately run for several minutes
+// when the python sandbox is in play: cold microVM boot (~5-10s), pip
+// install of the canonical package set on first call (~30-40s), then
+// the actual work — generating a multi-slide PPT with python-pptx,
+// rendering charts via pillow, etc., can take another 30-60s. Keeping
+// this at the previous 60s cap caused the function to be killed mid-
+// stream, so the user saw "stuck" with no progress and no error.
+// 300 seconds is the maximum allowed on Vercel Pro for streaming
+// functions; anything below that is a footgun for the document-
+// handling skills.
+export const maxDuration = 300
 
 interface IncomingAttachment {
   name?: string
@@ -558,6 +568,17 @@ export async function POST(req: Request) {
     // text into the prompt — the sandbox mount is additive, not a
     // replacement, so vision and inline-text behaviours are unchanged.
     if (sandboxArmed && chatId) {
+      // Pre-warm the sandbox immediately. This kicks off two
+      // background operations in parallel with the model's first
+      // tokens streaming back: (a) microVM cold-boot (~5-10s) and
+      // (b) pip-installing the canonical Python deps (~30-40s on a
+      // fresh VM, instant when the snapshot is set). By the time
+      // the model emits its first python tool call, the install
+      // Promise is typically already resolved, so the user doesn't
+      // see a long pause between "started python" and visible output.
+      // Pre-warm is fire-and-forget — failures fall back to lazy
+      // boot inside the tool call.
+      prewarmSandbox(chatId)
       try {
         const buffers = extractAttachmentBuffers(Array.isArray(messages) ? messages : [])
         if (buffers.length > 0) await mountAttachments(chatId, buffers)

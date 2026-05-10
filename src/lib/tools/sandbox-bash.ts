@@ -26,10 +26,16 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { getOrCreateSandboxForChat } from '@/lib/sandbox/manager'
 
-/** Per-command wall-clock cap. Document-processing recipes should
- *  finish in under 30s; the 60s limit gives headroom for the rare
- *  multi-page PDF rasterise. */
-const COMMAND_TIMEOUT_MS = 60_000
+/** Per-command wall-clock cap. Most file-handling commands (`ls`,
+ *  `pdfinfo`, `file`, `head`, `unzip`) finish in well under a second.
+ *  The reason this cap is generous is `pip install <pkg>` calls — the
+ *  python tool's description tells the model to install on-demand
+ *  packages (pdfplumber, pandas, numpy, weasyprint, …) via this tool.
+ *  A cold install of pandas+numpy with `--prefer-binary` is ~30-50s,
+ *  weasyprint is ~20s. 60s was too tight and the bash command would
+ *  abort mid-install, leaving the model without the package it needs.
+ *  180s gives comfortable headroom for the worst single-package case. */
+const COMMAND_TIMEOUT_MS = 180_000
 
 /** Cap on the size of stdout/stderr we forward back to the model.
  *  Excessive output costs tokens AND distracts from the actual signal.
@@ -58,13 +64,16 @@ export function makeBashTool(chatId: string) {
       'Run a shell command inside the conversation-scoped Linux microVM.',
       'Use this for filesystem operations, listing files, examining',
       'uploads, running CLI utilities (pdfinfo, pdftotext, qpdf, file,',
-      'unzip, ls, cat, head, tail, grep, sed, awk, find).',
+      'unzip, ls, cat, head, tail, grep, sed, awk, find), and for',
+      'installing on-demand Python packages with',
+      '`pip install --prefer-binary <pkg>` when the python tool tells',
+      'you a needed package is not pre-installed.',
       'Uploads are at /mnt/user-data/uploads/. Write deliverables to',
       '/mnt/user-data/outputs/ — files there are surfaced as downloads',
       'in the chat. Bundled Anthropic skill assets live at /mnt/skills/',
       '<skill-name>/ when the snapshot is enabled.',
       'No network access except PyPI, GitHub, and the AI Gateway.',
-      'Hard timeout per command: 60 seconds.',
+      'Hard timeout per command: 180 seconds.',
     ].join(' '),
     parameters: z.object({
       command: z

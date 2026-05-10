@@ -21,7 +21,7 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { getOrCreateSandboxForChat } from '@/lib/sandbox/manager'
+import { getOrCreateSandboxForChat, waitForPackages } from '@/lib/sandbox/manager'
 import { randomBytes } from 'node:crypto'
 
 /** Wall-clock cap per python call. */
@@ -42,15 +42,15 @@ export function makePythonTool(chatId: string) {
   return tool({
     description: [
       'Run a Python 3.13 snippet inside the conversation-scoped Linux microVM.',
-      'Pre-installed packages: pypdf, pdfplumber, openpyxl, python-pptx,',
-      'reportlab, pillow, imageio, python-docx, markdownify, weasyprint,',
-      'pytesseract, numpy, pandas. Uploads are at /mnt/user-data/uploads/;',
-      'write deliverables to /mnt/user-data/outputs/. Bundled Anthropic',
-      'skill assets (with helper scripts and references) live at',
-      '/mnt/skills/<skill-name>/. Use this for the heavy work in the',
-      'pdf, docx, xlsx, pptx, pdf-reading, file-reading, canvas-design,',
-      'algorithmic-art, and slack-gif-creator skills.',
-      'Hard timeout per call: 90 seconds.',
+      'Pre-installed packages: python-pptx, pillow, pypdf, reportlab,',
+      'python-docx, openpyxl, markdownify. If you need a package not on',
+      'this list (pdfplumber, numpy, pandas, weasyprint, pytesseract,',
+      'imageio, etc.) install it FIRST via the bash tool with',
+      '`pip install --prefer-binary <pkg>` — usually <15s for wheel-shipping',
+      'packages. Uploads are at /mnt/user-data/uploads/; write deliverables',
+      'to /mnt/user-data/outputs/. Bundled Anthropic skill assets live at',
+      '/mnt/skills/<skill-name>/ when the snapshot is enabled. Hard timeout',
+      'per call: 90 seconds.',
     ].join(' '),
     parameters: z.object({
       code: z
@@ -66,6 +66,18 @@ export function makePythonTool(chatId: string) {
     execute: async ({ code }) => {
       try {
         const sandbox = await getOrCreateSandboxForChat(chatId)
+        // Gate on the canonical Python package set being installed
+        // before we run the snippet. On a sandbox that's been around
+        // for a few turns this is an instant no-op (the install
+        // Promise resolved long ago, or the snapshot already had the
+        // packages baked in). On a freshly-booted no-snapshot sandbox
+        // this awaits the 30-40s pip install kicked off at create
+        // time. Doing it BEFORE we execute is the right order — a
+        // snippet that does `from pptx import Presentation` would
+        // crash with ModuleNotFoundError otherwise. The Promise is
+        // memoised in the manager so two concurrent python calls
+        // collapse into one install.
+        await waitForPackages(chatId)
         // Generate a unique tempfile name so concurrent tool calls in
         // the same sandbox don't trample each other.
         const stamp = randomBytes(6).toString('hex')
