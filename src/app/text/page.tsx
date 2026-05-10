@@ -483,7 +483,15 @@ export default function TextPage() {
 
   // Cast through `any` because @ai-sdk/react types differ across versions.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false, status, setMessages } = chat as any
+  // Pull `error` and `reload` from useChat too. Without these, a
+  // streamText failure mid-tool-call becomes invisible: useChat ends
+  // streaming silently, the transcript stops growing, and the user
+  // has no way to know the request failed or to recover. Surfacing
+  // both lets us render an inline "Stream error / No response — Retry"
+  // panel below the transcript that always appears when the chat ends
+  // in a non-clean state.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false, status, setMessages, error: chatError, reload: chatReload } = chat as any
   const isStreaming = Boolean(isLoading) || status === 'submitted' || status === 'streaming'
   const setInput = (v: string) => {
     handleInputChange?.({ target: { value: v } } as unknown as React.ChangeEvent<HTMLTextAreaElement>)
@@ -822,7 +830,7 @@ export default function TextPage() {
 
   const transcript: TranscriptMessage[] = useMemo(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (messages as any[]).map((m, i) => {
+    const base: TranscriptMessage[] = (messages as any[]).map((m, i) => {
       const created: number = m.createdAt ? new Date(m.createdAt).getTime() : Date.now()
       const time = timestamp(created)
       if (m.role === 'user') {
@@ -1485,7 +1493,101 @@ export default function TextPage() {
         body: bodyWithTools,
       }
     })
-  }, [messages, selectedModel.version, selectedModel.name])
+    // ── Top-level recovery banner ────────────────────────────────────
+    // Two cut-off modes that are NOT covered by the per-message
+    // continue button (which only fires when an assistant message
+    // already exists with a stuck tool / empty body):
+    //   1. `chat.error` is set — server returned a 4xx/5xx, or
+    //      streamText threw and our route's `onError` reduced it to
+    //      a string that ended up here.
+    //   2. The last message in the transcript is a USER message and
+    //      the stream is no longer in flight — the model never even
+    //      started producing an assistant reply. This is the symptom
+    //      the user reported when generating PPTX: "composing
+    //      disappears, python window stops, app says nothing".
+    // Both render as a single Retry banner that calls
+    // `useChat.reload()` — that re-sends the last user message with
+    // full prior history attached, so partial work (e.g. slide 1
+    // already produced) stays in context and the model resumes
+    // instead of restarting from scratch.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const msgArr = messages as any[]
+    const lastMsg = msgArr.length > 0 ? msgArr[msgArr.length - 1] : null
+    const lastWasUserOrphan =
+      !!lastMsg && lastMsg.role === 'user' && !isStreaming && msgArr.length > 0
+    const hasError = !!chatError
+    if (hasError || lastWasUserOrphan) {
+      const errorMessage = (() => {
+        if (!chatError) {
+          return 'The model stopped without producing a response. ' +
+            'This usually means the request timed out, hit the token limit, ' +
+            'or the provider returned an error mid-stream.'
+        }
+        if (chatError instanceof Error) return chatError.message
+        try { return String(chatError?.message ?? chatError) } catch { return 'Unknown error' }
+      })()
+      base.push({
+        id: 'recovery-banner',
+        who: 'ai' as const,
+        time: timestamp(Date.now()),
+        model: shortName(selectedModel.version, selectedModel.name),
+        body: (
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 8,
+            padding: '10px 12px',
+            border: '1px solid var(--accent, #b00020)',
+            borderRadius: 2,
+            fontSize: 12,
+          }}>
+            <div style={{
+              fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+              fontSize: 10,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              opacity: 0.85,
+            }}>
+              {hasError ? 'Stream error' : 'No response'}
+            </div>
+            <div style={{ opacity: 0.85 }}>
+              {errorMessage}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  // useChat.reload re-sends the LAST user message
+                  // with full prior history attached, so any
+                  // intermediate progress (e.g. slide 1 already
+                  // generated) is still in context. The model picks
+                  // up from where it stopped.
+                  try { chatReload?.() } catch (e) {
+                    console.error('[v0] retry failed', e)
+                  }
+                }}
+                disabled={isStreaming}
+                style={{
+                  padding: '4px 12px',
+                  border: '1px solid currentColor',
+                  borderRadius: 2,
+                  background: 'transparent',
+                  color: 'inherit',
+                  cursor: isStreaming ? 'not-allowed' : 'pointer',
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                  fontSize: 11,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  opacity: isStreaming ? 0.5 : 1,
+                }}
+              >
+                Retry last message
+              </button>
+            </div>
+          </div>
+        ),
+      })
+    }
+    return base
+  }, [messages, selectedModel.version, selectedModel.name, chatError, isStreaming, chatReload])
 
   const nav: RailNavItem[] = [
     { id: 'projects', label: 'Projects', icon: I.proj, onClick: () => router.push('/projects') },

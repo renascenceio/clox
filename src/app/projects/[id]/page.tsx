@@ -39,9 +39,25 @@ export default function ProjectWorkspacePage({
   // chats too. Filtering by `projectId === id` makes the rail a true
   // drill-down ("Projects → this Project → its chats"), which is what the
   // user expects after clicking a project in the /projects index rail.
+  // Live-subscribe to chat-store mutations so this rail stays in
+  // lockstep with /text. Plain `useMemo([])` was caching across
+  // archive/rename events and made /text and /projects/[id] disagree
+  // about how many chats belong to a project. The `!c.archived`
+  // filter mirrors the same exclusion /text and /gallery apply.
+  const [chatList, setChatList] = useState(() => listChats())
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const refresh = () => setChatList(listChats())
+    window.addEventListener('storage', refresh)
+    window.addEventListener('clox-chats-changed', refresh as EventListener)
+    return () => {
+      window.removeEventListener('storage', refresh)
+      window.removeEventListener('clox-chats-changed', refresh as EventListener)
+    }
+  }, [])
   const recent: RailRecentItem[] = useMemo(() => {
-    return listChats()
-      .filter(c => (c.modality ?? 'text') === 'text')
+    return chatList
+      .filter(c => (c.modality ?? 'text') === 'text' && !c.archived)
       .filter(c => c.projectId === id)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 8)
@@ -56,7 +72,7 @@ export default function ProjectWorkspacePage({
           chrome.router.push('/text')
         },
       }))
-  }, [id, chrome.router])
+  }, [id, chrome.router, chatList])
 
   const load = useCallback(async () => {
     try {

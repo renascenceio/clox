@@ -166,10 +166,35 @@ export default function SkillsPage() {
   )
   const enabledCount = activeIds.length
 
-  /* ----- recent rail (text chats only, like /history) ------------------ */
+  /* ----- recent rail (text chats only) ----------------------------
+   *
+   * Mirror the `!archived` + live-subscription pattern used on /text.
+   * Two separate bugs were stacking here:
+   *   1. No `!archived` filter, so archived chats kept showing up in
+   *      this rail even after the user swept them in /history.
+   *   2. Static `useMemo([])` never refreshed, so even after fixing
+   *      (1), an archive performed on /text wouldn't reflect here
+   *      until a hard reload. Live-subscribing to
+   *      `clox-chats-changed` + `storage` keeps every listChats()
+   *      surface in lockstep.
+   * The original phrase "like /history" in the comment was
+   * misleading: /history INCLUDES archived items by design; /text,
+   * /gallery and now this rail exclude them.
+   */
+  const [chatList, setChatList] = useState(() => listChats())
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const refresh = () => setChatList(listChats())
+    window.addEventListener('storage', refresh)
+    window.addEventListener('clox-chats-changed', refresh as EventListener)
+    return () => {
+      window.removeEventListener('storage', refresh)
+      window.removeEventListener('clox-chats-changed', refresh as EventListener)
+    }
+  }, [])
   const recent: RailRecentItem[] = useMemo(() => {
-    return listChats()
-      .filter(c => (c.modality ?? 'text') === 'text')
+    return chatList
+      .filter(c => (c.modality ?? 'text') === 'text' && !c.archived)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 8)
       .map(c => ({
@@ -181,7 +206,7 @@ export default function SkillsPage() {
           chrome.router.push('/text')
         },
       }))
-  }, [chrome.router])
+  }, [chrome.router, chatList])
 
   return (
     <div className="fixed inset-0 isolate">
