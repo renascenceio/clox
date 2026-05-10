@@ -12,12 +12,27 @@
  *   • Escape closes it.
  *   • Each item closes the popover after firing its handler.
  *
- * Visual: hairline-only, fits inside the editorial Anthology palette.
- *   Pure CSS — no portals, no animation libs. The popover is positioned
- *   absolutely against the trigger, so the parent must be `position:relative`.
+ * Positioning:
+ *   The popover renders into `document.body` via a React Portal and is
+ *   positioned with `position: fixed` against the trigger's bounding
+ *   rect. This is deliberate — earlier versions used `position: absolute`
+ *   inside the trigger's wrapper which got CLIPPED by any ancestor
+ *   `overflow: auto / hidden / scroll` container. Pages like /archives
+ *   wrap their list in a scroll container, so the menu would disappear
+ *   under the bottom edge for any row near the fold.
+ *
+ *   With fixed-positioning + portal:
+ *     – The menu escapes every scroll/overflow context up to the body.
+ *     – We auto-flip up→down or right→left when the requested side
+ *       would push it past the viewport edge.
+ *     – Window scroll/resize closes it (the rect would be stale).
  */
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback, useEffect, useId, useLayoutEffect, useRef, useState,
+  type ReactNode, type CSSProperties,
+} from 'react'
+import { createPortal } from 'react-dom'
 
 export interface RowActionItem {
   /** Required for keying. */
@@ -35,7 +50,8 @@ export interface RowActionsMenuProps {
   items: RowActionItem[]
   /** Tooltip on the trigger. */
   title?: string
-  /** Where to anchor the popover. Defaults to `bottom-right`. */
+  /** Where to anchor the popover. Defaults to `bottom-right`. The menu
+   *  auto-flips when the chosen side would clip outside the viewport. */
   side?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
   /** Optional className passthrough on the trigger button. */
   className?: string
@@ -43,6 +59,15 @@ export interface RowActionsMenuProps {
    *  When unset, the trigger is always visible. */
   showOnHoverOf?: string
 }
+
+/* The popover dimensions used for boundary maths. We don't measure the
+ * actual rendered node because the popover doesn't exist until after it
+ * opens — these fixed numbers match the menu's intrinsic sizing
+ * (min-w-[160px], 9px row × N rows + 8px padding). */
+const MENU_WIDTH       = 180
+const MENU_ROW_HEIGHT  = 36   // 9 row * 4 (h-9 = 36px)
+const MENU_PADDING_Y   = 8
+const VIEWPORT_GUTTER  = 8    // keep this much breathing room from edges
 
 export default function RowActionsMenu({
   items,
@@ -53,37 +78,96 @@ export default function RowActionsMenu({
 }: RowActionsMenuProps) {
   const id = useId()
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef    = useRef<HTMLDivElement | null>(null)
+
+  // Resolved fixed-position style; `null` until the menu actually opens
+  // and we've measured the trigger's bounding rect.
+  const [pos, setPos] = useState<CSSProperties | null>(null)
+
+  // Recalculate the menu's fixed-position style from the trigger rect.
+  // Pulled out so we can call it on every open and on every reflow event
+  // (scroll / resize) without re-encoding the placement maths.
+  const computePosition = useCallback(() => {
+    const t = triggerRef.current
+    if (!t) return
+    const rect = t.getBoundingClientRect()
+    const menuHeight = items.length * MENU_ROW_HEIGHT + MENU_PADDING_Y
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+
+    // Vertical: prefer the requested side, but flip if the menu would
+    // overflow the viewport. With a portal the menu can escape any
+    // ancestor overflow box, so the only constraint is the viewport
+    // itself.
+    const wantTop = side === 'top-right' || side === 'top-left'
+    const spaceBelow = vh - rect.bottom
+    const spaceAbove = rect.top
+    const goUp =
+      wantTop
+        ? spaceAbove >= menuHeight + VIEWPORT_GUTTER || spaceAbove >= spaceBelow
+        : spaceBelow < menuHeight + VIEWPORT_GUTTER && spaceAbove > spaceBelow
+
+    const top = goUp
+      ? Math.max(VIEWPORT_GUTTER, rect.top - menuHeight - 4)
+      : Math.min(vh - menuHeight - VIEWPORT_GUTTER, rect.bottom + 4)
+
+    // Horizontal: align right edge to trigger's right (the default sidebar
+    // pattern), or left edge to trigger's left for the *-left variants.
+    // Then clamp to viewport gutters so we never spill off-screen.
+    const wantLeftAlign = side === 'bottom-left' || side === 'top-left'
+    let left = wantLeftAlign ? rect.left : rect.right - MENU_WIDTH
+    left = Math.max(VIEWPORT_GUTTER, Math.min(left, vw - MENU_WIDTH - VIEWPORT_GUTTER))
+
+    setPos({
+      position: 'fixed',
+      top,
+      left,
+      width: MENU_WIDTH,
+    })
+  }, [items.length, side])
 
   // Outside-click + escape ----------------------------------------------
   useEffect(() => {
     if (!open) return
     const onMouseDown = (e: MouseEvent) => {
-      if (!ref.current) return
-      if (!ref.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      // Click inside trigger? toggle handler will deal with it.
+      if (triggerRef.current?.contains(target)) return
+      // Click inside the menu? leave it open; the row's own onClick
+      // closes after firing its handler.
+      if (menuRef.current?.contains(target)) return
+      setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
+    // Reflow on scroll/resize. We close instead of recomputing so a
+    // user scrolling away doesn't have a phantom menu chasing them.
+    const onReflow = () => setOpen(false)
     document.addEventListener('mousedown', onMouseDown)
-    document.addEventListener('keydown', onKey)
+    document.addEventListener('keydown',   onKey)
+    window.addEventListener('scroll',      onReflow, true)
+    window.addEventListener('resize',      onReflow)
     return () => {
       document.removeEventListener('mousedown', onMouseDown)
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown',   onKey)
+      window.removeEventListener('scroll',      onReflow, true)
+      window.removeEventListener('resize',      onReflow)
     }
   }, [open])
 
-  // Anchor positioning. We use plain Tailwind classes so the consumer can
-  // override via `className` if a special placement is needed.
-  const popoverPosition =
-    side === 'bottom-right' ? 'top-full right-0 mt-1'
-    : side === 'bottom-left' ? 'top-full left-0 mt-1'
-    : side === 'top-right'   ? 'bottom-full right-0 mb-1'
-    :                          'bottom-full left-0 mb-1'
+  // Compute position synchronously on open so the menu paints once at
+  // its final coordinates instead of jumping after measurement.
+  useLayoutEffect(() => {
+    if (open) computePosition()
+    else setPos(null)
+  }, [open, computePosition])
 
   return (
-    <div ref={ref} className="relative inline-flex">
+    <span className="relative inline-flex">
       <button
+        ref={triggerRef}
         type="button"
         title={title}
         aria-haspopup="menu"
@@ -110,11 +194,16 @@ export default function RowActionsMenu({
         </svg>
       </button>
 
-      {open && (
+      {open && pos && typeof document !== 'undefined' && createPortal(
         <div
+          ref={menuRef}
           id={`row-actions-${id}`}
           role="menu"
-          className={`absolute z-50 min-w-[160px] bg-surface border border-hairline rounded-card overflow-hidden ${popoverPosition}`}
+          // z-50 alone isn't enough when the body has a fixed-position
+          // chrome (sidebar, command palette overlays). z-[1000] keeps
+          // the menu above everything except modal dialogs.
+          className="z-[1000] bg-surface border border-hairline rounded-card overflow-hidden shadow-lg"
+          style={pos}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="p-1">
@@ -142,9 +231,10 @@ export default function RowActionsMenu({
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </span>
   )
 }
 

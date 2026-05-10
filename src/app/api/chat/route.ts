@@ -513,17 +513,39 @@ export async function POST(req: Request) {
     // factories because they need to bind the chatId to find the
     // right per-conversation microVM.
     const enabledTools: Record<string, unknown> = {}
-    const sandboxArmed =
+
+    // ─── Sandbox auto-arming ─────────────────────────────────────────
+    // The 6 file-handling skills (PDF/DOCX/XLSX/PPTX read+write, File
+    // Reading, PDF Deep Reading) tell the model to call `python` and
+    // `bash` against `/mnt/user-data/uploads/` and `/mnt/user-data/
+    // outputs/`. Before this auto-arm, those skills only worked when
+    // the user ALSO toggled "python sandbox" in the composer — a UX
+    // trap that produced "blank PPT" results when a skill was active
+    // but the toggle was off. We now detect the canonical sandbox
+    // mount path in the composed system prompt and unconditionally
+    // attach the tools when (a) chatId exists (per-chat microVM
+    // routing requirement) and (b) the prompt clearly expects them.
+    // The detection is intentionally narrow — matching the literal
+    // `/mnt/user-data/` so it can't mis-fire on unrelated text. */
+    const skillsRequireSandbox = composedSystem.includes('/mnt/user-data/')
+    const userArmedSandbox =
       Array.isArray(requestedTools) &&
-      Boolean(chatId) &&
       (requestedTools.includes('bash') || requestedTools.includes('python'))
+    const sandboxArmed = Boolean(chatId) && (userArmedSandbox || skillsRequireSandbox)
+
     if (Array.isArray(requestedTools)) {
       if (requestedTools.includes('web_search'))     enabledTools.web_search     = webSearchTool
       if (requestedTools.includes('run_javascript')) enabledTools.run_javascript = runJavaScriptTool
-      if (sandboxArmed && chatId) {
-        if (requestedTools.includes('bash'))   enabledTools.bash   = makeBashTool(chatId)
-        if (requestedTools.includes('python')) enabledTools.python = makePythonTool(chatId)
-      }
+    }
+    if (sandboxArmed && chatId) {
+      // Always bind BOTH tools when arming. The split between bash and
+      // python lets the model choose the right one per call (`bash ls`
+      // vs `python` for python-pptx etc.) — but it would be a footgun
+      // to expose only one half: a model that needs `bash file` to
+      // disambiguate an upload's MIME but only has `python` will fail
+      // confusingly. They're a pair.
+      enabledTools.bash   = makeBashTool(chatId)
+      enabledTools.python = makePythonTool(chatId)
     }
     const hasTools = Object.keys(enabledTools).length > 0
 

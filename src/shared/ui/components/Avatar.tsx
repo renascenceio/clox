@@ -8,22 +8,35 @@ interface AvatarProps {
 }
 
 /**
- * Generates a Dicebear avatar URL with a varied cool-toned palette.
- * The seed picks deterministically from a range of mint/teal/blue/indigo/violet/pink
- * backgrounds so avatars feel distinct and vibrant while still reading as
- * part of the Clox Studio mint-green identity. No brown is used.
+ * Generates a Dicebear avatar URL using a brand-aligned warm-earth palette.
+ *
+ * Anchored on Clox's accent — Terracotta `#A8472A` (= 168 71 42 in
+ * `--accent-rgb`, see `globals.css`). The palette steps outward from
+ * that anchor through sienna, copper, russet, mahogany, and warm
+ * caramels so seeded avatars feel distinct without ever clashing with
+ * the editorial pearl + ink chrome.
+ *
+ * No mints, teals, or apple-pastels — those were left over from the
+ * Studio identity and read as foreign on the current chrome. Likewise
+ * no cool blues or greens; the palette is intentionally narrow to keep
+ * each generated avatar instantly readable as "a Clox avatar" rather
+ * than a generic Dicebear default.
+ *
+ * The Dicebear `avataaars-neutral` style overlays its own grayscale
+ * features on top, so these colours function strictly as background
+ * fills — they don't conflict with the avatar geometry.
  */
 const AVATAR_BG_PALETTE = [
-  '00C7BE', // mint (brand)
-  '30B0C7', // apple teal
-  '40C8E0', // bright teal
-  '5AC8FA', // apple sky blue
-  '007AFF', // apple blue
-  '5856D6', // apple indigo
-  'AF52DE', // apple purple
-  'FF2D92', // apple pink
-  '34C759', // apple green
-  'FFCC00', // apple yellow
+  'A8472A', // terracotta — brand accent
+  '7A2E1C', // oxblood — deep terracotta
+  'C76140', // rust — lighter terracotta
+  '9C5530', // sienna
+  '7E4D2E', // cinnamon
+  '5C3A28', // coffee — dark warm brown
+  '4A2A1E', // mahogany — deepest warm brown
+  '8A5C3D', // caramel
+  '6E4528', // russet
+  'B68768', // tan — paler warm earth
 ].join(',')
 
 export default function Avatar({ seed = 'default', size = 40, className = '' }: AvatarProps) {

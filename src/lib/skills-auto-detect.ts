@@ -39,11 +39,16 @@ import type { DbSkill } from './hooks/useUserSkills'
 
 /** Maps natural-language phrases to the skill `tags` they should fire. */
 const PHRASE_TO_TAG: Array<{ patterns: RegExp[]; tag: string }> = [
-  // Document family — natural words for each format.
-  { patterns: [/\b(report|memo|white\s*paper|brief|whitepaper)\b/i],            tag: 'pdf' },
-  { patterns: [/\b(presentation|deck|slide(?:s|deck)?)\b/i],                    tag: 'powerpoint' },
-  { patterns: [/\b(spreadsheet|tabular|workbook)\b/i],                          tag: 'excel' },
-  { patterns: [/\bword\s*doc(?:ument)?\b/i],                                    tag: 'word' },
+  // Document family — natural words for each format. We include the
+  // file-extension abbreviations (PPT, PPTX, DOCX, XLSX, PDF) explicitly
+  // because users often say "make me a PPT" instead of "presentation",
+  // and a bare token-vs-tag pass would miss it (the PPTX skill carries
+  // tags `pptx, powerpoint, slides, …` but no `ppt`). Casing is handled
+  // by the /i flag.
+  { patterns: [/\b(report|memo|white\s*paper|brief|whitepaper|pdf\s*(?:doc|file|report)?)\b/i], tag: 'pdf' },
+  { patterns: [/\b(presentation|deck|slide(?:s|deck)?|ppt|pptx|powerpoint|power\s*point)\b/i],  tag: 'powerpoint' },
+  { patterns: [/\b(spreadsheet|tabular|workbook|xls|xlsx|excel\s*(?:sheet|file)?)\b/i],          tag: 'excel' },
+  { patterns: [/\b(word\s*doc(?:ument)?|docx?|\.docx?)\b/i],                                     tag: 'word' },
 
   // Web / front-end.
   { patterns: [/\b(landing\s*page|web\s*page|webpage|website|static\s*site)\b/i], tag: 'html' },
