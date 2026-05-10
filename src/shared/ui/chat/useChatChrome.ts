@@ -77,7 +77,16 @@ export function useChatChrome(active: ActiveRail) {
     if (typeof window !== 'undefined') localStorage.setItem('clox.language', next)
   }
 
-  /* ---------- profile (rail footer + topstrip identity) ---------- */
+  /* ---------- profile (rail footer + topstrip identity) ----------
+   *
+   * Loaded on mount AND re-fetched whenever any surface dispatches
+   * `clox-profile-changed`. /settings dispatches it immediately
+   * after a successful profile save / avatar regenerate; without
+   * this listener the user-menu chip and the rail avatar stay
+   * stale until a full page reload, even though /settings itself
+   * shows the new values. A `clox.profile.tick` localStorage
+   * sentinel on cross-tab `storage` events keeps multiple open
+   * tabs in lockstep too. */
   const [user, setUser] = useState<ChromeUser>(DEFAULT_USER)
   useEffect(() => {
     let cancelled = false
@@ -138,7 +147,27 @@ export function useChatChrome(active: ActiveRail) {
     }
 
     load()
-    return () => { cancelled = true }
+    // Same-tab refresh: /settings dispatches `clox-profile-changed`
+    // after every successful save or avatar regenerate. Cross-tab
+    // refresh: /settings also bumps `clox.profile.tick` in
+    // localStorage, which fires a `storage` event in every other
+    // open tab. Both call the same `load()` so the rail avatar and
+    // user-menu identity update without a hard reload.
+    const onProfileChanged = () => { load() }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'clox.profile.tick') load()
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('clox-profile-changed', onProfileChanged)
+      window.addEventListener('storage', onStorage)
+    }
+    return () => {
+      cancelled = true
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('clox-profile-changed', onProfileChanged)
+        window.removeEventListener('storage', onStorage)
+      }
+    }
   }, [])
 
   /* ---------- account actions (avatar dropdown) ---------- */

@@ -147,13 +147,57 @@ export default function SettingsPage() {
     } else {
       setSaved(true)
       setTimeout(() => setSaved(false), 2400)
+      // Tell every other open surface (rail user-chip, user-menu
+      // header, projects topstrip) that the profile changed so they
+      // re-fetch immediately. Without this, the user sees the new
+      // avatar in /settings but the rail keeps the old one until a
+      // hard reload — exactly the staleness bug we are fixing.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('clox-profile-changed'))
+        // Cross-tab signal: bumping a sentinel key fires `storage`
+        // in every other open tab. Re-stamping with Date.now() on
+        // every save keeps the value unique so events never coalesce.
+        try {
+          localStorage.setItem('clox.profile.tick', String(Date.now()))
+        } catch {
+          /* private mode / quota — ignored. Same-tab event above
+             still does the right thing. */
+        }
+      }
     }
   }
 
-  /* ---------- recent text chats for the rail ---------- */
+  /* ---------- recent text chats for the rail ----------
+   *
+   * The rail must agree with /text and /gallery on what counts as a
+   * "current" chat. Both of those exclude archived chats; without
+   * the same `!c.archived` filter here the user sees a phantom extra
+   * row in the rail for chats they already swept under "Archived"
+   * in /history. That was the "two chats while there is actually
+   * one" bug.
+   *
+   * The second half of that bug was `useMemo([])` caching the list
+   * forever. /text live-subscribes to the chat-store's
+   * `clox-chats-changed` event (and the cross-tab `storage` event);
+   * /settings was a static one-shot. So archiving a chat from /text
+   * looked correct on /text but stale here until a hard reload.
+   * Subscribing to both events keeps every surface using listChats()
+   * in lockstep.
+   */
+  const [chatList, setChatList] = useState(() => listChats())
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const refresh = () => setChatList(listChats())
+    window.addEventListener('storage', refresh)
+    window.addEventListener('clox-chats-changed', refresh as EventListener)
+    return () => {
+      window.removeEventListener('storage', refresh)
+      window.removeEventListener('clox-chats-changed', refresh as EventListener)
+    }
+  }, [])
   const recent: RailRecentItem[] = useMemo(() => {
-    return listChats()
-      .filter(c => (c.modality ?? 'text') === 'text')
+    return chatList
+      .filter(c => (c.modality ?? 'text') === 'text' && !c.archived)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 6)
       .map(c => ({
@@ -165,7 +209,7 @@ export default function SettingsPage() {
           chrome.router.push('/text')
         },
       }))
-  }, [chrome.router])
+  }, [chrome.router, chatList])
 
   return (
     <div className="fixed inset-0 isolate">
