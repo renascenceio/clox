@@ -330,7 +330,11 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
   // mutual-exclusion model as the mode/model dropdowns. Picking a skill
   // does not auto-close (it's multi-select); clicking the chip again or
   // any other chip closes it.
-  const [openMenu, setOpenMenu] = useState<'mode' | 'model' | 'skills' | null>(null)
+  // Composer chip-cluster popover state. Each chip toggles its own
+  // panel here, so opening one closes any other. `'tools'` was added
+  // when the tools chip became clickable — previously tools were only
+  // reachable via the slash palette which most users never discovered.
+  const [openMenu, setOpenMenu] = useState<'mode' | 'model' | 'skills' | 'tools' | null>(null)
   const [configOpen, setConfigOpen] = useState(initialConfigOpen)
   const [cmdkOpen, setCmdkOpen] = useState(initialCmdkOpen)
 
@@ -1368,8 +1372,8 @@ function ComposerChip({
   selectedSkillIds?: string[]
   onToggleSkill?: (id: string) => void
   onClearSkills?: () => void
-  openMenu: 'mode' | 'model' | 'skills' | null
-  setOpenMenu: (v: 'mode' | 'model' | 'skills' | null) => void
+  openMenu: 'mode' | 'model' | 'skills' | 'tools' | null
+  setOpenMenu: (v: 'mode' | 'model' | 'skills' | 'tools' | null) => void
   inputValue: string
   onInputChange: (v: string) => void
   onSend: () => void
@@ -1454,9 +1458,28 @@ function ComposerChip({
                 <span style={{ marginLeft: 4, display: 'inline-flex' }}>{I.caret}</span>
               </Chip>
             )}
-            <Chip p={p} mono={mono}>
+            {/* Tools — clickable popover. Previously this chip was a
+                passive readout, which meant users had to discover the
+                slash palette to find tool toggles and most never did,
+                so the count sat at 0 even though web search, code
+                exec, and the python sandbox were all available. The
+                chip now mirrors the model/skills chips: click to open
+                a menu of toggles. The label reads "none" when nothing
+                is armed (parallel to the skills chip) so the chip
+                stays self-explanatory at any state. */}
+            <Chip
+              p={p}
+              mono={mono}
+              active={openMenu === 'tools' || toolsCount > 0}
+              onClick={onToggleTool ? () => setOpenMenu(openMenu === 'tools' ? null : 'tools') : undefined}
+            >
               <span style={{ color: p.inkMuted, marginRight: 6 }}>tools</span>
-              <span style={{ color: p.ink }}>{toolsCount}</span>
+              <span style={{ color: p.ink }}>
+                {toolsCount === 0 ? 'none' : `${toolsCount} on`}
+              </span>
+              {onToggleTool && (
+                <span style={{ marginLeft: 4, display: 'inline-flex' }}>{I.caret}</span>
+              )}
             </Chip>
             <Chip
               p={p}
@@ -1558,6 +1581,15 @@ function ComposerChip({
               onClearSkills={() => onClearSkills?.()}
               onClose={() => setOpenMenu(null)}
               left={130}
+            />
+          )}
+          {openMenu === 'tools' && toolsState && (
+            <ToolsMenu
+              p={p}
+              mono={mono}
+              toolsState={toolsState}
+              onToggleTool={label => onToggleTool?.(label)}
+              left={250}
             />
           )}
 
@@ -1774,6 +1806,87 @@ function ModeMenu({ p, mono, modes, mode, setMode, left = 12 }: {
           </div>
         </button>
       ))}
+    </div>
+  )
+}
+
+/* ---------------------------------------------------------------------
+   ToolsMenu — popover for the Tools chip.
+   Mirrors ModeMenu's frame but renders on/off rows: clicking a row
+   flips the toggle without closing the menu (so users can arm a
+   couple of tools in one pass). The footer note teaches users that
+   the python sandbox is also auto-armed at request time when an
+   active skill needs filesystem access — a deliberate reduction in
+   manual toggling, not a UX gap.
+   --------------------------------------------------------------------- */
+function ToolsMenu({ p, mono, toolsState, onToggleTool, left = 12 }: {
+  p: Palette
+  mono: string
+  toolsState: { label: string; on: boolean }[]
+  onToggleTool: (label: string) => void
+  left?: number
+}) {
+  // Static descriptions per toggle. Kept here so the menu is fully
+  // self-contained — the labels in `toolsState` come from the parent
+  // (single source of truth for the on/off state) but the human-
+  // readable hint copy lives with the rendering.
+  const HINTS: Record<string, string> = {
+    'web search':     'tavily · live web results',
+    'code execute':   'in-process node vm · 1s timeout',
+    'python sandbox': 'micro-vm · python 3.13 + bash',
+  }
+
+  return (
+    <div style={{
+      position: 'absolute', bottom: 'calc(100% + 6px)', left,
+      width: 320, background: p.surface,
+      border: `1px solid ${p.hairline}`, borderRadius: 3,
+      boxShadow: `0 12px 40px ${p.bg === '#14130E' ? 'rgba(0,0,0,.45)' : 'rgba(22,20,16,.10)'}`,
+      padding: '6px 0', zIndex: 10,
+    }}>
+      <div style={{
+        padding: '8px 14px 4px', fontFamily: mono, fontSize: 9.5,
+        letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted,
+      }}>
+        model tools
+      </div>
+      {toolsState.map(t => (
+        <button
+          key={t.label}
+          onClick={() => onToggleTool(t.label)}
+          style={{
+            display: 'block', width: '100%', textAlign: 'left',
+            padding: '8px 14px',
+            background: 'transparent',
+            border: 'none', cursor: 'pointer', color: p.ink,
+            fontFamily: SANS_STACK,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13 }}>{t.label}</span>
+            <span style={{
+              fontFamily: mono, fontSize: 10, letterSpacing: '0.06em',
+              color: t.on ? p.accent : p.inkMuted,
+            }}>
+              {t.on ? '● on' : 'off'}
+            </span>
+          </div>
+          <div style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, marginTop: 2 }}>
+            {HINTS[t.label] ?? ''}
+          </div>
+        </button>
+      ))}
+      <div style={{
+        margin: '4px 14px 8px',
+        paddingTop: 8,
+        borderTop: `1px solid ${p.hairlineSoft ?? p.hairline}`,
+        fontFamily: mono, fontSize: 10, color: p.inkMuted,
+        lineHeight: 1.5,
+      }}>
+        python sandbox is auto-armed when a file-handling skill (PDF,
+        DOCX, XLSX, PPTX read &amp; write, file reading) is active —
+        no need to flip it manually for those.
+      </div>
     </div>
   )
 }

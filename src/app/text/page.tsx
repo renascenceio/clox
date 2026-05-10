@@ -1437,7 +1437,12 @@ export default function TextPage() {
         onRemoveAttachment={handleRemoveAttachment}
         toolsState={toolsState}
         onToggleTool={handleToggleTool}
-        toolsCount={enabledToolIds.length}
+        // Display the number of user-armed *toggles*, not the underlying
+        // tool-id count. The "python sandbox" toggle expands to two ids
+        // (`bash` + `python`) so using `enabledToolIds.length` would
+        // make the chip read "2" after a single click and confuse users
+        // about what they actually armed.
+        toolsCount={toolsState.filter(t => t.on).length}
         cmdkGroups={cmdkGroups}
         systemPrompt={systemPrompt}
         onChangeSystemPrompt={setSystemPrompt}
