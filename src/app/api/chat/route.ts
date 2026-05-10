@@ -519,15 +519,55 @@ export async function POST(req: Request) {
 
     const caller = await getCallerForLogging()
 
-    // Always lead with the Clox capabilities preamble; the user's
-    // own system prompt (if any) goes after it under the same role
-    // so model-specific instruction-following treats them as one
-    // continuous block. Concatenating into a single system message
-    // is more reliable than two consecutive system entries — some
-    // providers collapse / reject duplicates.
-    const composedSystem = systemPrompt
-      ? `${CLOX_CAPABILITIES_PREAMBLE}\n\n---\n\n${systemPrompt}`
-      : CLOX_CAPABILITIES_PREAMBLE
+    // ── System-prompt segmentation for prompt caching ──────────────
+    //
+    // We split the system prompt into TWO segments so providers can
+    // cache the stable part:
+    //
+    //   stableSystem  — the Clox capabilities preamble. ~3.5k tokens,
+    //                   identical on every request, the single biggest
+    //                   recurring cost in our input bill.
+    //   dynamicSystem — the user-saved system prompt + any auto-detect
+    //                   skill blocks attached for THIS turn. Varies
+    //                   per chat (and per turn when auto-detect fires)
+    //                   so it must not be marked as part of the cache
+    //                   prefix.
+    //
+    // Caching by provider:
+    //
+    //   Anthropic — explicit. We mark the stableSystem message with
+    //     `experimental_providerMetadata.anthropic.cacheControl =
+    //     { type: 'ephemeral' }`. Anthropic caches up to and
+    //     including that breakpoint with a 5-minute TTL; subsequent
+    //     turns within that window pay 10% of the input token cost
+    //     AND count as 10% of the per-minute rate-limit accounting.
+    //     Cuts the typical 8-10k input request to ~1-2k after the
+    //     first turn, which is the difference between bouncing off
+    //     Opus 4.6's 10k TPM ceiling and not.
+    //
+    //   OpenAI — automatic. Any prompt ≥1024 tokens is auto-cached
+    //     keyed on its prefix; a 50% discount kicks in on prefix
+    //     hits. No markers needed — we just have to keep the
+    //     prefix stable, which is exactly why we've split here.
+    //     Caches are best-effort: cleared after ~5-10 minutes of
+    //     inactivity, but during an active chat they hit reliably.
+    //
+    //   Google Gemini — implicit on 2.5 family. Cached prefix tokens
+    //     get a 75% discount automatically. Same prefix-stability
+    //     requirement; no markers.
+    //
+    // We always emit `stableSystem` first and `dynamicSystem` second,
+    // both as separate system messages. AI SDK v4's provider adapters
+    // concatenate consecutive system messages for providers that don't
+    // accept multiple (OpenAI, Gemini), so this works universally.
+    const stableSystem = CLOX_CAPABILITIES_PREAMBLE
+    const dynamicSystem = systemPrompt ?? ''
+    const isAnthropic = provider === 'anthropic'
+    // Kept for backwards compat with the few places below that still
+    // reference the old name (sandbox auto-arming, telemetry).
+    const composedSystem = dynamicSystem
+      ? `${stableSystem}\n\n---\n\n${dynamicSystem}`
+      : stableSystem
 
     // Build the tools bag for THIS request based on what the user has
     // armed in the slash menu. We allow-list known ids — a malicious
@@ -670,7 +710,27 @@ export async function POST(req: Request) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           model: resolved as any,
           messages: [
-            { role: 'system', content: composedSystem },
+            // Stable cacheable prefix. The Anthropic-only metadata is
+            // ignored by every other provider's adapter, so emitting
+            // it unconditionally is safe — but we ALSO key the
+            // metadata's presence on the live provider so a future
+            // adapter that complains about unknown keys doesn't break
+            // OpenAI / Gemini chats.
+            {
+              role: 'system' as const,
+              content: stableSystem,
+              ...(isAnthropic ? {
+                experimental_providerMetadata: {
+                  anthropic: { cacheControl: { type: 'ephemeral' as const } },
+                },
+              } : {}),
+            },
+            // Dynamic per-turn segment. Skipped when empty so we don't
+            // emit a useless second system message that some providers
+            // (xai, perplexity) handle imperfectly.
+            ...(dynamicSystem
+              ? [{ role: 'system' as const, content: dynamicSystem }]
+              : []),
             ...(inflatedMessages as never[]),
           ],
           temperature,

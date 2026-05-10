@@ -36,6 +36,11 @@ import {
 } from '@/lib/skills'
 import { useUserSkills } from '@/lib/hooks/useUserSkills'
 import { detectAutoSkills } from '@/lib/skills-auto-detect'
+import {
+  estimateTokensForString,
+  estimateTokensForMessages,
+  formatTokenCount,
+} from '@/lib/token-estimate'
 import { useAvailableModels } from '@/lib/use-available-models'
 import { getAdminSettings, getProviderApiKey } from '@/lib/admin-settings'
 import { createClient } from '@/lib/supabase/client'
@@ -1912,6 +1917,71 @@ export default function TextPage() {
     return () => { cancelled = true }
   }, [])
 
+  /* ── Live input-token meter ─────────────────────────────────────────
+   *
+   * What we count, and why those numbers
+   *
+   *   PREAMBLE_FLOOR     — the Clox capabilities preamble lives in
+   *                        the route handler (server-side), so the
+   *                        client never sees the exact text. We hard-
+   *                        code its approximate size in tokens. After
+   *                        the recent trim it's ~700-900 tokens; we
+   *                        round up to 900 for a safe estimate. On
+   *                        Anthropic the preamble is now in the
+   *                        cacheable prefix (Phase 1a) so the SECOND
+   *                        and later turns of a chat won't actually
+   *                        spend this against TPM — but the meter
+   *                        shows the worst-case (turn-1) cost so the
+   *                        user can correlate it with rate-limit
+   *                        errors when they hit them.
+   *   sys                — user-saved persistent system prompt + any
+   *                        per-turn auto-detect skill prose. Both vary
+   *                        per request and are NOT in the cache prefix.
+   *   history            — every prior user/assistant turn in this
+   *                        chat. Grows linearly until Phase-3
+   *                        compaction kicks in.
+   *   draft              — what the user is typing right now.
+   *
+   * The meter renders alongside the existing `tokens · <cost>` slot in
+   * the composer toolbar (`ChatWorkspace.tokenEstimate`). The "cost"
+   * string is repurposed as a colour-coded headroom indicator
+   * relative to the SELECTED MODEL's per-minute input cap — which is
+   * the actual constraint that matters for the rate-limit bug. We
+   * don't claim dollar costs because they vary per provider tier and
+   * we don't track real usage on the client.
+   */
+  const tokenEstimate = useMemo(() => {
+    const PREAMBLE_FLOOR = 900
+    const sys = estimateTokensForString(systemPrompt)
+    const history = estimateTokensForMessages(messages as unknown[])
+    const draft = estimateTokensForString(input)
+    const tokens = PREAMBLE_FLOOR + sys + history + draft
+
+    // Per-model input TPM caps for tier-1 / commonly-provisioned
+    // accounts. These are the published Anthropic / OpenAI / Google
+    // defaults; users on higher tiers will simply see the meter say
+    // "near limit" earlier than reality, which fails safe.
+    const tpmCap: number = (() => {
+      const id = selectedTextModel.id.toLowerCase()
+      if (id.includes('opus'))     return 10_000
+      if (id.includes('sonnet'))   return 80_000
+      if (id.includes('haiku'))    return 100_000
+      if (id.includes('gpt-5'))    return 30_000
+      if (id.includes('gpt-4'))    return 30_000
+      if (id.includes('o1') || id.includes('o3')) return 30_000
+      if (id.includes('gemini'))   return 1_000_000
+      if (id.includes('grok'))     return 60_000
+      return 50_000
+    })()
+    const pct = Math.round((tokens / tpmCap) * 100)
+    const headroom =
+      pct < 50  ? `~${pct}% of ${formatTokenCount(tpmCap)} cap` :
+      pct < 80  ? `~${pct}% of cap — getting heavy` :
+      pct < 100 ? `~${pct}% of cap — near rate-limit` :
+                  `over cap — will likely hit rate-limit`
+    return { tokens, cost: headroom }
+  }, [systemPrompt, messages, input, selectedTextModel.id])
+
   return (
     <div className="fixed inset-0 isolate">
       <ChatWorkspace
@@ -1984,6 +2054,7 @@ export default function TextPage() {
         // make the chip read "2" after a single click and confuse users
         // about what they actually armed.
         toolsCount={toolsState.filter(t => t.on).length}
+        tokenEstimate={tokenEstimate}
         cmdkGroups={cmdkGroups}
         systemPrompt={systemPrompt}
         onChangeSystemPrompt={setSystemPrompt}
