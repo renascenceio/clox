@@ -19,6 +19,12 @@ const BLANK_SKILL = {
   is_public: true,
 }
 
+// Sentinel value the engine-filter uses for "show every engine" — distinct
+// from the engine value 'all' (which means "this skill works on any model
+// family"). Keeping them separate avoids the duplicate-pill bug we used to
+// have when both the literal and any 'all'-engine skills showed up.
+const FILTER_ANY = '*'
+
 const MONO  = `'Geist Mono', ui-monospace, monospace`
 const SERIF = `'Newsreader', Georgia, serif`
 const SANS  = `ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif`
@@ -32,7 +38,11 @@ export default function SkillsPage() {
      The chat composer's Skills chip uses the same hook, so toggling here
      and toggling there always agree. */
   const { skills, activeIds, loading, refresh, toggle } = useUserSkills()
-  const [filterEngine, setFilterEngine] = useState<string>('all')
+  // Sentinel for the "Any" filter pill — '*' can't collide with a real
+  // engine value (which is one of 'all' | 'claude' | 'openai' | 'gemini'),
+  // so the previous bug where we got two "all" pills (one literal, one
+  // synthesised from skills.engine='all') is impossible by construction.
+  const [filterEngine, setFilterEngine] = useState<string>(FILTER_ANY)
   const [filterTag, setFilterTag] = useState<string>('')
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
@@ -136,13 +146,19 @@ export default function SkillsPage() {
     () => Array.from(new Set(skills.flatMap(s => s.tags))).sort(),
     [skills]
   )
-  const engines = useMemo(
-    () => ['all', ...Array.from(new Set(skills.map(s => s.engine)))].filter(Boolean),
-    [skills]
-  )
+  // The literal "Any" pill is always first; remaining pills are the unique
+  // engines actually present in the catalogue, sorted for stable order.
+  // We DON'T spread `'all'` from the skills array — `engine='all'` is a real
+  // engine value that gets its own pill (rendered as "generic"), which is
+  // distinct from "Any" (no filter at all).
+  const engines = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of skills) if (s.engine) set.add(s.engine)
+    return [FILTER_ANY, ...Array.from(set).sort()]
+  }, [skills])
   const filtered = useMemo(
     () => skills.filter(s => {
-      const engineMatch = filterEngine === 'all' || s.engine === filterEngine
+      const engineMatch = filterEngine === FILTER_ANY || s.engine === filterEngine
       const tagMatch = !filterTag || s.tags.includes(filterTag)
       return engineMatch && tagMatch
     }),
@@ -244,19 +260,28 @@ export default function SkillsPage() {
               flexWrap: 'wrap', marginBottom: 22,
             }}>
               <div style={{ display: 'flex', gap: 0, fontFamily: MONO, fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
-                {engines.map(eng => (
-                  <button
-                    key={eng}
-                    onClick={() => setFilterEngine(eng)}
-                    style={{
-                      background: 'transparent', border: 'none', cursor: 'pointer',
-                      padding: '6px 14px',
-                      color: filterEngine === eng ? p.ink : p.inkMuted,
-                      borderBottom: `2px solid ${filterEngine === eng ? p.accent : 'transparent'}`,
-                      transition: 'color .15s, border-color .15s',
-                    }}
-                  >{eng}</button>
-                ))}
+                {engines.map(eng => {
+                  // The sentinel renders as "any" (no filter); the engine
+                  // value 'all' renders as "generic" so the user can pick
+                  // out skills that aren't tuned for one model family.
+                  const label =
+                    eng === FILTER_ANY ? 'any' :
+                    eng === 'all'      ? 'generic' :
+                    eng
+                  return (
+                    <button
+                      key={eng}
+                      onClick={() => setFilterEngine(eng)}
+                      style={{
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        padding: '6px 14px',
+                        color: filterEngine === eng ? p.ink : p.inkMuted,
+                        borderBottom: `2px solid ${filterEngine === eng ? p.accent : 'transparent'}`,
+                        transition: 'color .15s, border-color .15s',
+                      }}
+                    >{label}</button>
+                  )
+                })}
               </div>
 
               {allTags.length > 0 && (
