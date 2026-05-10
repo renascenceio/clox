@@ -40,7 +40,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="bg-bg" data-theme="pearl">
+    /*
+     * `suppressHydrationWarning` is REQUIRED here. The inline pre-paint
+     * bootstrap below mutates `data-theme`, `data-palette`, and the
+     * `.dark` class on <html> synchronously before React hydrates.
+     * Without this attribute, React would reconcile those mutations
+     * against the JSX-declared values during hydration and silently
+     * reset `data-theme` back to "pearl" + strip `.dark`. The visible
+     * symptom was: dark-mode users seeing light-mode text colours
+     * (Tailwind `text-ink`/`bg-bg` tokens locked to pearl palette)
+     * for the brief moment between hydration and the next render
+     * that re-applied the user's stored palette. Keeping the JSX
+     * default at "pearl" so SSR has a sensible fallback for users
+     * who land with localStorage blocked or empty; the bootstrap
+     * overrides it for everyone else.
+     */
+    <html lang="en" className="bg-bg" data-theme="pearl" suppressHydrationWarning>
       <head>
         {/*
           Pre-paint theme bootstrap — runs synchronously before the first

@@ -178,6 +178,45 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     void loadProfile()
   }, [loadProfile])
 
+  /*
+   * Cross-surface profile sync.
+   *
+   * /settings dispatches `clox-profile-changed` (same-tab) and bumps
+   * `clox.profile.tick` in localStorage (cross-tab) every time the
+   * user saves a profile change or regenerates their avatar. Without
+   * a listener here, the rail-footer avatar that AppLayout renders
+   * would stay stuck on whatever was in `sessionStorage` until the
+   * tab was closed — which is exactly the "rail avatar doesn't match
+   * what I picked in /settings" bug. Now we treat the event as a
+   * cache-invalidation signal: drop the in-memory + sessionStorage
+   * cache, then re-run `loadProfile()` so the next paint shows the
+   * authoritative DB value. `useChatChrome` already does this for
+   * the /text rail; AppLayout was the missing half.
+   *
+   * We also reset `profileFetchedThisSession` on the event so any
+   * AppLayout instance that mounts AFTER the change (e.g. user
+   * navigating to /archives) refetches instead of trusting the
+   * stale module flag.
+   */
+  useEffect(() => {
+    const refresh = () => {
+      profileMemo = null
+      profileFetchedThisSession = false
+      try { window.sessionStorage.removeItem(PROFILE_CACHE_KEY) } catch { /* fine */ }
+      void loadProfile()
+    }
+    const onProfileChanged = () => refresh()
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'clox.profile.tick') refresh()
+    }
+    window.addEventListener('clox-profile-changed', onProfileChanged)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener('clox-profile-changed', onProfileChanged)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [loadProfile])
+
   // One-shot localStorage→DB chat migration. Guarded with a module-level
   // flag so it runs at most once per tab regardless of how many times
   // AppLayout mounts (each route is its own React tree).

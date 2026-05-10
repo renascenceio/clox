@@ -36,6 +36,11 @@ import {
 } from '@/lib/skills'
 import { useUserSkills } from '@/lib/hooks/useUserSkills'
 import { detectAutoSkills } from '@/lib/skills-auto-detect'
+import {
+  estimateTokensForString,
+  estimateTokensForMessages,
+  formatTokenCount,
+} from '@/lib/token-estimate'
 import { useAvailableModels } from '@/lib/use-available-models'
 import { getAdminSettings, getProviderApiKey } from '@/lib/admin-settings'
 import { createClient } from '@/lib/supabase/client'
@@ -635,7 +640,37 @@ export default function TextPage() {
         dbSkills.skills,
         dbSkills.activeIds,
       ).filter(s => !dismissedAutoIds.has(s.id))
-      const autoBlock = buildSkillsBlock(autoSkills)
+      // Phase 2 (lazy skill loading): replace the multi-paragraph
+      // skill prose we used to inject with a 1-line STUB that names
+      // the auto-detected skill and points the model at the
+      // `read_skill` tool. The full prompt only enters context when
+      // (and if) the model actually decides to load it — saving
+      // ~2k tokens on the common case where the auto-detected skill
+      // is the right one and the model just needs the schema bits
+      // it can already glean from the slim index in stableSystem.
+      //
+      // We keep this as a STUB rather than dropping it entirely so
+      // the model gets a strong nudge ("auto-detected: PDF Document
+      // Specialist") and can decide for itself whether to load.
+      // Without the nudge, the model falls back to the index alone
+      // and may not realise the user's intent matched a specialist.
+      const autoBlock = autoSkills.length > 0
+        ? [
+            '',
+            '## Auto-detected skills for this turn',
+            '',
+            ...autoSkills.map(s => {
+              const desc = s.description ? ` — ${s.description}` : ''
+              return `- (${s.id}) ${s.name}${desc}`
+            }),
+            '',
+            'These skills look relevant to the user\'s request. If you',
+            'need their full guidance, call `read_skill({"skill_id":',
+            '"<id>"})` to load it. If the slim description above is',
+            'enough for this request, proceed without loading.',
+            '',
+          ].join('\n')
+        : ''
       const augmentedSystemPrompt = autoBlock
         ? `${composedSystemPrompt}\n\n${autoBlock}`
         : composedSystemPrompt
@@ -1049,6 +1084,21 @@ export default function TextPage() {
           mime:     String(a.mime ?? 'application/octet-stream'),
           size:     typeof a.size === 'number' ? a.size : 0,
         }))
+
+      // Auto-compaction notice. The route writes a single `compaction`
+      // annotation per turn when older messages were folded into a
+      // summary. We surface it as a small inline badge above the
+      // download strip so the user understands why their chat
+      // suddenly fits in the model's context — and so they can verify
+      // older context isn't being silently dropped without their
+      // awareness. */
+      const compactionAnnotation:
+        | { type: 'compaction'; compactedCount: number; beforeTokens: number; afterTokens: number }
+        | undefined =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        annotations.find((a: any) => a && a.type === 'compaction') as
+          | { type: 'compaction'; compactedCount: number; beforeTokens: number; afterTokens: number }
+          | undefined
 
       // ── Sandbox progress strip ─────────────────────────────────────
       // We surface three kinds of progress so the user always sees
@@ -1480,6 +1530,28 @@ export default function TextPage() {
                 </button>
               </div>
             )}
+            {compactionAnnotation && (
+              <div
+                style={{
+                  alignSelf: 'flex-start',
+                  padding: '4px 10px',
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                  fontSize: 10,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  border: '1px dashed var(--hairline, currentColor)',
+                  borderRadius: 2,
+                  opacity: 0.7,
+                }}
+                title={
+                  `Auto-compacted ${compactionAnnotation.compactedCount} older turns ` +
+                  `(${compactionAnnotation.beforeTokens} → ${compactionAnnotation.afterTokens} tokens). ` +
+                  'Older messages still appear in your transcript but are summarised when sent to the model.'
+                }
+              >
+                Auto-compacted {compactionAnnotation.compactedCount} earlier turns
+              </div>
+            )}
             {outputFiles.length > 0 && <DownloadStrip files={outputFiles} />}
           </div>
         )
@@ -1493,7 +1565,7 @@ export default function TextPage() {
         body: bodyWithTools,
       }
     })
-    // ── Top-level recovery banner ────────────────────────────────────
+    // ── Top-level recovery banner ───────────────────────────────��────
     // Two cut-off modes that are NOT covered by the per-message
     // continue button (which only fires when an assistant message
     // already exists with a stuck tool / empty body):
@@ -1653,10 +1725,21 @@ export default function TextPage() {
                   disabled={isStreaming}
                   style={{
                     padding: '4px 12px',
-                    border: '1px solid currentColor',
+                    // Use the theme's `--foreground` for the slab and
+                    // `--bg` for the label. This guarantees contrast in
+                    // BOTH light and dark palettes:
+                    //   light → dark slab, near-white label
+                    //   dark  → cream slab, dark label
+                    // The earlier `background: currentColor` +
+                    // `color: var(--paper, #fff)` rendered as a totally
+                    // invisible white-on-white button in dark mode
+                    // because `--paper` doesn't exist as a token (so it
+                    // always fell back to #fff) and `currentColor` is
+                    // also near-white when dark-mode text is inherited.
+                    border: '1px solid var(--foreground)',
                     borderRadius: 2,
-                    background: 'currentColor',
-                    color: 'var(--paper, #fff)',
+                    background: 'var(--foreground)',
+                    color: 'var(--bg)',
                     cursor: isStreaming ? 'not-allowed' : 'pointer',
                     fontFamily: 'ui-monospace, SFMono-Regular, monospace',
                     fontSize: 11,
@@ -1901,6 +1984,71 @@ export default function TextPage() {
     return () => { cancelled = true }
   }, [])
 
+  /* ── Live input-token meter ─────────────────────────────────────────
+   *
+   * What we count, and why those numbers
+   *
+   *   PREAMBLE_FLOOR     — the Clox capabilities preamble lives in
+   *                        the route handler (server-side), so the
+   *                        client never sees the exact text. We hard-
+   *                        code its approximate size in tokens. After
+   *                        the recent trim it's ~700-900 tokens; we
+   *                        round up to 900 for a safe estimate. On
+   *                        Anthropic the preamble is now in the
+   *                        cacheable prefix (Phase 1a) so the SECOND
+   *                        and later turns of a chat won't actually
+   *                        spend this against TPM — but the meter
+   *                        shows the worst-case (turn-1) cost so the
+   *                        user can correlate it with rate-limit
+   *                        errors when they hit them.
+   *   sys                — user-saved persistent system prompt + any
+   *                        per-turn auto-detect skill prose. Both vary
+   *                        per request and are NOT in the cache prefix.
+   *   history            — every prior user/assistant turn in this
+   *                        chat. Grows linearly until Phase-3
+   *                        compaction kicks in.
+   *   draft              — what the user is typing right now.
+   *
+   * The meter renders alongside the existing `tokens · <cost>` slot in
+   * the composer toolbar (`ChatWorkspace.tokenEstimate`). The "cost"
+   * string is repurposed as a colour-coded headroom indicator
+   * relative to the SELECTED MODEL's per-minute input cap — which is
+   * the actual constraint that matters for the rate-limit bug. We
+   * don't claim dollar costs because they vary per provider tier and
+   * we don't track real usage on the client.
+   */
+  const tokenEstimate = useMemo(() => {
+    const PREAMBLE_FLOOR = 900
+    const sys = estimateTokensForString(systemPrompt)
+    const history = estimateTokensForMessages(messages as unknown[])
+    const draft = estimateTokensForString(input)
+    const tokens = PREAMBLE_FLOOR + sys + history + draft
+
+    // Per-model input TPM caps for tier-1 / commonly-provisioned
+    // accounts. These are the published Anthropic / OpenAI / Google
+    // defaults; users on higher tiers will simply see the meter say
+    // "near limit" earlier than reality, which fails safe.
+    const tpmCap: number = (() => {
+      const id = selectedTextModel.id.toLowerCase()
+      if (id.includes('opus'))     return 10_000
+      if (id.includes('sonnet'))   return 80_000
+      if (id.includes('haiku'))    return 100_000
+      if (id.includes('gpt-5'))    return 30_000
+      if (id.includes('gpt-4'))    return 30_000
+      if (id.includes('o1') || id.includes('o3')) return 30_000
+      if (id.includes('gemini'))   return 1_000_000
+      if (id.includes('grok'))     return 60_000
+      return 50_000
+    })()
+    const pct = Math.round((tokens / tpmCap) * 100)
+    const headroom =
+      pct < 50  ? `~${pct}% of ${formatTokenCount(tpmCap)} cap` :
+      pct < 80  ? `~${pct}% of cap — getting heavy` :
+      pct < 100 ? `~${pct}% of cap — near rate-limit` :
+                  `over cap — will likely hit rate-limit`
+    return { tokens, cost: headroom }
+  }, [systemPrompt, messages, input, selectedTextModel.id])
+
   return (
     <div className="fixed inset-0 isolate">
       <ChatWorkspace
@@ -1973,6 +2121,7 @@ export default function TextPage() {
         // make the chip read "2" after a single click and confuse users
         // about what they actually armed.
         toolsCount={toolsState.filter(t => t.on).length}
+        tokenEstimate={tokenEstimate}
         cmdkGroups={cmdkGroups}
         systemPrompt={systemPrompt}
         onChangeSystemPrompt={setSystemPrompt}

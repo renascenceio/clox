@@ -1,6 +1,9 @@
 import { streamText, createDataStreamResponse } from 'ai'
 import { resolveLanguageModel, AIProvider } from '@/domains/text-generation/services/model-router'
 import { assertBudget } from '@/lib/projects/server'
+import { loadSkillCatalog, buildSkillIndex } from '@/lib/skills-index'
+import { makeReadSkillTool } from '@/lib/tools/read-skill'
+import { compactTranscript } from '@/lib/transcript-compact'
 import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
 import { webSearchTool } from '@/lib/tools/web-search'
 import { runJavaScriptTool } from '@/lib/tools/run-javascript'
@@ -370,66 +373,25 @@ const CLOX_CAPABILITIES_PREAMBLE = [
   '  Diagram / flowchart   →  ```svg          (or ```html with mermaid)',
   '  Source code           →  ```<language>   the code',
   '',
+  // pptx, pdf, docx, xlsx specifics (schema, colour palettes, Path-A
+  // vs Path-B selection, incremental build pattern) live in the
+  // matching document-craft skills (PowerPoint Slide Specialist, PDF
+  // Document Specialist, Word Document Specialist, Excel Spreadsheet
+  // Specialist) which auto-activate on intent. The python tool also
+  // documents `/mnt/skills/`, `/mnt/user-data/outputs/`, and the
+  // 180s incremental pattern in its own description. Repeating any
+  // of that here just inflates every request by ~1.5k tokens — Opus
+  // 4.6 hits its 10k input-TPM ceiling on a fresh chat with a
+  // one-line prompt because of these duplicate paragraphs. Keep it
+  // brief; the skill / tool description is authoritative.
   'Pptx outline shape (the body of a ```pptx block):',
-  '  { "title": "Deck title (optional, becomes title slide)",',
-  '    "theme": {',
-  '      "background": "#0B1F3A",   // page colour, hex with or without #',
-  '      "heading":    "#D4AF37",   // slide titles + cover title',
-  '      "body":       "#F5F5F0",   // bullets + free-form body copy',
-  '      "accent":     "#D4AF37"    // legacy single-slot fallback',
-  '    },',
-  '    "slides": [',
-  '      { "title": "Slide 1", "bullets": ["…","…"], "notes": "…" },',
-  '      { "title": "Slide 2", "body": "free-form paragraph" }',
-  '    ] }',
-  '',
-  'COLOURS — when the user names colours ("dark blue and gold",',
-  '"navy + cream", "make it pink") you MUST emit a `theme` block with',
-  'concrete hex values. Don\'t skip the theme on the assumption that',
-  'pptxgenjs has nice defaults — its default is white background +',
-  'near-black text and the user will get a blank-looking deck. Pick',
-  'sensible hexes for the named colours and check contrast (light bg →',
-  'dark body; dark bg → light body; coloured bg → readable foreground).',
-  'Example mappings:',
-  '  • "dark blue + gold"  → bg #0B1F3A, heading #D4AF37, body #F5F5F0',
-  '  • "navy + cream"      → bg #0F1B3D, heading #F4E4C1, body #F4E4C1',
-  '  • "forest + ivory"    → bg #1F3A2E, heading #FAF7EE, body #FAF7EE',
-  '  • "minimal / neutral" → bg #FFFFFF, heading #111111, body #333333',
-  'If the user only names ONE colour, treat it as the heading/accent and',
-  'pair it with a complementary background (white if the colour is dark,',
-  'near-black or a deep neutral if the colour is light/saturated).',
-  '',
-  'PPTX path selection — the JSON outline above is the DEFAULT and',
-  'almost always the right choice. It renders client-side via',
-  'pptxgenjs in <2 seconds, never times out, and produces a clean',
-  'editable deck. ONLY fall back to building the PPTX with `python`',
-  '(python-pptx) when one of these is true:',
-  '  • The user uploaded a template (.pptx) and asked you to fill it.',
-  '  • The user explicitly asked you to use python.',
-  '  • The deck needs embedded chart images / custom XML the JSON',
-  '    path cannot express.',
-  'Default to a ```pptx fenced block for "make me a 10-slide deck',
-  'about X". Don\'t reach for python just because the python tool is',
-  'available — that path can hit the 180s wall-clock cap mid-deck',
-  'and silently lose progress.',
-  '',
-  'When you DO use python for a multi-slide / multi-page artifact,',
-  'build it INCREMENTALLY and save after every step. Each python',
-  'tool call has a 180s cap; if you try to render an entire deck in',
-  'one snippet the call can be aborted with no recoverable progress.',
-  'Pattern:',
-  '  call 1:  open or create /mnt/user-data/outputs/deck.pptx,',
-  '           add slide 1, save, print "saved 1/N"',
-  '  call 2:  reopen, add slide 2, save, print "saved 2/N"',
-  '  …',
-  'Same pattern for multi-page PDFs and large XLSX workbooks. The',
-  'sandbox preserves files between calls within the same chat — the',
-  'next call can re-open the same path. NEVER hold all the binary',
-  'data in memory across slides; reopen-and-save each time.',
-  '',
-  'If a python call returns `kind: "timeout"` or `kind: "runtime"`',
-  'with `suggestion`, READ the suggestion and follow it on the next',
-  'call. Don\'t retry the same code that just timed out.',
+  '  { "title": "…", "theme": { "background": "#…", "heading": "#…",',
+  '    "body": "#…", "accent": "#…" }, "slides": [ { … } ] }',
+  'When the active skill set includes a document specialist (pptx /',
+  'pdf / docx / xlsx), follow ITS guidance for full schema, colour',
+  'palettes, and python-vs-fenced-block path selection. Only fall',
+  'back to building richer files via the python tool when its',
+  'description tells you to.',
   '',
   'Multiple deliverables in one turn: when the user asks for SEVERAL',
   'formats at once (e.g. "give me a PDF and a docx of the same report"),',
@@ -558,17 +520,112 @@ export async function POST(req: Request) {
       (Array.isArray(messages) ? messages : []).map(inflateAttachments),
     )
 
+    // ── Auto-compaction (Phase 3) ─────────────────────────────────
+    //
+    // Long chats accumulate token cost linearly. By the time a chat
+    // hits 20-30 turns, the message array alone can exceed 8k tokens
+    // — and combined with the (cached) system prefix that pushes
+    // every request past Opus 4.6's 10k TPM ceiling. The compactor
+    // is a pure heuristic that folds older turns into a single
+    // summary system message while keeping the most recent ~8 turns
+    // verbatim, so the model retains coherence on the recent
+    // exchange while we shed bulk on the historical prefix.
+    //
+    // Per-model budget. The cap below is for the MESSAGES payload
+    // alone — we leave the rest of the TPM ceiling to the system
+    // prompt (which is mostly cacheable) and the model's completion.
+    const compactionBudget = (() => {
+      const id = (model ?? '').toLowerCase()
+      // Opus 4.6 is the tightest at 10k TPM tier-1. We aim for ~5k
+      // messages so even a worst-case dynamicSystem (3k) + completion
+      // (2k) headroom keeps us under cap.
+      if (id.includes('opus'))   return 5000
+      // Sonnet has 80k TPM headroom — barely worth compacting at all,
+      // but a soft cap keeps requests fast.
+      if (id.includes('sonnet')) return 20000
+      if (id.includes('haiku'))  return 30000
+      // OpenAI gpt-5/4: 30k TPM tier-1.
+      if (id.includes('gpt'))    return 18000
+      if (id.includes('o1') || id.includes('o3')) return 18000
+      // Gemini: 1M+ TPM, basically uncapped — only fire compaction
+      // on truly enormous transcripts.
+      if (id.includes('gemini')) return 80000
+      // Conservative default for any unknown / future model.
+      return 10000
+    })()
+    const compaction = compactTranscript(inflatedMessages, {
+      maxBudgetTokens: compactionBudget,
+    })
+    if (compaction.compactedCount > 0) {
+      console.log(
+        `[v0] auto-compacted ${compaction.compactedCount} turns ` +
+        `(${compaction.beforeTokens} → ${compaction.afterTokens} tok) ` +
+        `for model=${model}`,
+      )
+    }
+    const messagesForModel = compaction.messages
+
     const caller = await getCallerForLogging()
 
-    // Always lead with the Clox capabilities preamble; the user's
-    // own system prompt (if any) goes after it under the same role
-    // so model-specific instruction-following treats them as one
-    // continuous block. Concatenating into a single system message
-    // is more reliable than two consecutive system entries — some
-    // providers collapse / reject duplicates.
-    const composedSystem = systemPrompt
-      ? `${CLOX_CAPABILITIES_PREAMBLE}\n\n---\n\n${systemPrompt}`
+    // ── System-prompt segmentation for prompt caching ──────────────
+    //
+    // We split the system prompt into TWO segments so providers can
+    // cache the stable part:
+    //
+    //   stableSystem  — the Clox capabilities preamble. ~3.5k tokens,
+    //                   identical on every request, the single biggest
+    //                   recurring cost in our input bill.
+    //   dynamicSystem — the user-saved system prompt + any auto-detect
+    //                   skill blocks attached for THIS turn. Varies
+    //                   per chat (and per turn when auto-detect fires)
+    //                   so it must not be marked as part of the cache
+    //                   prefix.
+    //
+    // Caching by provider:
+    //
+    //   Anthropic — explicit. We mark the stableSystem message with
+    //     `experimental_providerMetadata.anthropic.cacheControl =
+    //     { type: 'ephemeral' }`. Anthropic caches up to and
+    //     including that breakpoint with a 5-minute TTL; subsequent
+    //     turns within that window pay 10% of the input token cost
+    //     AND count as 10% of the per-minute rate-limit accounting.
+    //     Cuts the typical 8-10k input request to ~1-2k after the
+    //     first turn, which is the difference between bouncing off
+    //     Opus 4.6's 10k TPM ceiling and not.
+    //
+    //   OpenAI — automatic. Any prompt ≥1024 tokens is auto-cached
+    //     keyed on its prefix; a 50% discount kicks in on prefix
+    //     hits. No markers needed — we just have to keep the
+    //     prefix stable, which is exactly why we've split here.
+    //     Caches are best-effort: cleared after ~5-10 minutes of
+    //     inactivity, but during an active chat they hit reliably.
+    //
+    //   Google Gemini — implicit on 2.5 family. Cached prefix tokens
+    //     get a 75% discount automatically. Same prefix-stability
+    //     requirement; no markers.
+    //
+    // We always emit `stableSystem` first and `dynamicSystem` second,
+    // both as separate system messages. AI SDK v4's provider adapters
+    // concatenate consecutive system messages for providers that don't
+    // accept multiple (OpenAI, Gemini), so this works universally.
+    // Load the skill catalogue once (cached for 60s in module scope).
+    // The slim INDEX (id + name + one-line description for every skill)
+    // gets folded into the cacheable stableSystem so the model knows
+    // what's loadable; the catalog Map is closed over by the
+    // `read_skill` tool factory below for O(1) full-prompt lookup.
+    const skillCatalog = await loadSkillCatalog()
+    const skillIndex = buildSkillIndex(skillCatalog)
+
+    const stableSystem = skillIndex
+      ? `${CLOX_CAPABILITIES_PREAMBLE}\n${skillIndex}`
       : CLOX_CAPABILITIES_PREAMBLE
+    const dynamicSystem = systemPrompt ?? ''
+    const isAnthropic = provider === 'anthropic'
+    // Kept for backwards compat with the few places below that still
+    // reference the old name (sandbox auto-arming, telemetry).
+    const composedSystem = dynamicSystem
+      ? `${stableSystem}\n\n---\n\n${dynamicSystem}`
+      : stableSystem
 
     // Build the tools bag for THIS request based on what the user has
     // armed in the slash menu. We allow-list known ids — a malicious
@@ -600,6 +657,17 @@ export async function POST(req: Request) {
     if (Array.isArray(requestedTools)) {
       if (requestedTools.includes('web_search'))     enabledTools.web_search     = webSearchTool
       if (requestedTools.includes('run_javascript')) enabledTools.run_javascript = runJavaScriptTool
+    }
+
+    // `read_skill` is ALWAYS available (no opt-in) when the catalogue
+    // is non-empty. It pairs with the slim "Available skills" index
+    // we spliced into stableSystem above — that index tells the model
+    // what's loadable, this tool actually loads it. The cost of having
+    // it permanently armed is small (~150 tokens of tool description)
+    // and the benefit is large (the model can pull in any specialist
+    // on demand instead of us pre-loading every plausible match).
+    if (skillCatalog.size > 0) {
+      enabledTools.read_skill = makeReadSkillTool(skillCatalog)
     }
     // Sandbox tools (bash + python) are bound INSIDE
     // `createDataStreamResponse.execute` further down. They need a
@@ -646,6 +714,21 @@ export async function POST(req: Request) {
         try { return JSON.stringify(error) } catch { return String(error) }
       },
       execute: dataStream => {
+        // Tell the UI we auto-compacted older turns. Surfaced as a
+        // small badge above the assistant's response so the user
+        // knows context was condensed and can hit "Compact chat
+        // again" if they want a fresh summary or restore old turns.
+        if (compaction.compactedCount > 0) {
+          try {
+            dataStream.writeMessageAnnotation({
+              type: 'compaction',
+              compactedCount: compaction.compactedCount,
+              beforeTokens:   compaction.beforeTokens,
+              afterTokens:    compaction.afterTokens,
+              ts: Date.now(),
+            })
+          } catch { /* annotation write is cosmetic */ }
+        }
         // `writeProgress` bridges the per-call SandboxProgressCallback
         // signature into a message annotation on the in-flight
         // assistant turn. Annotations written here land on the message
@@ -711,8 +794,28 @@ export async function POST(req: Request) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           model: resolved as any,
           messages: [
-            { role: 'system', content: composedSystem },
-            ...(inflatedMessages as never[]),
+            // Stable cacheable prefix. The Anthropic-only metadata is
+            // ignored by every other provider's adapter, so emitting
+            // it unconditionally is safe — but we ALSO key the
+            // metadata's presence on the live provider so a future
+            // adapter that complains about unknown keys doesn't break
+            // OpenAI / Gemini chats.
+            {
+              role: 'system' as const,
+              content: stableSystem,
+              ...(isAnthropic ? {
+                experimental_providerMetadata: {
+                  anthropic: { cacheControl: { type: 'ephemeral' as const } },
+                },
+              } : {}),
+            },
+            // Dynamic per-turn segment. Skipped when empty so we don't
+            // emit a useless second system message that some providers
+            // (xai, perplexity) handle imperfectly.
+            ...(dynamicSystem
+              ? [{ role: 'system' as const, content: dynamicSystem }]
+              : []),
+            ...(messagesForModel as never[]),
           ],
           temperature,
           // Document-generation requests (sandbox armed) burn tokens

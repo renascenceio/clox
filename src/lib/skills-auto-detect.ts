@@ -184,5 +184,23 @@ export function detectAutoSkills(
     return a.skill.name.localeCompare(b.skill.name)
   })
 
-  return matched.slice(0, 3).map(m => m.skill)
+  // Cap at ONE auto-detected skill per turn.
+  //
+  // Earlier we returned up to 3, on the theory that "make me a PDF
+  // landing page" should fire BOTH the PDF and HTML specialists. In
+  // practice that stacked 4-6k tokens of overlapping prose into every
+  // request: each document specialist is a multi-paragraph system
+  // prompt, and a typical brief matches 2 of them. Combined with the
+  // capabilities preamble (~3.5k tokens), a one-line user prompt
+  // routinely landed at 8-10k input tokens and bounced off Anthropic
+  // tier-1 Opus 4.6's 10k TPM ceiling.
+  //
+  // The single-best match is almost always the right one — the
+  // overlap-count sort puts the most specific skill first, and skills
+  // are written defensively enough that the runner-up's guidance is
+  // either redundant or contradictory. If the user genuinely needs a
+  // second skill they can pin it from /skills (those bypass this
+  // helper entirely) or wait for Phase 2's lazy `read_skill` tool to
+  // let the model fetch additional skills on demand. */
+  return matched.slice(0, 1).map(m => m.skill)
 }
