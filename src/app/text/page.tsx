@@ -27,13 +27,13 @@ import { VIDEO_MODELS } from '@/domains/video-generation/services/video-models'
 import { AUDIO_MODELS } from '@/domains/audio-generation/services/audio-models'
 import { getCapability, type Capability } from '@/lib/ai-capabilities'
 import {
-  getSkillsForModality,
-  buildSkillsPromptPrefix,
-  buildSkillsInstructions,
+  filterSkillsByModality,
   dbSkillsToOptions,
-  buildDbSkillsBlock,
+  buildSkillsBlock,
+  buildSkillsPromptPrefix,
+  resolveSkills,
   type SkillModality,
-} from '@/lib/skills-registry'
+} from '@/lib/skills'
 import { useUserSkills } from '@/lib/hooks/useUserSkills'
 import { detectAutoSkills } from '@/lib/skills-auto-detect'
 import { useAvailableModels } from '@/lib/use-available-models'
@@ -204,97 +204,58 @@ export default function TextPage() {
   const [maxTokens, setMaxTokens] = useState(2048)
 
   /* ----- skills ------------------------------------------------------
-     Two layered sources, one picker:
+     One source of truth: every selectable skill is a row in
+     `public.skills`, fetched via `useUserSkills()`. Modality is encoded
+     on each row's `tags` array (`text`, `image`, `video`, `audio`), and
+     `filterSkillsByModality` picks the relevant subset for the current
+     mode. The 21 behavioural overlays that used to live in
+     `lib/skills-registry.ts` were migrated into the table by
+     `scripts/005_registry_overlays.sql`, so /skills, the chat composer,
+     and every media-gen page now show identical lists.
 
-       1. TEXT MODE — the curated DB catalogue (`public.skills` +
-          `public.user_skills`) PLUS the in-code registry of behavioural
-          modifiers ("Step-by-step", "Concise", "Cite sources" …).
-          Previously the picker showed only the DB rows; if the seed
-          migration hadn't run for a given Supabase project, or RLS
-          hid the rows for an unauthenticated browser, the user saw
-          "0 skills" with no way to recover. Layering the registry
-          underneath means there is always a sensible baseline of
-          options, while the curated DB catalogue is still the place
-          power-users go to add their own.
-
-       2. MEDIA MODES (image / video / audio) — the in-code registry
-          only. Those are stylistic overlays ("Cinematic", "Editorial",
-          "Audiobook" …) that we don't store per-user; selection is kept
-          in component state for the lifetime of the page. */
+     Text-mode selections persist via `useUserSkills.toggle()` (round-
+     trips through Supabase). Media-mode selections (image/video/audio)
+     stay in-memory because they're stylistic overlays for a one-shot
+     prompt, not something users want to be sticky across sessions. */
   const dbSkills = useUserSkills()
 
-  // Media-mode (image/video/audio) skill selections live only in memory
-  // for the lifetime of the page — the picker for these modalities is a
-  // tone palette, not something users curate.
   const [imageSkillIds, setImageSkillIds] = useState<string[]>([])
   const [videoSkillIds, setVideoSkillIds] = useState<string[]>([])
   const [audioSkillIds, setAudioSkillIds] = useState<string[]>([])
-  // Text-mode registry-skill selections. We keep these alongside the DB
-  // selections (which round-trip through Supabase) so switching to a
-  // skill like "Concise" doesn't wait on a network call, and so users
-  // who aren't signed in still get behavioural modifiers.
-  const [textRegistrySkillIds, setTextRegistrySkillIds] = useState<string[]>([])
-
-  // Helper: is this id one of the in-registry text skills?
-  const textRegistryIds = useMemo(
-    () => new Set(getSkillsForModality('text').map(s => s.id)),
-    [],
-  )
 
   const activeSkillIds =
     modality === 'image' ? imageSkillIds :
     modality === 'video' ? videoSkillIds :
     modality === 'audio' ? audioSkillIds :
-    // Text mode: union of DB-active rows and registry selections.
-    [...dbSkills.activeIds, ...textRegistrySkillIds]
+    dbSkills.activeIds
 
   // The picker only offers skills declared for the active modality.
-  // For text mode we concatenate the registry options *and* the DB
-  // catalogue so the picker is never empty — the registry alone gives
-  // ~10 useful behavioural overlays even before any DB seed has run.
+  // `filterSkillsByModality` reads each row's `tags` array — text mode
+  // includes "tagged text" plus "untagged for any media", so the 46+
+  // long-form curated skills (PDF Specialist, Frontend Designer, …)
+  // keep showing up in chat without anyone having to backfill explicit
+  // text tags on every row.
   const availableSkills = useMemo(() => {
-    if (modality === 'text') {
-      const registry = getSkillsForModality('text').map(s => ({
-        id: s.id,
-        label: s.label,
-        description: s.description,
-        group: s.group,
-      }))
-      const dbRows = dbSkillsToOptions(dbSkills.skills)
-      // De-dupe by id in case a DB row happens to share an id with the
-      // registry (we'd prefer the DB row's wording in that case since
-      // it's closer to what the user explicitly curated).
-      const seen = new Set<string>()
-      return [...dbRows, ...registry].filter(opt => {
-        if (seen.has(opt.id)) return false
-        seen.add(opt.id)
-        return true
-      })
-    }
-    return getSkillsForModality(modality as SkillModality)
-      .map(s => ({ id: s.id, label: s.label, description: s.description, group: s.group }))
+    const filtered = filterSkillsByModality(dbSkills.skills, modality as SkillModality)
+    return dbSkillsToOptions(filtered)
   }, [modality, dbSkills.skills])
 
   const handleToggleSkill = (id: string) => {
     if (modality === 'text') {
-      // Route to the right backing store: registry skills are local
-      // component state, DB skills round-trip through Supabase so
-      // changes are reflected on the /skills page (and vice-versa).
-      if (textRegistryIds.has(id)) {
-        setTextRegistrySkillIds(curr =>
-          curr.includes(id) ? curr.filter(x => x !== id) : [...curr, id],
-        )
-      } else {
-        void dbSkills.toggle(id)
-      }
-      // If the user manually flips an auto-detected skill ON, drop it from
-      // the dismissal set so reverting (× then + again) stays consistent.
+      // Text-mode skills round-trip through Supabase so changes show
+      // up on the /skills page (and vice-versa).
+      void dbSkills.toggle(id)
+      // If the user manually flips an auto-detected skill ON, drop it
+      // from the dismissal set so reverting (× then + again) stays
+      // consistent.
       setDismissedAutoIds(prev => {
         if (!prev.has(id)) return prev
         const next = new Set(prev); next.delete(id); return next
       })
       return
     }
+    // Media modes keep selections in component state — they're per-
+    // prompt overlays, not user-curated catalogues.
     const current = activeSkillIds
     const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id]
     if (modality === 'image') setImageSkillIds(next)
@@ -322,8 +283,6 @@ export default function TextPage() {
   }
   const handleClearSkills = () => {
     if (modality === 'text') {
-      // Wipe BOTH layers so "Clear all" actually clears all.
-      setTextRegistrySkillIds([])
       void dbSkills.clearAll()
       return
     }
@@ -407,24 +366,18 @@ export default function TextPage() {
     setCurrentApiKey(key)
   }, [selectedTextModel.provider])
 
-  // Merge BOTH skill layers into the system prompt for every text
-  // request:
-  //   • DB rows carry their own full multi-paragraph system_prompt, so
-  //     they go through `buildDbSkillsBlock` which concatenates them
-  //     under a clearly delimited header.
-  //   • Registry skills are short directives ("Be concise", "Cite
-  //     sources", …) — `buildSkillsInstructions` renders them as a
-  //     bulleted list. Putting them before the DB block keeps the
-  //     concise-style overlays visible in case they conflict with a
-  //     longer DB prompt — the model tends to honour the most
-  //     recently emphasised constraint.
+  // Append the active DB skills to the system prompt for every text
+  // request. `buildSkillsBlock` concatenates each row's full
+  // `system_prompt` under a `### Name` header, so multi-paragraph
+  // prompts (Anthropic-style document specialists, the frontend-
+  // designer brief, …) keep their structure. Short overlay prompts
+  // (Concise, Step-by-step, JSON only) come through with the same
+  // formatting — they're just shorter, no special-casing needed. */
   const composedSystemPrompt = useMemo(() => {
-    const activeRows  = dbSkills.skills.filter(s => dbSkills.activeIds.includes(s.id))
-    const dbBlock     = buildDbSkillsBlock(activeRows)
-    const registryBlk = buildSkillsInstructions(textRegistrySkillIds)
-    const blocks = [systemPrompt.trim(), registryBlk, dbBlock].filter(Boolean)
-    return blocks.join('\n\n')
-  }, [systemPrompt, dbSkills.skills, dbSkills.activeIds, textRegistrySkillIds])
+    const activeRows = resolveSkills(dbSkills.skills, dbSkills.activeIds)
+    const skillsBlock = buildSkillsBlock(activeRows)
+    return [systemPrompt.trim(), skillsBlock].filter(Boolean).join('\n\n')
+  }, [systemPrompt, dbSkills.skills, dbSkills.activeIds])
 
   /* ----- per-message model byline ------------------------------------
      Each assistant message must show the model that *actually* produced
@@ -674,7 +627,7 @@ export default function TextPage() {
         dbSkills.skills,
         dbSkills.activeIds,
       ).filter(s => !dismissedAutoIds.has(s.id))
-      const autoBlock = buildDbSkillsBlock(autoSkills)
+      const autoBlock = buildSkillsBlock(autoSkills)
       const augmentedSystemPrompt = autoBlock
         ? `${composedSystemPrompt}\n\n${autoBlock}`
         : composedSystemPrompt
@@ -758,12 +711,15 @@ export default function TextPage() {
       // don't care simply ignore the field.
       const apiSecret =
         getAdminSettings().providers[selectedModel.provider]?.apiSecret || undefined
-      // Media generation routes accept a single `prompt` string. The cleanest
-      // way to thread skills through without changing every route is to
-      // prepend a short skills directive to the prompt itself. The registry
-      // returns '' when no skills are active so the prompt is unchanged.
-      const skillsPrefix = buildSkillsPromptPrefix(activeSkillIds)
-      const composedPrompt = skillsPrefix + promptText
+      // Media-gen routes accept a single `prompt` string. We thread the
+      // active skills through by prepending a tight directive built from
+      // each skill's `system_prompt`. `resolveSkills` drops any unknown
+      // ids (stale localStorage etc.) and `buildSkillsPromptPrefix`
+      // returns '' when nothing is active, so the prompt is unchanged
+      // when no skills are selected.
+      const activeMediaRows = resolveSkills(dbSkills.skills, activeSkillIds)
+      const skillsPrefix    = buildSkillsPromptPrefix(activeMediaRows)
+      const composedPrompt  = skillsPrefix + promptText
 
       let result: { url?: string; urls?: string[]; durationSec?: number; error?: string } = {}
       if (modality === 'image') {
