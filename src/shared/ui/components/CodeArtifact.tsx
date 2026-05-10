@@ -388,29 +388,47 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
       const spec = parsePptxSpec(code)
       const pres = new PptxGenJS()
       pres.layout = 'LAYOUT_WIDE'
-      const accent = spec.theme?.accent ?? '1A1A1A'
-      const bg = spec.theme?.background ?? 'FFFFFF'
+
+      // Resolve the 4-slot palette. pptxgenjs wants bare hex (no `#`)
+      // for `color` and `background.color`, so we normalise once.
+      // `accent` is the legacy single-slot colour and serves as the
+      // fallback for both heading and body when the model only emits
+      // one. Default heading/body is near-black (`1A1A1A`) so a
+      // minimum-effort outline still renders.
+      const toHex = (raw: string | undefined, fallback: string) => {
+        if (!raw) return fallback
+        const stripped = raw.replace(/^#/, '').trim()
+        // Reject anything that isn't 3 or 6 hex chars — pptxgenjs
+        // would silently render it as black otherwise. Unknown input
+        // falls back to the supplied default so colour briefs that
+        // arrive as CSS names (e.g. "navy") don't blow up the export.
+        return /^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(stripped) ? stripped : fallback
+      }
+      const accentRaw = spec.theme?.accent
+      const headingHex = toHex(spec.theme?.heading ?? accentRaw, '1A1A1A')
+      const bodyHex    = toHex(spec.theme?.body    ?? accentRaw, '1A1A1A')
+      const bgHex      = toHex(spec.theme?.background, 'FFFFFF')
 
       // Optional title slide — only emitted when the user supplied a
       // top-level title, so a single-slide outline doesn't get a
       // confusing duplicate cover.
       if (spec.title) {
         const cover = pres.addSlide()
-        cover.background = { color: bg }
+        cover.background = { color: bgHex }
         cover.addText(spec.title, {
           x: 0.5, y: 2.6, w: 12, h: 1.5,
-          fontSize: 40, bold: true, color: accent,
+          fontSize: 40, bold: true, color: headingHex,
           fontFace: 'Helvetica',
         })
       }
 
       for (const slide of spec.slides) {
         const s = pres.addSlide()
-        s.background = { color: bg }
+        s.background = { color: bgHex }
         if (slide.title) {
           s.addText(slide.title, {
             x: 0.5, y: 0.4, w: 12, h: 0.9,
-            fontSize: 28, bold: true, color: accent,
+            fontSize: 28, bold: true, color: headingHex,
             fontFace: 'Helvetica',
           })
         }
@@ -419,14 +437,14 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
             slide.bullets.map(b => ({ text: b, options: { bullet: true } })),
             {
               x: 0.6, y: 1.4, w: 11.5, h: 5.6,
-              fontSize: 18, color: accent, fontFace: 'Helvetica',
+              fontSize: 18, color: bodyHex, fontFace: 'Helvetica',
               valign: 'top',
             },
           )
         } else if (slide.body) {
           s.addText(slide.body, {
             x: 0.6, y: 1.4, w: 11.5, h: 5.6,
-            fontSize: 18, color: accent, fontFace: 'Helvetica',
+            fontSize: 18, color: bodyHex, fontFace: 'Helvetica',
             valign: 'top',
           })
         }
@@ -1235,9 +1253,30 @@ function mdToHtml(md: string): string {
  *  helper is forgiving — both top-level `slides` arrays and bare
  *  arrays are accepted, and `bullets` may be an array of strings or a
  *  newline-delimited string. */
+/**
+ * Theme is a 4-slot palette so a model can satisfy briefs like
+ * "dark blue and gold" — which need a coloured background AND a
+ * differently-coloured heading AND a third body colour to stay
+ * readable. Earlier this was a 2-slot `{background, accent}` shape
+ * and every brief that asked for >1 brand colour ended up rendering
+ * monochrome. All four slots are optional; when omitted they fall
+ * back to neighbours so a minimal `{accent}` still works:
+ *   heading ← accent ← '#1a1a1a'
+ *   body    ← accent ← '#1a1a1a'
+ *   bg      ← '#ffffff'
+ * Colours can be `#RRGGBB`, `RRGGBB`, or any CSS-parseable string
+ * for the in-chat preview; the exporter normalises to bare hex. */
 interface PptxSpec {
   title?: string
-  theme?: { background?: string; accent?: string }
+  theme?: {
+    background?: string
+    /** Title / slide-heading colour. Falls back to `accent`. */
+    heading?: string
+    /** Body / bullet copy colour. Falls back to `accent`. */
+    body?: string
+    /** Single-slot legacy colour, used as the heading + body fallback. */
+    accent?: string
+  }
   slides: Array<{
     title?: string
     bullets?: string[]
@@ -1288,8 +1327,17 @@ function parsePptxSpec(raw: string): PptxSpec {
  */
 function PptxPreview({ code }: { code: string }) {
   const spec = useMemo(() => parsePptxSpec(code), [code])
-  const accent = spec.theme?.accent ?? '#1a1a1a'
-  const bg = spec.theme?.background ?? '#ffffff'
+  // Mirror the exporter's 4-slot palette resolution so the preview is
+  // a faithful approximation of the downloaded deck. Hashes are
+  // preserved here because the preview consumes CSS-style strings,
+  // not pptxgenjs's bare-hex format. `withHash` adds a leading `#`
+  // when the model emits raw 6-digit hex (a common pattern).
+  const withHash = (c: string | undefined) =>
+    c ? (c.startsWith('#') || /[a-z]/i.test(c) && !/^[0-9a-fA-F]+$/.test(c) ? c : `#${c}`) : undefined
+  const accent  = withHash(spec.theme?.accent)  ?? '#1a1a1a'
+  const heading = withHash(spec.theme?.heading) ?? accent
+  const body    = withHash(spec.theme?.body)    ?? accent
+  const bg      = withHash(spec.theme?.background) ?? '#ffffff'
   return (
     <div style={{ padding: 14, maxHeight: 520, overflow: 'auto', background: 'rgb(var(--surface-rgb))' }}>
       {spec.title && (
@@ -1313,7 +1361,7 @@ function PptxPreview({ code }: { code: string }) {
               borderRadius: 2,
               padding: '14px 16px',
               background: bg,
-              color: accent,
+              color: body,
               fontFamily: 'Helvetica, ui-sans-serif, system-ui',
             }}
           >
@@ -1327,16 +1375,16 @@ function PptxPreview({ code }: { code: string }) {
               SLIDE {i + 1}
             </div>
             {s.title && (
-              <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>
+              <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 6, color: heading }}>
                 {s.title}
               </div>
             )}
             {s.bullets && s.bullets.length > 0 ? (
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, lineHeight: 1.6 }}>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, lineHeight: 1.6, color: body }}>
                 {s.bullets.map((b, bi) => <li key={bi}>{b}</li>)}
               </ul>
             ) : s.body ? (
-              <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>{s.body}</div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.6, color: body }}>{s.body}</div>
             ) : null}
             {s.notes && (
               <div style={{
