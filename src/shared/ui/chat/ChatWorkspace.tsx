@@ -190,6 +190,14 @@ export interface ChatWorkspaceProps {
   selectedSkillIds?: string[]
   onToggleSkill?: (id: string) => void
   onClearSkills?: () => void
+  /** Skills automatically detected for the current draft input. Rendered
+   *  as dashed-border "auto" pills in the ActiveSkillsBar so the user can
+   *  see what semi-automatic boost their prompt is going to receive
+   *  before pressing send. Detection is the page's responsibility — this
+   *  prop just carries the result. */
+  autoDetectedSkillIds?: string[]
+  /** Suppress an auto-detected skill for THIS turn only. */
+  onDismissAutoSkill?: (id: string) => void
 
   // transcript
   transcript: TranscriptMessage[]

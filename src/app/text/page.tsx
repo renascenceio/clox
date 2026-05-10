@@ -286,6 +286,12 @@ export default function TextPage() {
       } else {
         void dbSkills.toggle(id)
       }
+      // If the user manually flips an auto-detected skill ON, drop it from
+      // the dismissal set so reverting (× then + again) stays consistent.
+      setDismissedAutoIds(prev => {
+        if (!prev.has(id)) return prev
+        const next = new Set(prev); next.delete(id); return next
+      })
       return
     }
     const current = activeSkillIds
@@ -293,6 +299,25 @@ export default function TextPage() {
     if (modality === 'image') setImageSkillIds(next)
     else if (modality === 'video') setVideoSkillIds(next)
     else if (modality === 'audio') setAudioSkillIds(next)
+  }
+
+  /* ----- per-turn auto-skill state -----------------------------------
+     Auto-detected skills come from `detectAutoSkills(input, …)` and are
+     ephemeral — they apply only to the current draft. We need two
+     additions on top of that:
+       • Dismissals so the user can suppress an auto-suggestion before
+         sending (the "×" on a dashed pill in the ActiveSkillsBar).
+       • A live id list the composer can render even before submit, so
+         the user sees the semi-automatic boost their prompt is going
+         to receive.
+     The dismissal set is cleared after every successful submit so the
+     next prompt re-runs detection from scratch. */
+  const [dismissedAutoIds, setDismissedAutoIds] = useState<Set<string>>(new Set())
+
+  function handleDismissAutoSkill(id: string) {
+    setDismissedAutoIds(prev => {
+      const next = new Set(prev); next.add(id); return next
+    })
   }
   const handleClearSkills = () => {
     if (modality === 'text') {
@@ -496,6 +521,22 @@ export default function TextPage() {
     handleInputChange?.({ target: { value: v } } as unknown as React.ChangeEvent<HTMLTextAreaElement>)
   }
 
+  /** Live auto-detection ids for the current draft, filtered by
+   *  dismissals. Empty in non-text modalities and when the draft is empty.
+   *
+   *  Kept right next to the rest of the chat-state derivation so the
+   *  composer always renders the bar based on what the user is *currently*
+   *  typing — `detectAutoSkills` is cheap (regex over the catalogue's
+   *  tags + a phrase map) so re-running on every keystroke is fine. */
+  const autoDetectedSkillIds = useMemo(() => {
+    if (modality !== 'text') return []
+    if (!input?.trim()) return []
+    const detected = detectAutoSkills(input, dbSkills.skills, dbSkills.activeIds)
+    return detected
+      .filter(s => !dismissedAutoIds.has(s.id))
+      .map(s => s.id)
+  }, [modality, input, dbSkills.skills, dbSkills.activeIds, dismissedAutoIds])
+
   // Persist & rehydrate chat history per active chat id.
   useEffect(() => {
     if (chat.messages && chat.messages.length > 0) {
@@ -609,11 +650,15 @@ export default function TextPage() {
       // We pass them through `handleSubmit`'s per-submit `body` override
       // so the request gets the augmented systemPrompt without disturbing
       // the useChat options closure.
+      // Drop any auto-suggestions the user explicitly dismissed via the
+      // "×" on a dashed pill in the ActiveSkillsBar before this send. The
+      // dismissal set is cleared at the end of this handler so the next
+      // prompt re-runs detection from scratch.
       const autoSkills = detectAutoSkills(
         promptText,
         dbSkills.skills,
         dbSkills.activeIds,
-      )
+      ).filter(s => !dismissedAutoIds.has(s.id))
       const autoBlock = buildDbSkillsBlock(autoSkills)
       const augmentedSystemPrompt = autoBlock
         ? `${composedSystemPrompt}\n\n${autoBlock}`
@@ -665,6 +710,10 @@ export default function TextPage() {
       }
 
       setAttachments([])
+      // Auto-skill dismissals are per-turn — reset for the next prompt
+      // so a previously-suppressed skill can re-fire if the new draft
+      // matches it again.
+      if (dismissedAutoIds.size > 0) setDismissedAutoIds(new Set())
       return
     }
 
@@ -1350,6 +1399,8 @@ export default function TextPage() {
         selectedSkillIds={activeSkillIds}
         onToggleSkill={handleToggleSkill}
         onClearSkills={handleClearSkills}
+        autoDetectedSkillIds={autoDetectedSkillIds}
+        onDismissAutoSkill={handleDismissAutoSkill}
         transcript={transcript}
         isStreaming={isStreaming}
         inputValue={input}
