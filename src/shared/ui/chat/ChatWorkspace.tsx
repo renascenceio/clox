@@ -81,7 +81,9 @@ export interface ModeOption {
 
 /** A user-selectable skill — behavioural modifier stacked on top of the
  *  model's normal behaviour. Multiple skills can be active at once. The
- *  registry that produces these lives at `lib/skills-registry.ts`. */
+ *  helpers that produce these (filtering by modality, adapting DB rows
+ *  into options, building the system-prompt block) live at
+ *  `lib/skills.ts`; every skill row is sourced from `public.skills`. */
 export interface SkillOption {
   id: string
   label: string
