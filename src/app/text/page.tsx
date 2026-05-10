@@ -1653,10 +1653,21 @@ export default function TextPage() {
                   disabled={isStreaming}
                   style={{
                     padding: '4px 12px',
-                    border: '1px solid currentColor',
+                    // Use the theme's `--foreground` for the slab and
+                    // `--bg` for the label. This guarantees contrast in
+                    // BOTH light and dark palettes:
+                    //   light → dark slab, near-white label
+                    //   dark  → cream slab, dark label
+                    // The earlier `background: currentColor` +
+                    // `color: var(--paper, #fff)` rendered as a totally
+                    // invisible white-on-white button in dark mode
+                    // because `--paper` doesn't exist as a token (so it
+                    // always fell back to #fff) and `currentColor` is
+                    // also near-white when dark-mode text is inherited.
+                    border: '1px solid var(--foreground)',
                     borderRadius: 2,
-                    background: 'currentColor',
-                    color: 'var(--paper, #fff)',
+                    background: 'var(--foreground)',
+                    color: 'var(--bg)',
                     cursor: isStreaming ? 'not-allowed' : 'pointer',
                     fontFamily: 'ui-monospace, SFMono-Regular, monospace',
                     fontSize: 11,
