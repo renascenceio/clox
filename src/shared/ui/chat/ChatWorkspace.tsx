@@ -154,6 +154,12 @@ export interface ChatWorkspaceProps {
   // rail
   nav: RailNavItem[]
   recent: RailRecentItem[]
+  /** Caption above the recent list. Defaults to "recent" — surfaces that
+   *  show non-chat items in this slot (e.g. /projects shows recent
+   *  projects) override this to be honest about what the list contains.
+   *  Always rendered upper-case + tracked, so callers pass the lowercase
+   *  word(s) without manually applying the casing. */
+  recentLabel?: string
   onSeeAllRecent?: () => void
   onNewChat?: () => void
   onOpenCmdK?: () => void
@@ -260,6 +266,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     bodySlot,
     nav,
     recent,
+    recentLabel,
     onSeeAllRecent,
     onNewChat,
     onOpenCmdK,
@@ -373,6 +380,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
         brandVersion={brandVersion}
         nav={nav}
         recent={recent}
+        recentLabel={recentLabel}
         user={user}
         onNewChat={onNewChat}
         onOpenSettings={onOpenSettings}
@@ -460,6 +468,8 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
             attachments={attachments}
             onAttach={onAttach}
             onRemoveAttachment={onRemoveAttachment}
+            toolsState={toolsState}
+            onToggleTool={onToggleTool}
           />
         ) : (
           <ComposerSlash
@@ -484,6 +494,8 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
             attachments={attachments}
             onAttach={onAttach}
             onRemoveAttachment={onRemoveAttachment}
+            toolsState={toolsState}
+            onToggleTool={onToggleTool}
           />
         )}
         </>
@@ -619,7 +631,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
 function LeftRail({
   p, mono, serif,
   brandName, brandVersion,
-  nav, recent, user,
+  nav, recent, recentLabel, user,
   onNewChat, onOpenSettings, onOpenCmdK, onSeeAllRecent,
   theme, onChangeTheme,
   language = 'en', onChangeLanguage,
@@ -632,6 +644,7 @@ function LeftRail({
   brandVersion: string
   nav: RailNavItem[]
   recent: RailRecentItem[]
+  recentLabel?: string
   user: { initial: string; name: string; plan: string; email?: string }
   onNewChat?: () => void
   onOpenSettings?: () => void
@@ -720,7 +733,9 @@ function LeftRail({
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '10px 18px 6px',
         }}>
-          <span style={{ fontFamily: mono, fontSize: 9.5, letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted }}>recent</span>
+          <span style={{ fontFamily: mono, fontSize: 9.5, letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted }}>
+            {recentLabel ?? 'recent'}
+          </span>
           <button
             onClick={onSeeAllRecent}
             style={{ background: 'none', border: 'none', padding: 0, fontFamily: mono, fontSize: 9.5, color: p.inkMuted, letterSpacing: '0.06em', cursor: 'pointer' }}
@@ -749,8 +764,18 @@ function LeftRail({
             </button>
           ))}
           {recent.length === 0 && (
+            // Empty-state copy follows the label: surfaces showing
+            // "recent projects" should not say "no recent threads", and
+            // surfaces showing "chats in project" need a different
+            // call-to-action than the global "press ⌘N for a new chat".
+            // We default to the original chat copy when no override label
+            // is set so existing surfaces are unchanged.
             <div style={{ padding: '10px 18px', fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>
-              no recent threads — press ⌘N
+              {recentLabel === 'recent projects'
+                ? 'no projects yet'
+                : recentLabel === 'chats in project'
+                  ? 'no chats in this project yet'
+                  : 'no recent threads — press ⌘N'}
             </div>
           )}
         </div>
@@ -1318,6 +1343,7 @@ function ComposerChip({
   openMenu, setOpenMenu,
   inputValue, onInputChange, onSend, toolsCount, tokenEstimate,
   attachments, onAttach, onRemoveAttachment,
+  toolsState, onToggleTool,
 }: {
   p: Palette
   mono: string
@@ -1342,6 +1368,8 @@ function ComposerChip({
   attachments?: Attachment[]
   onAttach?: (files: FileList) => void
   onRemoveAttachment?: (id: string) => void
+  toolsState?: { label: string; on: boolean }[]
+  onToggleTool?: (label: string) => void
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -1534,6 +1562,8 @@ function ComposerChip({
               mode={mode}
               setMode={id => { setMode(id); setShowSlash(false); onInputChange('') }}
               onClose={() => { setShowSlash(false); if (inputValue === '/') onInputChange('') }}
+              toolsState={toolsState}
+              onToggleTool={onToggleTool}
             />
           )}
         </div>
@@ -1902,6 +1932,7 @@ function ComposerSlash({
   skills, selectedSkillIds, onToggleSkill, onClearSkills,
   inputValue, onInputChange, onSend, tokenEstimate, initialPaletteOpen,
   attachments, onAttach, onRemoveAttachment,
+  toolsState, onToggleTool,
 }: {
   p: Palette; mono: string; serif: string
   models: ModelOption[]; modes: ModeOption[]
@@ -1917,6 +1948,8 @@ function ComposerSlash({
   attachments?: Attachment[]
   onAttach?: (files: FileList) => void
   onRemoveAttachment?: (id: string) => void
+  toolsState?: { label: string; on: boolean }[]
+  onToggleTool?: (label: string) => void
 }) {
   // The slash composer surfaces skills via a small inline pill in the
   // top status line + a section in the slash palette. We intentionally
@@ -2088,6 +2121,8 @@ function ComposerSlash({
               models={models} modes={modes}
               model={model} setModel={id => { setModel(id); setShowPalette(false) }}
               mode={mode} setMode={id => { setMode(id); setShowPalette(false) }}
+              toolsState={toolsState}
+              onToggleTool={onToggleTool}
             />
           )}
         </div>
@@ -2116,12 +2151,22 @@ function kbdStyle(p: Palette, mono: string): CSSProperties {
 
 function SlashPalette({
   p, mono, serif, models, modes, model, setModel, mode, setMode, onClose,
+  toolsState, onToggleTool,
 }: {
   p: Palette; mono: string; serif: string
   models: ModelOption[]; modes: ModeOption[]
   model: string; setModel: (id: string) => void
   mode: string; setMode: (id: string) => void
   onClose?: () => void
+  /** Tools the host page wants to expose as togglable. The slash menu used
+   *  to render these as static decorative rows; passing real state turns
+   *  each one into a clickable on/off pill that flows through to the API
+   *  request via the host's `body` override. Static "attach file" and
+   *  "voice input" rows still appear because they're driven by other
+   *  affordances (paperclip, dictation button) — only the toggleable
+   *  capabilities live in this prop. */
+  toolsState?: { label: string; on: boolean }[]
+  onToggleTool?: (label: string) => void
 }) {
   // Escape closes the palette + click-outside (chip-composer wraps it in a
   // relatively-positioned anchor, so we hook into document listeners).
@@ -2141,7 +2186,13 @@ function SlashPalette({
     | { kind: 'header'; label: string }
     | { kind: 'mode'; id: string; label: string; hint: string; active: boolean }
     | { kind: 'model'; id: string; label: string; tag: string; short: string; active: boolean }
-    | { kind: 'tool'; label: string; hint: string }
+    // Tool rows split into two flavours. `static` rows describe shortcut
+    // affordances the user already has (attach, voice) — they're not
+    // togglable, just informational. `toggle` rows correspond to real
+    // model-callable tools (web_search, run_javascript) and clicking
+    // them flips the on/off state via onToggleTool.
+    | { kind: 'tool-static'; label: string; hint: string }
+    | { kind: 'tool-toggle'; label: string; on: boolean }
 
   const items: Item[] = useMemo(() => {
     const list: Item[] = []
@@ -2150,12 +2201,20 @@ function SlashPalette({
     list.push({ kind: 'header', label: 'model' })
     models.forEach(m => list.push({ kind: 'model', id: m.id, label: m.label, tag: m.tag, short: m.short, active: model === m.id }))
     list.push({ kind: 'header', label: 'tools' })
-    list.push({ kind: 'tool', label: 'attach file', hint: '⌘U' })
-    list.push({ kind: 'tool', label: 'web search', hint: 'on' })
-    list.push({ kind: 'tool', label: 'code execute', hint: 'on' })
-    list.push({ kind: 'tool', label: 'voice input', hint: '⌘\\' })
+    // Static affordances stay so the user remembers the keyboard shortcut.
+    list.push({ kind: 'tool-static', label: 'attach file', hint: '⌘U' })
+    // Real togglable tools — only render the rows the host page actually
+    // wired up. If `toolsState` is undefined we fall back to nothing
+    // (instead of the fake "on" rows we used to show), which makes it
+    // obvious to the developer that these need plumbing on this surface.
+    if (toolsState) {
+      for (const t of toolsState) {
+        list.push({ kind: 'tool-toggle', label: t.label, on: t.on })
+      }
+    }
+    list.push({ kind: 'tool-static', label: 'voice input', hint: '⌘\\' })
     return list
-  }, [models, modes, model, mode])
+  }, [models, modes, model, mode, toolsState])
 
   return (
     <div data-clox-slash-palette style={{
@@ -2209,14 +2268,35 @@ function SlashPalette({
             </button>
           )
         }
+        if (it.kind === 'tool-static') {
+          return (
+            <div key={i} style={{
+              display: 'flex', justifyContent: 'space-between',
+              padding: '5px 16px', fontSize: 13, color: p.ink,
+            }}>
+              <span>{it.label}</span>
+              <span style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted }}>{it.hint}</span>
+            </div>
+          )
+        }
+        // tool-toggle — clickable on/off row. The "on/off" hint is colour-
+        // coded against the same accent the active-model marker uses so
+        // the user gets a fast visual scan of which tools are armed.
         return (
-          <div key={i} style={{
-            display: 'flex', justifyContent: 'space-between',
-            padding: '5px 16px', fontSize: 13, color: p.ink,
+          <button key={i} onClick={() => onToggleTool?.(it.label)} style={{
+            display: 'flex', width: '100%', justifyContent: 'space-between',
+            padding: '5px 16px', fontSize: 13, color: p.ink, textAlign: 'left',
+            background: 'transparent', border: 'none', cursor: 'pointer',
           }}>
             <span>{it.label}</span>
-            <span style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted }}>{it.hint}</span>
-          </div>
+            <span style={{
+              fontFamily: mono, fontSize: 10,
+              color: it.on ? p.accent : p.inkMuted,
+              letterSpacing: '0.06em',
+            }}>
+              {it.on ? '● on' : 'off'}
+            </span>
+          </button>
         )
       })}
     </div>

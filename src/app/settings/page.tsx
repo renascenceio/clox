@@ -184,6 +184,7 @@ export default function SettingsPage() {
         onDeleteAccount={chrome.handleDeleteAccount}
         nav={chrome.nav}
         recent={recent}
+        onSeeAllRecent={chrome.onSeeAllRecent}
         onNewChat={chrome.onNewChat}
         breadcrumb="account · settings"
         title="Settings"

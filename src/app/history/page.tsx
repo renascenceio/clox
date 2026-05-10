@@ -195,6 +195,7 @@ export default function HistoryPage() {
         onDeleteAccount={chrome.handleDeleteAccount}
         nav={chrome.nav}
         recent={recent}
+        onSeeAllRecent={chrome.onSeeAllRecent}
         onNewChat={chrome.onNewChat}
         breadcrumb="library · history"
         title="History"

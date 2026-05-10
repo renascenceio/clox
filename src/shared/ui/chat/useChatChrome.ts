@@ -188,5 +188,11 @@ export function useChatChrome(active: ActiveRail) {
     onOpenSuperAdmin:  () => router.push('/admin'),
     onOpenSkills:      () => router.push('/skills'),
     onNewChat:         () => router.push('/text'),
+    // The "see all →" affordance in the rail's recent block. Defaults to
+    // /history (the chats list) — every chrome-driven surface (history,
+    // gallery, skills, settings, projects, project-detail) gets a working
+    // button by passing this through to ChatWorkspace. The /text composer
+    // wires its own version directly because it doesn't use this hook.
+    onSeeAllRecent:    () => router.push('/history'),
   }
 }

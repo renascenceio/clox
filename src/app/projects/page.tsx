@@ -12,7 +12,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 // produced a slightly different rail gutter on project routes.
 import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
 import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
-import { listChats } from '@/lib/chat-store'
 import RowActionsMenu, { RowActionIcons } from '@/shared/ui/components/RowActionsMenu'
 
 // ---------------------------------------------------------------------------
@@ -127,27 +126,35 @@ export default function ProjectsIndexPage() {
     } catch (e) { setError((e as Error).message); load() }
   }, [load])
 
-  // Recent text-chats for the rail. Same shape /history, /skills and other
-  // library surfaces use — a click drops the user back into /text on the
-  // selected thread. We don't deep-link here because the projects index is
-  // its own destination, not a chat composer.
+  // Recent **projects** for the rail.
+  //
+  // Every other library surface (/history, /gallery, /skills, /settings, the
+  // composers) shows recent CHATS in the rail because chats are the unit of
+  // work on those surfaces. /projects is different — it's the index of
+  // projects, so the rail should mirror that hierarchy: recent projects up
+  // top, click → /projects/[id] which then shows that project's chats.
+  //
+  // We pull the most recent eight ACTIVE (non-archived) projects sorted by
+  // last_activity_at, dropping the ones that have never had any activity
+  // (they show up in the body anyway, no need to repeat them in the rail).
+  // The meta line keeps the same "Mar 12 · model" cadence the chat rail uses
+  // by swapping in "Mar 12 · 4 chats" — same visual rhythm, project-shaped
+  // payload.
   const recent: RailRecentItem[] = useMemo(() => {
-    return listChats()
-      .filter(c => (c.modality ?? 'text') === 'text')
-      .sort((a, b) => b.createdAt - a.createdAt)
+    if (!projects) return []
+    return projects
+      .filter(p => p.archived_at === null)
+      .sort((a, b) => +new Date(b.last_activity_at) - +new Date(a.last_activity_at))
       .slice(0, 8)
-      .map(c => ({
-        id: c.id,
-        title: c.title,
+      .map(p => ({
+        id: p.id,
+        title: p.title,
         meta:
-          new Date(c.createdAt).toLocaleString([], { month: 'short', day: 'numeric' }) +
-          ' · ' + c.model.toLowerCase(),
-        onClick: () => {
-          if (typeof window !== 'undefined') localStorage.setItem('activeChatId:text', c.id)
-          chrome.router.push('/text')
-        },
+          new Date(p.last_activity_at).toLocaleString([], { month: 'short', day: 'numeric' }) +
+          ' · ' + (p.chat_count === 1 ? '1 chat' : `${p.chat_count} chats`),
+        onClick: () => chrome.router.push(`/projects/${p.id}`),
       }))
-  }, [chrome.router])
+  }, [projects, chrome.router])
 
   // The page body stays exactly as it was — only the chrome around it
   // changes. Wrapping it in `bodySlot` reuses the same scrollable content
@@ -279,6 +286,17 @@ export default function ProjectsIndexPage() {
         user={chrome.user}
         language={chrome.language}
         onChangeLanguage={chrome.handleChangeLanguage}
+        // "See all →" from the projects rail clears the active filter
+        // and ensures the body lists every project. We don't route to
+        // /history (the default for other surfaces) because the rail
+        // here shows projects, not chats — sending the user to a chats
+        // list would be off-topic.
+        onSeeAllRecent={() => {
+          setFilter('all')
+          if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+          }
+        }}
         onOpenSettings={chrome.onOpenSettings}
         onOpenSuperAdmin={chrome.onOpenSuperAdmin}
         onOpenSkills={chrome.onOpenSkills}
@@ -286,6 +304,11 @@ export default function ProjectsIndexPage() {
         onDeleteAccount={chrome.handleDeleteAccount}
         nav={chrome.nav}
         recent={recent}
+        // Honest caption: the rail here lists projects, not chats. Without
+        // this override the rail would silently say "RECENT" while showing
+        // a different shape of item than the rest of the app — exactly
+        // the source of confusion the user just reported.
+        recentLabel="recent projects"
         onNewChat={chrome.onNewChat}
         breadcrumb="workspaces · projects"
         title="Projects"

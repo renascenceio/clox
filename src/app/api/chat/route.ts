@@ -2,6 +2,8 @@ import { streamText } from 'ai'
 import { resolveLanguageModel, AIProvider } from '@/domains/text-generation/services/model-router'
 import { assertBudget } from '@/lib/projects/server'
 import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
+import { webSearchTool } from '@/lib/tools/web-search'
+import { runJavaScriptTool } from '@/lib/tools/run-javascript'
 
 export const maxDuration = 60
 
@@ -393,6 +395,7 @@ export async function POST(req: Request) {
     apiKey,
     projectId,
     chatId,
+    tools: requestedTools,
   }: {
     messages: unknown[]
     model: string
@@ -403,6 +406,10 @@ export async function POST(req: Request) {
     apiKey?: string
     projectId?: string | null
     chatId?: string | null
+    /** Canonical tool ids the user has armed in the slash menu, e.g.
+     *  ["web_search", "run_javascript"]. Anything else is ignored — the
+     *  client is untrusted, so we only accept ids we know how to map. */
+    tools?: string[]
   } = requestData
 
   // Project budget gate — block before spending if the project is out of credit.
@@ -459,6 +466,17 @@ export async function POST(req: Request) {
       ? `${CLOX_CAPABILITIES_PREAMBLE}\n\n---\n\n${systemPrompt}`
       : CLOX_CAPABILITIES_PREAMBLE
 
+    // Build the tools bag for THIS request based on what the user has
+    // armed in the slash menu. We allow-list known ids — a malicious
+    // body claiming `tools: ['delete_database']` simply gets ignored
+    // because the id has no entry in this map.
+    const enabledTools: Record<string, unknown> = {}
+    if (Array.isArray(requestedTools)) {
+      if (requestedTools.includes('web_search'))     enabledTools.web_search     = webSearchTool
+      if (requestedTools.includes('run_javascript')) enabledTools.run_javascript = runJavaScriptTool
+    }
+    const hasTools = Object.keys(enabledTools).length > 0
+
     const result = streamText({
       // `resolved` is always a LanguageModelV1 instance now (gateway strings
       // were removed). The cast satisfies the streamText prop type without
@@ -471,6 +489,21 @@ export async function POST(req: Request) {
       ],
       temperature,
       maxTokens,
+      // Only attach tools when at least one is armed. Passing an empty
+      // map confuses some providers (Anthropic in particular emits a
+      // 400 when `tools: {}` is sent), so we keep the request shape
+      // identical to the pre-tools path when nothing is on.
+      ...(hasTools
+        ? {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            tools: enabledTools as any,
+            // Cap the number of model<->tool round trips so a runaway
+            // chain (model keeps calling search forever) can't drain
+            // the user's budget. 4 is plenty for "search → reason →
+            // execute → answer" workflows.
+            maxSteps: 4,
+          }
+        : {}),
       onFinish: async ({ usage }) => {
         if (!caller) return
         try {

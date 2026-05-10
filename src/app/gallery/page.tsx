@@ -200,6 +200,7 @@ export default function GalleryPage() {
         onDeleteAccount={chrome.handleDeleteAccount}
         nav={chrome.nav}
         recent={recent}
+        onSeeAllRecent={chrome.onSeeAllRecent}
         onNewChat={chrome.onNewChat}
         breadcrumb="library · gallery"
         title="Gallery"
