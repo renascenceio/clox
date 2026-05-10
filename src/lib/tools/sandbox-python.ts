@@ -14,9 +14,10 @@
  *   - We use `python3` explicitly because the runtime is `python3.13`.
  *
  *   - Network: same deny-all-with-allowlist as bash.
- *   - Timeout: 90s per call (heavier than bash because PDF
+ *   - Timeout: 180s per call (heavier than bash because PDF
  *     rasterisation, xlsx-with-formulas, and large pptx assembly
- *     can legitimately take a while).
+ *     can legitimately take a while; 90s was hitting the ceiling on
+ *     10+ slide decks with chart rendering).
  */
 
 import { tool } from 'ai'
@@ -24,8 +25,17 @@ import { z } from 'zod'
 import { getOrCreateSandboxForChat, waitForPackages } from '@/lib/sandbox/manager'
 import { randomBytes } from 'node:crypto'
 
-/** Wall-clock cap per python call. */
-const PYTHON_TIMEOUT_MS = 90_000
+/** Wall-clock cap per python call. Trivial snippets (`from pptx
+ *  import Presentation; print("ok")`) finish in <1s. The reason this
+ *  cap is generous is the realistic worst case: a 10+ slide deck
+ *  with chart rendering through pillow + reportlab + a couple of
+ *  base64 image inserts can legitimately push 60-90s on a cold
+ *  sandbox where the Python interpreter is still warming caches. The
+ *  previous 90s cap was hitting that ceiling and aborting the snippet
+ *  mid-render. 180s leaves headroom while still bounding worst-case
+ *  cost; the outer chat function maxDuration (300s) is the real
+ *  ceiling. */
+const PYTHON_TIMEOUT_MS = 180_000
 
 /** Same cap as bash for stdout/stderr in the response envelope. */
 const STREAM_CAP_BYTES = 16 * 1024
@@ -50,7 +60,7 @@ export function makePythonTool(chatId: string) {
       'packages. Uploads are at /mnt/user-data/uploads/; write deliverables',
       'to /mnt/user-data/outputs/. Bundled Anthropic skill assets live at',
       '/mnt/skills/<skill-name>/ when the snapshot is enabled. Hard timeout',
-      'per call: 90 seconds.',
+      'per call: 180 seconds.',
     ].join(' '),
     parameters: z.object({
       code: z

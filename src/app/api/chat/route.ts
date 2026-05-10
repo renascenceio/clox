@@ -619,7 +619,16 @@ export async function POST(req: Request) {
             ...(inflatedMessages as never[]),
           ],
           temperature,
-          maxTokens,
+          // Document-generation requests (sandbox armed) burn tokens
+          // fast: per-slide content + multi-paragraph python snippets
+          // + tool result reads. The 2048 default truncated a 5-slide
+          // PPT mid-deck. We auto-promote to a much higher ceiling
+          // when the sandbox is armed — caller-supplied `maxTokens`
+          // still wins if it's higher (the user explicitly opted in
+          // to a bigger budget). A non-sandbox text chat keeps the
+          // requested cap as-is so we don't silently inflate cost
+          // for plain conversations.
+          maxTokens: sandboxArmed ? Math.max(maxTokens, 16384) : maxTokens,
           // Only attach tools when at least one is armed. Passing an empty
           // map confuses some providers (Anthropic in particular emits a
           // 400 when `tools: {}` is sent), so we keep the request shape
@@ -628,12 +637,18 @@ export async function POST(req: Request) {
             ? {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 tools: enabledTools as any,
-                // Cap the number of model<->tool round trips so a runaway
-                // chain (model keeps calling its tools forever) can't
-                // drain the user's budget. 8 covers "list uploads → read
-                // → process → write → list outputs → answer" comfortably
-                // for the document skills.
-                maxSteps: sandboxArmed ? 8 : 4,
+                // Cap the number of model<->tool round trips so a
+                // runaway chain (model keeps calling its tools
+                // forever) can't drain the user's budget. The happy
+                // path for docs is `bash ls → python v1 → bash list
+                // outputs → answer` (4 steps), but a realistic flow
+                // includes debugging: `bash ls → python v1
+                // (ModuleNotFoundError) → bash pip install → python
+                // v2 → bash inspect → python fix layout → bash list
+                // outputs → answer` (8 steps), and a multi-doc
+                // request can easily double that. 20 leaves headroom
+                // for retries while still bounding worst-case cost.
+                maxSteps: sandboxArmed ? 20 : 4,
               }
             : {}),
           onFinish: async ({ usage }) => {
