@@ -1,6 +1,9 @@
 import { streamText, createDataStreamResponse } from 'ai'
 import { resolveLanguageModel, AIProvider } from '@/domains/text-generation/services/model-router'
 import { assertBudget } from '@/lib/projects/server'
+import { loadSkillCatalog, buildSkillIndex } from '@/lib/skills-index'
+import { makeReadSkillTool } from '@/lib/tools/read-skill'
+import { compactTranscript } from '@/lib/transcript-compact'
 import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
 import { webSearchTool } from '@/lib/tools/web-search'
 import { runJavaScriptTool } from '@/lib/tools/run-javascript'
@@ -517,6 +520,51 @@ export async function POST(req: Request) {
       (Array.isArray(messages) ? messages : []).map(inflateAttachments),
     )
 
+    // ── Auto-compaction (Phase 3) ─────────────────────────────────
+    //
+    // Long chats accumulate token cost linearly. By the time a chat
+    // hits 20-30 turns, the message array alone can exceed 8k tokens
+    // — and combined with the (cached) system prefix that pushes
+    // every request past Opus 4.6's 10k TPM ceiling. The compactor
+    // is a pure heuristic that folds older turns into a single
+    // summary system message while keeping the most recent ~8 turns
+    // verbatim, so the model retains coherence on the recent
+    // exchange while we shed bulk on the historical prefix.
+    //
+    // Per-model budget. The cap below is for the MESSAGES payload
+    // alone — we leave the rest of the TPM ceiling to the system
+    // prompt (which is mostly cacheable) and the model's completion.
+    const compactionBudget = (() => {
+      const id = (model ?? '').toLowerCase()
+      // Opus 4.6 is the tightest at 10k TPM tier-1. We aim for ~5k
+      // messages so even a worst-case dynamicSystem (3k) + completion
+      // (2k) headroom keeps us under cap.
+      if (id.includes('opus'))   return 5000
+      // Sonnet has 80k TPM headroom — barely worth compacting at all,
+      // but a soft cap keeps requests fast.
+      if (id.includes('sonnet')) return 20000
+      if (id.includes('haiku'))  return 30000
+      // OpenAI gpt-5/4: 30k TPM tier-1.
+      if (id.includes('gpt'))    return 18000
+      if (id.includes('o1') || id.includes('o3')) return 18000
+      // Gemini: 1M+ TPM, basically uncapped — only fire compaction
+      // on truly enormous transcripts.
+      if (id.includes('gemini')) return 80000
+      // Conservative default for any unknown / future model.
+      return 10000
+    })()
+    const compaction = compactTranscript(inflatedMessages, {
+      maxBudgetTokens: compactionBudget,
+    })
+    if (compaction.compactedCount > 0) {
+      console.log(
+        `[v0] auto-compacted ${compaction.compactedCount} turns ` +
+        `(${compaction.beforeTokens} → ${compaction.afterTokens} tok) ` +
+        `for model=${model}`,
+      )
+    }
+    const messagesForModel = compaction.messages
+
     const caller = await getCallerForLogging()
 
     // ── System-prompt segmentation for prompt caching ──────────────
@@ -560,7 +608,17 @@ export async function POST(req: Request) {
     // both as separate system messages. AI SDK v4's provider adapters
     // concatenate consecutive system messages for providers that don't
     // accept multiple (OpenAI, Gemini), so this works universally.
-    const stableSystem = CLOX_CAPABILITIES_PREAMBLE
+    // Load the skill catalogue once (cached for 60s in module scope).
+    // The slim INDEX (id + name + one-line description for every skill)
+    // gets folded into the cacheable stableSystem so the model knows
+    // what's loadable; the catalog Map is closed over by the
+    // `read_skill` tool factory below for O(1) full-prompt lookup.
+    const skillCatalog = await loadSkillCatalog()
+    const skillIndex = buildSkillIndex(skillCatalog)
+
+    const stableSystem = skillIndex
+      ? `${CLOX_CAPABILITIES_PREAMBLE}\n${skillIndex}`
+      : CLOX_CAPABILITIES_PREAMBLE
     const dynamicSystem = systemPrompt ?? ''
     const isAnthropic = provider === 'anthropic'
     // Kept for backwards compat with the few places below that still
@@ -599,6 +657,17 @@ export async function POST(req: Request) {
     if (Array.isArray(requestedTools)) {
       if (requestedTools.includes('web_search'))     enabledTools.web_search     = webSearchTool
       if (requestedTools.includes('run_javascript')) enabledTools.run_javascript = runJavaScriptTool
+    }
+
+    // `read_skill` is ALWAYS available (no opt-in) when the catalogue
+    // is non-empty. It pairs with the slim "Available skills" index
+    // we spliced into stableSystem above — that index tells the model
+    // what's loadable, this tool actually loads it. The cost of having
+    // it permanently armed is small (~150 tokens of tool description)
+    // and the benefit is large (the model can pull in any specialist
+    // on demand instead of us pre-loading every plausible match).
+    if (skillCatalog.size > 0) {
+      enabledTools.read_skill = makeReadSkillTool(skillCatalog)
     }
     // Sandbox tools (bash + python) are bound INSIDE
     // `createDataStreamResponse.execute` further down. They need a
@@ -645,6 +714,21 @@ export async function POST(req: Request) {
         try { return JSON.stringify(error) } catch { return String(error) }
       },
       execute: dataStream => {
+        // Tell the UI we auto-compacted older turns. Surfaced as a
+        // small badge above the assistant's response so the user
+        // knows context was condensed and can hit "Compact chat
+        // again" if they want a fresh summary or restore old turns.
+        if (compaction.compactedCount > 0) {
+          try {
+            dataStream.writeMessageAnnotation({
+              type: 'compaction',
+              compactedCount: compaction.compactedCount,
+              beforeTokens:   compaction.beforeTokens,
+              afterTokens:    compaction.afterTokens,
+              ts: Date.now(),
+            })
+          } catch { /* annotation write is cosmetic */ }
+        }
         // `writeProgress` bridges the per-call SandboxProgressCallback
         // signature into a message annotation on the in-flight
         // assistant turn. Annotations written here land on the message
@@ -731,7 +815,7 @@ export async function POST(req: Request) {
             ...(dynamicSystem
               ? [{ role: 'system' as const, content: dynamicSystem }]
               : []),
-            ...(inflatedMessages as never[]),
+            ...(messagesForModel as never[]),
           ],
           temperature,
           // Document-generation requests (sandbox armed) burn tokens

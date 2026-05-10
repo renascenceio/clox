@@ -640,7 +640,37 @@ export default function TextPage() {
         dbSkills.skills,
         dbSkills.activeIds,
       ).filter(s => !dismissedAutoIds.has(s.id))
-      const autoBlock = buildSkillsBlock(autoSkills)
+      // Phase 2 (lazy skill loading): replace the multi-paragraph
+      // skill prose we used to inject with a 1-line STUB that names
+      // the auto-detected skill and points the model at the
+      // `read_skill` tool. The full prompt only enters context when
+      // (and if) the model actually decides to load it — saving
+      // ~2k tokens on the common case where the auto-detected skill
+      // is the right one and the model just needs the schema bits
+      // it can already glean from the slim index in stableSystem.
+      //
+      // We keep this as a STUB rather than dropping it entirely so
+      // the model gets a strong nudge ("auto-detected: PDF Document
+      // Specialist") and can decide for itself whether to load.
+      // Without the nudge, the model falls back to the index alone
+      // and may not realise the user's intent matched a specialist.
+      const autoBlock = autoSkills.length > 0
+        ? [
+            '',
+            '## Auto-detected skills for this turn',
+            '',
+            ...autoSkills.map(s => {
+              const desc = s.description ? ` — ${s.description}` : ''
+              return `- (${s.id}) ${s.name}${desc}`
+            }),
+            '',
+            'These skills look relevant to the user\'s request. If you',
+            'need their full guidance, call `read_skill({"skill_id":',
+            '"<id>"})` to load it. If the slim description above is',
+            'enough for this request, proceed without loading.',
+            '',
+          ].join('\n')
+        : ''
       const augmentedSystemPrompt = autoBlock
         ? `${composedSystemPrompt}\n\n${autoBlock}`
         : composedSystemPrompt
@@ -1054,6 +1084,21 @@ export default function TextPage() {
           mime:     String(a.mime ?? 'application/octet-stream'),
           size:     typeof a.size === 'number' ? a.size : 0,
         }))
+
+      // Auto-compaction notice. The route writes a single `compaction`
+      // annotation per turn when older messages were folded into a
+      // summary. We surface it as a small inline badge above the
+      // download strip so the user understands why their chat
+      // suddenly fits in the model's context — and so they can verify
+      // older context isn't being silently dropped without their
+      // awareness. */
+      const compactionAnnotation:
+        | { type: 'compaction'; compactedCount: number; beforeTokens: number; afterTokens: number }
+        | undefined =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        annotations.find((a: any) => a && a.type === 'compaction') as
+          | { type: 'compaction'; compactedCount: number; beforeTokens: number; afterTokens: number }
+          | undefined
 
       // ── Sandbox progress strip ─────────────────────────────────────
       // We surface three kinds of progress so the user always sees
@@ -1485,6 +1530,28 @@ export default function TextPage() {
                 </button>
               </div>
             )}
+            {compactionAnnotation && (
+              <div
+                style={{
+                  alignSelf: 'flex-start',
+                  padding: '4px 10px',
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                  fontSize: 10,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  border: '1px dashed var(--hairline, currentColor)',
+                  borderRadius: 2,
+                  opacity: 0.7,
+                }}
+                title={
+                  `Auto-compacted ${compactionAnnotation.compactedCount} older turns ` +
+                  `(${compactionAnnotation.beforeTokens} → ${compactionAnnotation.afterTokens} tokens). ` +
+                  'Older messages still appear in your transcript but are summarised when sent to the model.'
+                }
+              >
+                Auto-compacted {compactionAnnotation.compactedCount} earlier turns
+              </div>
+            )}
             {outputFiles.length > 0 && <DownloadStrip files={outputFiles} />}
           </div>
         )
@@ -1498,7 +1565,7 @@ export default function TextPage() {
         body: bodyWithTools,
       }
     })
-    // ── Top-level recovery banner ────────────────────────────────────
+    // ── Top-level recovery banner ───────────────────────────────��────
     // Two cut-off modes that are NOT covered by the per-message
     // continue button (which only fires when an assistant message
     // already exists with a stuck tool / empty body):

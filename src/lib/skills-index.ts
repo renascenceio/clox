@@ -126,7 +126,10 @@ export function buildSkillIndex(
   excludeIds: ReadonlyArray<string> = [],
 ): string {
   const exclude = new Set(excludeIds)
-  const lines = [...catalog.values()]
+  // `Array.from` rather than `[...catalog.values()]` keeps us
+  // compatible with the project's tsconfig target without needing
+  // --downlevelIteration enabled.
+  const lines = Array.from(catalog.values())
     .filter(s => !exclude.has(s.id))
     .map(s => {
       const desc = s.description ? ` — ${s.description}` : ''
