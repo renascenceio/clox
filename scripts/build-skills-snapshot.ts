@@ -133,13 +133,23 @@ async function main() {
     //
     //    qpdf IS available and useful for the few pdf skills that
     //    need linearisation / page splitting.
-    console.log('[snapshot] dnf install qpdf (best-effort for AL2023)…')
-    const SYSTEM_PACKAGES_BEST_EFFORT = ['qpdf']
+    //
+    //    Node 22 IS available in the AL2023 default repo (verified
+    //    via `dnf list available nodejs22`). We install it as a
+    //    REQUIRED package — Node powers the pptxgenjs engine the
+    //    PPTX skill recommends for create-from-scratch decks, which
+    //    is the engine path that produces the polished
+    //    "Claude-quality" output users compare to. Without Node,
+    //    pptxgenjs is unavailable and python-pptx becomes the only
+    //    engine, which loses ~30% of the visual richness (shape
+    //    library, theme presets, declarative chart styling).
+    console.log('[snapshot] dnf install qpdf + nodejs22 + npm…')
+    const SYSTEM_PACKAGES = ['qpdf', 'nodejs22', 'npm']
     const dnfResult = await sandbox.runCommand({
       cmd: 'sh',
       args: ['-lc',
         'sudo dnf install -y -q --setopt=install_weak_deps=False ' +
-        SYSTEM_PACKAGES_BEST_EFFORT.map(quote).join(' '),
+        SYSTEM_PACKAGES.map(quote).join(' '),
       ],
     })
     if (dnfResult.exitCode !== 0) {
@@ -147,6 +157,38 @@ async function main() {
       console.warn('[snapshot] dnf install returned non-zero; continuing anyway:')
       console.warn(err)
     }
+
+    //    AL2023 ships `nodejs22` as `/usr/bin/node-22`, not on PATH
+    //    as `node`. Symlink it so the PPTX primer's
+    //    `require('/opt/pptxgenjs')` flow works without per-chat
+    //    shell gymnastics.
+    console.log('[snapshot] symlinking node-22 / npm-22 onto PATH…')
+    await runOrThrow(sandbox, 'sh', ['-lc',
+      'sudo ln -sf "$(command -v node-22 || command -v node22 || echo /usr/bin/node-22)" /usr/local/bin/node 2>/dev/null; ' +
+      'sudo ln -sf "$(command -v npm-22 || command -v npm22 || echo /usr/bin/npm-22)" /usr/local/bin/npm 2>/dev/null; ' +
+      'node --version && npm --version',
+    ])
+
+    //    Pre-install pptxgenjs into a stable system-wide location.
+    //    Layout choice:
+    //      /opt/pptxgenjs-pkg/                ← npm install target
+    //      /opt/pptxgenjs-pkg/node_modules/pptxgenjs/  ← real package
+    //      /opt/pptxgenjs   →   pkg/node_modules/pptxgenjs (symlink)
+    //    So the PPTX primer can do `require('/opt/pptxgenjs')` and
+    //    Node's resolver finds the symlinked package's own main entry
+    //    (dist/pptxgen.cjs.js) without us having to expose npm's
+    //    quirky wrapper-package-json layout to the model.
+    //    Doing all of this inside the snapshot saves ~30s of `npm
+    //    install` on the first deck of every new chat.
+    console.log('[snapshot] npm install pptxgenjs + symlink…')
+    await runOrThrow(sandbox, 'sh', ['-lc',
+      'sudo mkdir -p /opt/pptxgenjs-pkg && ' +
+      'sudo chown -R "$(id -u):$(id -g)" /opt/pptxgenjs-pkg && ' +
+      'cd /opt/pptxgenjs-pkg && ' +
+      'npm init -y >/dev/null && ' +
+      'npm install --omit=dev pptxgenjs && ' +
+      'sudo ln -sfn /opt/pptxgenjs-pkg/node_modules/pptxgenjs /opt/pptxgenjs',
+    ])
 
     // 4. Python deps.
     console.log('[snapshot] pip install (this is the slow part)…')
@@ -159,9 +201,18 @@ async function main() {
     //    underlying system binaries aren't available on AL2023 (see
     //    the dnf section above for why). Importing them might still
     //    succeed at the pip layer but would just crash at first use.
-    console.log('[snapshot] verifying imports…')
+    console.log('[snapshot] verifying python imports…')
     await runOrThrow(sandbox, 'python3', ['-c',
-      'import pypdf, pdfplumber, openpyxl, docx, pptx, PIL, imageio, pandas, numpy, pikepdf; print("ok")',
+      'import pypdf, pdfplumber, openpyxl, docx, pptx, PIL, imageio, pandas, numpy, pikepdf; print("python ok")',
+    ])
+
+    //    Verify Node + pptxgenjs are reachable. Doing this in the
+    //    snapshot stage prevents the silent "deck looks plain"
+    //    failure mode where pptxgenjs was supposedly pre-installed
+    //    but `require` actually throws at runtime.
+    console.log('[snapshot] verifying pptxgenjs…')
+    await runOrThrow(sandbox, 'sh', ['-lc',
+      `node -e "const P=require('/opt/pptxgenjs'); const i=new P(); console.log('pptxgenjs ok, version:', require('/opt/pptxgenjs/package.json').version)"`,
     ])
 
     // 6. Snapshot.
