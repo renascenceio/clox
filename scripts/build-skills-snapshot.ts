@@ -33,23 +33,31 @@ import { Sandbox } from '@vercel/sandbox'
  *  dependency graph in a single pass. */
 const PYTHON_PACKAGES: string[] = [
   // PDF — pdf, pdf-reading, file-reading skills.
+  // Note: `pdf2image` is omitted on purpose. It wraps `pdftoppm`
+  // from poppler, which isn't packaged for AL2023; installing the
+  // Python wrapper without the binary would just give the model a
+  // confusing import-succeeds-but-runtime-fails footgun.
   'pypdf>=4.0',
   'pdfplumber>=0.11',
   'reportlab>=4.0',
-  'pdf2image>=1.17',
-  // Office — docx, xlsx, pptx skills.
+  // Office — docx, xlsx, pptx skills. All pure-Python, no system
+  // deps. THIS is what makes the pptx skill work end-to-end.
   'python-docx>=1.1',
   'openpyxl>=3.1',
   'python-pptx>=1.0',
   // Image / GIF — slack-gif-creator, canvas-design, algorithmic-art.
   'pillow>=10',
   'imageio>=2.34',
-  // OCR — pdf-reading, file-reading.
-  'pytesseract>=0.3',
   // Markdown / HTML pipelines — pdf, doc-coauthoring.
+  // `weasyprint` is omitted: it needs pango/cairo/gdk-pixbuf at
+  // runtime, which AL2023 doesn't ship, so its PDF output would
+  // crash with "no library called cairo". `markdownify` +
+  // `beautifulsoup4` are pure-Python and stay in.
   'markdownify>=0.13',
-  'weasyprint>=62',
   'beautifulsoup4>=4.12',
+  // PDF post-processing fallback. `pikepdf` is libqpdf bindings
+  // and AL2023 DOES ship qpdf (installed above), so this works.
+  'pikepdf>=8.0',
   // Numerics — algorithmic-art, xlsx, occasional analysis.
   'numpy>=1.26',
   'pandas>=2.2',
@@ -71,25 +79,74 @@ async function main() {
 
   try {
     // 1. Conventional folders.
+    //    `/mnt` itself is root-owned in Vercel Sandbox base images, so
+    //    every write under it has to go through `sudo`. We chown the
+    //    created folders back to the sandbox user so non-privileged
+    //    runtime code (the per-chat python tool) can write outputs.
     console.log('[snapshot] creating /mnt/user-data/{uploads,outputs}…')
-    await runOrThrow(sandbox, 'sh', ['-lc', 'mkdir -p /mnt/user-data/uploads /mnt/user-data/outputs'])
+    await runOrThrow(sandbox, 'sh', ['-lc',
+      'sudo mkdir -p /mnt/user-data/uploads /mnt/user-data/outputs && ' +
+      'sudo chown -R "$(id -u):$(id -g)" /mnt/user-data',
+    ])
 
     // 2. Clone the skills repo.
+    //    `git clone` into `/mnt/skills` needs root too (same reason as
+    //    above), but `git` itself runs fine as non-root once the
+    //    target directory exists and is owned by the sandbox user.
+    //    Pre-create + chown, then clone into the prepared directory.
     console.log(`[snapshot] cloning ${SKILLS_REPO_URL}…`)
+    await runOrThrow(sandbox, 'sh', ['-lc',
+      'sudo mkdir -p /mnt/skills && ' +
+      'sudo chown -R "$(id -u):$(id -g)" /mnt/skills',
+    ])
     await runOrThrow(sandbox, 'git', [
       'clone', '--depth', String(SKILLS_CLONE_DEPTH),
       SKILLS_REPO_URL, '/mnt/skills',
     ])
 
-    // 3. System tools each skill might shell out to. apt-get is fine
-    //    here because the sandbox is privileged during bootstrap; the
-    //    snapshot captures the resulting filesystem so per-chat
-    //    sandboxes see them without root.
-    console.log('[snapshot] apt-get install poppler-utils tesseract-ocr libreoffice imagemagick…')
-    await runOrThrow(sandbox, 'sh', ['-lc',
-      'sudo apt-get update -qq && sudo apt-get install -y -qq ' +
-      'poppler-utils tesseract-ocr libreoffice imagemagick',
-    ])
+    // 3. System tools each skill might shell out to.
+    //
+    //    Vercel Sandbox runs on Amazon Linux 2023, whose default repo
+    //    is intentionally minimal. We tried `tesseract`, `libreoffice`,
+    //    and `poppler-utils` and only the last one is even searchable;
+    //    the first two are simply not packaged. EPEL/Fedora overlays
+    //    are unsupported on AL2023 and tend to break glibc.
+    //
+    //    Strategy: install only what AL2023 ACTUALLY ships, treat
+    //    every package as best-effort, and rely on the pure-Python
+    //    pip deps (pypdf, pdfplumber, python-pptx, python-docx,
+    //    openpyxl, weasyprint, reportlab, pillow) for everything
+    //    else. For PPTX specifically this is sufficient — the
+    //    Anthropic pptx skill is pure python-pptx and needs no
+    //    system binaries. The capabilities we knowingly skip:
+    //      - tesseract (OCR)         → pytesseract becomes a no-op,
+    //                                  but no skill MUST OCR to
+    //                                  succeed; image skills still
+    //                                  render fine.
+    //      - libreoffice (soffice)   → cross-format conversion
+    //                                  (PPTX↔PDF↔DOCX) won't work;
+    //                                  the model has to emit the
+    //                                  target format directly.
+    //      - poppler (pdftoppm)      → pdf2image won't rasterise;
+    //                                  pdfplumber's text/table
+    //                                  extraction is unaffected.
+    //
+    //    qpdf IS available and useful for the few pdf skills that
+    //    need linearisation / page splitting.
+    console.log('[snapshot] dnf install qpdf (best-effort for AL2023)…')
+    const SYSTEM_PACKAGES_BEST_EFFORT = ['qpdf']
+    const dnfResult = await sandbox.runCommand({
+      cmd: 'sh',
+      args: ['-lc',
+        'sudo dnf install -y -q --setopt=install_weak_deps=False ' +
+        SYSTEM_PACKAGES_BEST_EFFORT.map(quote).join(' '),
+      ],
+    })
+    if (dnfResult.exitCode !== 0) {
+      const err = await dnfResult.stderr()
+      console.warn('[snapshot] dnf install returned non-zero; continuing anyway:')
+      console.warn(err)
+    }
 
     // 4. Python deps.
     console.log('[snapshot] pip install (this is the slow part)…')
@@ -98,9 +155,13 @@ async function main() {
     ])
 
     // 5. Smoke test — make sure the headline imports actually work.
+    //    We skip pdf2image/pytesseract/weasyprint here because the
+    //    underlying system binaries aren't available on AL2023 (see
+    //    the dnf section above for why). Importing them might still
+    //    succeed at the pip layer but would just crash at first use.
     console.log('[snapshot] verifying imports…')
     await runOrThrow(sandbox, 'python3', ['-c',
-      'import pypdf, pdfplumber, openpyxl, docx, pptx, PIL, imageio, pandas, numpy, weasyprint; print("ok")',
+      'import pypdf, pdfplumber, openpyxl, docx, pptx, PIL, imageio, pandas, numpy, pikepdf; print("ok")',
     ])
 
     // 6. Snapshot.
