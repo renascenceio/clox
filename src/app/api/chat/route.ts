@@ -642,13 +642,79 @@ export async function POST(req: Request) {
     // outputs/`. Before this auto-arm, those skills only worked when
     // the user ALSO toggled "python sandbox" in the composer — a UX
     // trap that produced "blank PPT" results when a skill was active
-    // but the toggle was off. We now detect the canonical sandbox
-    // mount path in the composed system prompt and unconditionally
-    // attach the tools when (a) chatId exists (per-chat microVM
-    // routing requirement) and (b) the prompt clearly expects them.
+    // but the toggle was off.
+    //
+    // We check TWO surfaces for the canonical sandbox mount path:
+    //
+    //   1. `composedSystem` — the assembled stable+dynamic prompt
+    //      shipped to the model on turn 1. Catches manually-pasted
+    //      skill content and `dynamicSystem` overrides.
+    //
+    //   2. ANY skill body in the catalogue. Skills are loaded LAZILY
+    //      via the `read_skill` tool — their full text never lands
+    //      in `composedSystem` until the model has already started
+    //      streaming. So checking composedSystem alone misses the
+    //      common case: user asks "make me an XLSX", model calls
+    //      `read_skill({xlsx})`, primer says "use python + write to
+    //      /mnt/user-data/outputs/" — but python isn't attached
+    //      because we never armed it. Model then dumps Python source
+    //      as assistant text, hits the 2048-token default cap, and
+    //      truncates at ~140 lines (the visible "XLSX cut off mid-
+    //      generation" bug). Inspecting the full catalogue at request-
+    //      build time avoids that race entirely.
+    //
     // The detection is intentionally narrow — matching the literal
-    // `/mnt/user-data/` so it can't mis-fire on unrelated text. */
-    const skillsRequireSandbox = composedSystem.includes('/mnt/user-data/')
+    // `/mnt/user-data/` so it can't mis-fire on unrelated text.
+    //
+    // To avoid arming the sandbox on EVERY chat (which would happen
+    // if we just looked at the catalogue, since document skills are
+    // globally available), we additionally gate on user intent: the
+    // most recent user message text must look like a document task,
+    // OR the user must have attached a file. The keyword list is
+    // deliberately broad enough to catch natural phrasings ("excel",
+    // "spreadsheet", "deck", "pdf", "word doc") without going so
+    // wide that it false-positives on unrelated chats.
+    const messageList: IncomingMessage[] = Array.isArray(messages)
+      ? (messages as IncomingMessage[])
+      : []
+    const lastUserMessage = (() => {
+      for (let i = messageList.length - 1; i >= 0; i--) {
+        const m = messageList[i]
+        if (m?.role === 'user') {
+          if (typeof m.content === 'string') return m.content
+          if (Array.isArray(m.content)) {
+            return (m.content as Array<{ type?: string; text?: string }>)
+              .map(p =>
+                p?.type === 'text' && typeof p.text === 'string' ? p.text : ''
+              )
+              .join(' ')
+          }
+        }
+      }
+      return ''
+    })().toLowerCase()
+    const DOC_KEYWORDS_RE =
+      /\b(xlsx|excel|spreadsheet|pivot table|workbook|pptx|powerpoint|slides?|deck|presentation|pdf|docx|word doc|word document|csv|chart|graph)\b/i
+    const userHasFileAttachment = (() => {
+      for (const m of messageList) {
+        if (m?.role === 'user' && Array.isArray(m.content)) {
+          for (const part of m.content as Array<{ type?: string }>) {
+            if (part?.type === 'file' || part?.type === 'image') return true
+          }
+        }
+      }
+      return false
+    })()
+    const userIntentNeedsDocs =
+      DOC_KEYWORDS_RE.test(lastUserMessage) || userHasFileAttachment
+    const catalogNeedsSandbox = userIntentNeedsDocs && (() => {
+      for (const skill of Array.from(skillCatalog.values())) {
+        if (skill.system_prompt.includes('/mnt/user-data/')) return true
+      }
+      return false
+    })()
+    const skillsRequireSandbox =
+      composedSystem.includes('/mnt/user-data/') || catalogNeedsSandbox
     const userArmedSandbox =
       Array.isArray(requestedTools) &&
       (requestedTools.includes('bash') || requestedTools.includes('python'))
