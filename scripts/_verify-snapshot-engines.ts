@@ -267,10 +267,19 @@ print('ok')
         expect: out => /True/.test(out),
       },
       {
+        // The 30KB floor was too aggressive for this minimal smoke
+        // test — reportlab on AL2023 produces a ~4.5KB PDF for the
+        // bare 4-page snippet because it ships with subset embedded
+        // base fonts and no images. The model-driven primer output
+        // will be substantially larger (cover image, palette swatches,
+        // KPI tiles, charts), but this harness only validates that
+        // the engine WORKS end-to-end. Lowered to 2KB to filter out
+        // truly broken zero/single-byte outputs, while not flagging
+        // legitimately compact PDFs.
         lang: 'sh',
-        label: 'file size 30KB-3MB',
+        label: 'file size 2KB-3MB',
         code: `stat -c %s /mnt/user-data/outputs/smoke.pdf`,
-        expect: out => { const n = Number(out.trim()); return n >= 30_000 && n <= 3_000_000 },
+        expect: out => { const n = Number(out.trim()); return n >= 2_000 && n <= 3_000_000 },
       },
     ],
   },
