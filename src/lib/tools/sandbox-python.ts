@@ -95,22 +95,15 @@ export function makePythonTool(chatId: string, onProgress?: SandboxProgressCallb
       '    AND its referenced sub-files first. The first call of any',
       '    document task should be `cat` on the SKILL.md, NOT writing code.',
       '',
-      'ENGINE SELECTION for PPTX:',
-      '  The Anthropic pptx skill recommends TWO engines depending on',
-      '  intent. Pick deliberately:',
-      '    • CREATE-FROM-SCRATCH (pitch decks, formatted slides with',
-      '      KPI tiles, decorative shapes, multi-series charts, theme',
-      '      palettes, master slides) → read pptxgenjs.md and use the',
-      '      JavaScript engine via Node. This is the path that yields',
-      '      the polished "Claude-quality" output users compare to.',
-      '      Note: `pptxgenjs` is Node-based; if it is not yet',
-      '      installed in this sandbox, install with',
-      '      `npm install --prefix /tmp/pptxgenjs pptxgenjs` first.',
-      '    • EDIT-EXISTING (the user attached a .pptx and wants you to',
-      '      modify it, swap text, replace images, recolour) → read',
-      '      editing.md and use python-pptx (already installed).',
-      '  When in doubt: scratch deck → pptxgenjs, editing pass → python-pptx.',
-      '',
+      // Detailed PPTX engine selection (pptxgenjs vs python-pptx)
+      // used to live here, but it belongs to the PPTX skill primer
+      // now — pushing it down into the format-specific primer means
+      // we don't leak PPTX-specific guidance into every python call
+      // (XLSX/PDF/DOCX work didn't need it), and the primer carries
+      // the full visual quality charter that produces the
+      // "Claude-quality" output. See scripts/skill-rewrites/pptx.ts.
+      // The snapshot pre-installs pptxgenjs at /opt/pptxgenjs so
+      // `require("/opt/pptxgenjs")` is zero-config from Node.
       'INCREMENTAL BUILDS: each python call is capped at 180s wall-clock.',
       'For multi-slide / multi-page deliverables, save after every step:',
       '  call 1: open or create the file, add page/slide 1, save, print "1/N".',
