@@ -10,7 +10,13 @@
  * no-op, bumping it triggers an UPDATE on all four primers.
  */
 
-export const CHARTER_VERSION = 1
+// v1 — initial four-primer rewrite (PPTX/XLSX/PDF/DOCX from a single charter).
+// v2 — PPTX primer switched from pptxgenjs (JS-in-Python heredoc, output-cap
+//      casualty) to python-pptx (native, genuinely incremental). HARD LIMIT
+//      block added at top of the primer. Inspect/failure sections updated.
+//      Other three primers re-pushed unchanged but with a fresh version
+//      tag so the idempotency guard doesn't skip them on a fresh DB.
+export const CHARTER_VERSION = 2
 
 // ─── PRECEDENCE BANNER ────────────────────────────────────────────
 // Shipped at the top of every primer. The model's first job is to

@@ -936,7 +936,7 @@ export async function POST(req: Request) {
                 maxSteps: sandboxArmed ? 50 : 4,
               }
             : {}),
-          onFinish: async ({ usage, finishReason, providerMetadata }) => {
+          onFinish: async ({ usage, finishReason, providerMetadata, steps }) => {
             // (0) Finish-reason telemetry + user-facing nudge.
             //     `finishReason` tells us EXACTLY why the stream
             //     ended. Until now we logged nothing here, which is
@@ -986,15 +986,55 @@ export async function POST(req: Request) {
               }),
             )
             if (finishReason === 'length' || finishReason === 'other') {
+              // Distinguish two flavours of "ran out of output room":
+              //
+              //  (a) Pure-text truncation. The model was streaming
+              //      prose / a fenced artifact and hit the cap in
+              //      the middle of text. "Continue" can pick up
+              //      where it left off; the previous assistant
+              //      message is well-formed as far as the tool layer
+              //      is concerned.
+              //
+              //  (b) MID-TOOL-CALL truncation. The model was mid-
+              //      way through emitting a tool call's `args` JSON
+              //      and the cap interrupted it. The partial tool
+              //      argument is malformed JSON, so it was NEVER
+              //      executed — nothing got written to the sandbox.
+              //      "Continue" CANNOT recover: the AI SDK has no
+              //      mechanism to resume a half-written JSON literal,
+              //      and on the next turn the model starts fresh,
+              //      typically overwriting any earlier progress.
+              //
+              // We can tell the two apart by inspecting `steps`. If
+              // the last step has `toolCalls.length > 0` and
+              // `toolResults.length < toolCalls.length`, we caught
+              // the model emitting a tool call that never ran — i.e.
+              // case (b). In that case we surface a DIFFERENT
+              // message that tells the user the truth (continue
+              // won't help; the build must be restarted with smaller
+              // snippets, or with a different model).
+              let truncationFlavour: 'text' | 'mid-tool-call' = 'text'
+              try {
+                const last = Array.isArray(steps) ? steps[steps.length - 1] : undefined
+                const tc = last?.toolCalls?.length ?? 0
+                const tr = last?.toolResults?.length ?? 0
+                if (tc > 0 && tr < tc) truncationFlavour = 'mid-tool-call'
+              } catch {
+                // If we can't introspect, fall through to the
+                // generic message — better than nothing.
+              }
               try {
                 dataStream.writeMessageAnnotation({
                   type: 'finish-warning',
                   reason: finishReason,
+                  flavour: truncationFlavour,
                   // Human-readable, surface this verbatim in the UI.
                   message:
-                    finishReason === 'length'
-                      ? 'Reached the model\'s per-turn output limit. The work above is complete up to where the message ends — reply "continue" to resume.'
-                      : 'Hit the tool-step cap (50 sequential tool calls). The deliverables produced so far were saved to your outputs and uploaded; reply "continue" to finish the rest.',
+                    finishReason === 'other'
+                      ? 'Hit the tool-step cap (50 sequential tool calls). The deliverables produced so far were saved to your outputs and uploaded; reply "continue" to finish the rest.'
+                      : truncationFlavour === 'mid-tool-call'
+                      ? 'The model ran out of output room WHILE emitting a tool call. The partial call was not executed and "continue" cannot resume it. Restart the build with explicit "one slide / page / sheet per snippet" instructions, or try a model with a larger output cap (eg. Claude Sonnet 4.6 with the 128k beta).'
+                      : 'Reached the model\'s per-turn output limit. The work above is complete up to where the message ends — reply "continue" to resume.',
                 })
               } catch {
                 // Stream might already be closed; the server log
