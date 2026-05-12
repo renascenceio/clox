@@ -1402,6 +1402,20 @@ export default function TextPage() {
                   const code = String(inv.args?.code ?? '')
                   const firstLine = code.split('\n').find(l => l.trim().length > 0) ?? ''
                   detail = firstLine ? firstLine.slice(0, 80) : null
+                } else if (name === 'read_skill') {
+                  // `read_skill` is the model's "go fetch the full
+                  // system_prompt for skill X" call. The internal
+                  // tool name is fine for the backend, but in the
+                  // chat surface it reads as opaque jargon ("CALLED
+                  // READ_SKILL"). Translate to a human label, and
+                  // resolve the skill_id to a friendly name so the
+                  // user sees which specialist the model is loading
+                  // (e.g. "Loading PPTX (read & write)…").
+                  const skillId = String(inv.args?.skill_id ?? '')
+                  const skillName =
+                    dbSkills.skills.find(s => s.id === skillId)?.name ?? null
+                  const label = skillName ?? 'skill'
+                  title = isRunning ? `Loading ${label}…` : `Loaded ${label}`
                 } else {
                   title = isRunning ? `Calling ${name}…` : `Called ${name}`
                 }
