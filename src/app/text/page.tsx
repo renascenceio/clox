@@ -471,6 +471,20 @@ export default function TextPage() {
       // is cheap and explicit; the route reads `tools: []` as "no
       // tools, behave like a plain chat" with zero overhead.
       tools: enabledToolIds,
+      // CRITICAL — the route's `sandboxArmed` check is gated on
+      // `Boolean(chatId)`, and `useChat`'s top-level `id` field is
+      // NOT forwarded as `chatId` in the POST body (it's only used
+      // for the SDK's internal message store). Without this line,
+      // every request had chatId=undefined → sandboxArmed=false →
+      // the python/bash tools were silently NEVER attached to
+      // streamText. The model then had no choice but to emit the
+      // entire deck (a 600-line pptxgenjs script) as a fenced
+      // artifact, which costs 25-30k output tokens and truncates
+      // mid-deck even with the 128k beta header. With this field
+      // present, the sandbox boots once per chat, lives across all
+      // turns (including "continue"), and the model uses
+      // python-pptx (stateful, incremental) instead.
+      chatId: activeChatId,
     },
     onError: error => console.error('[v0] chat api error:', error),
     onFinish: (message: { id?: string }) => {
