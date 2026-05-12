@@ -529,29 +529,37 @@ const TEXT_CAPABILITIES: Capability[] = [
   gptText('gpt-4o',      'GPT-4o',      128_000,  16_384, { vision: true }),
   gptText('gpt-4o-mini', 'GPT-4o mini', 128_000,  16_384, { vision: true }),
 
-  // Anthropic Claude. Ceilings here represent the MAXIMUM each
-  // model supports when the request includes the
+  // Anthropic Claude.
+  //
+  // Input ceiling — Sonnet 4.6 and Opus 4.6 went GA with a 1M token
+  // context window in April 2026; the prior `context-1m-2025-08-07`
+  // beta header was retired on the same date because 1M became the
+  // default. So no header is needed, just the larger ceiling.
+  // Haiku 4.5 stays at its native 200K (no 1M tier).
+  //
+  // Output ceiling — set to the documented per-model maximum when
+  // the request includes
   //   anthropic-beta: output-128k-2025-02-19
-  // header. That header is forwarded by the AI Gateway when we set
-  // it in providerOptions.anthropic.headers (see api/chat/route.ts).
-  // The full ladder per Anthropic's docs:
+  // (forwarded by the AI Gateway via providerOptions.anthropic.
+  // headers in api/chat/route.ts). The full ladder per Anthropic:
   //   - default                            : 32k (Sonnet/Opus), 64k (Haiku 4.5)
   //   - "output-64k" beta                  : 64k
   //   - "output-128k-2025-02-19" beta      : 128k (active)
-  // We previously sat at 16k (half the default) which truncated
-  // document builds mid-deck. Now pinned at the documented max for
-  // each model so the user gets every output token Anthropic will
-  // sell us.
-  claudeText('claude-opus-4.6',   'Claude Opus 4.6',   200_000, 128_000, { extendedThinking: true }),
-  claudeText('claude-sonnet-4.6', 'Claude Sonnet 4.6', 200_000, 128_000, { extendedThinking: true }),
-  claudeText('claude-haiku-4.5',  'Claude Haiku 4.5',  200_000,  64_000),
+  claudeText('claude-opus-4.6',   'Claude Opus 4.6',   1_000_000, 128_000, { extendedThinking: true }),
+  claudeText('claude-sonnet-4.6', 'Claude Sonnet 4.6', 1_000_000, 128_000, { extendedThinking: true }),
+  claudeText('claude-haiku-4.5',  'Claude Haiku 4.5',    200_000,  64_000),
 
-  // Mistral
+  // Mistral — current Large 2 and Small both ship with a 128K
+  // context window per Mistral's API docs. Output cap is 8K which
+  // matches what the model will actually emit before degradation.
   mistralText('mistral-large-latest', 'Mistral Large', 128_000, 8_000),
   mistralText('mistral-small-latest', 'Mistral Small', 128_000, 8_000),
 
-  // xAI Grok
-  grokText('grok-4', 'Grok 4', 1_000_000, 8_192, { reasoning: true, web: true }),
+  // xAI Grok 4 — API max is 256K per request (the Web/App UI is
+  // capped at 128K but our requests go through the API). We had
+  // this at 1M which was wrong and would have caused 400s once a
+  // chat's transcript drifted past ~256K of accumulated input.
+  grokText('grok-4', 'Grok 4', 256_000, 8_192, { reasoning: true, web: true }),
   grokText('grok-3', 'Grok 3',   131_072, 8_192, { web: true }),
 
   // DeepSeek
