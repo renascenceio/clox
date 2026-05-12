@@ -37,31 +37,22 @@ import type { SkillFull } from '@/lib/skills-index'
 
 export function makeReadSkillTool(catalog: Map<string, SkillFull>) {
   return tool({
+    // Compressed late 2026: was ~1.6 KB of explanatory prose about
+    // WHY speculative loads are expensive; the model just needs the
+    // contract (id-from-index, one-at-a-time, ask-if-ambiguous).
     description: [
-      'Load the full system prompt for a skill in the Clox skills catalogue,',
-      'identified by its uuid `skill_id`. Use this when the active skill set',
-      'and the slim "Available skills" index in your system prompt show that',
-      'a different specialist (PDF Document Specialist, Frontend Designer,',
-      'Brainstormer, Skill Author, …) would help with the current request.',
-      'Returned text is authoritative for the rest of this turn — apply its',
-      "instructions in addition to the active skills'. NEVER call this for a",
-      'skill whose id is not in the index — the call will fail.',
+      'Load a skill\'s full system prompt by uuid `skill_id` (from the',
+      '"Available skills" index in your system prompt). Returned text is',
+      'authoritative for the rest of the turn. Fails if the id is not in',
+      'the index.',
       '',
-      'NEVER LOAD SPECULATIVELY. Each call costs ~2k input tokens and there',
-      'are hard per-minute limits (Sonnet 4.6: 10,000 input tokens / min,',
-      'tier-1). Three speculative skill loads in a single turn — say, one',
-      'for each format the user named — will blow the budget before any',
-      'output token streams, and the user sees a rate-limit banner instead',
-      'of an answer.',
-      '',
-      'Specifically: if the user\'s message lists multiple document formats',
-      '(e.g. "Excel, Powerpoint and Docs") WITHOUT a topic, audience, or',
-      'content brief, the right move is to ASK FOR CLARIFICATION first',
-      '(no tools, no skill loads, just a short question). Wait until the',
-      'user has supplied enough detail to identify ONE primary deliverable,',
-      'then load AT MOST ONE skill — the specialist for that deliverable.',
-      'If you genuinely need multiple, load them across separate turns so',
-      'each load gets cached and amortised.',
+      'Load at most ONE skill per turn. Each call ships ~2k input tokens',
+      'and counts against the provider\'s per-minute quota — three',
+      'speculative loads can rate-limit the turn before any output streams.',
+      'If the user listed multiple formats without a topic/audience/brief,',
+      'ASK for clarification first (no tools, no loads). Once the primary',
+      'deliverable is clear, load ONE matching specialist; additional ones',
+      'across subsequent turns get amortised by the prompt cache.',
     ].join(' '),
     parameters: z.object({
       skill_id: z

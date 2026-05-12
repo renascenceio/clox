@@ -336,127 +336,62 @@ function extractAttachmentBuffers(messages: unknown[]): AttachmentToMount[] {
  *   We deliberately keep this short, factual, and free of personality —
  *   model identity / tone is the user's system prompt's job.
  */
+// Stable preamble. Compressed in late 2026 from ~3.5 KB to ~1.2 KB
+// after the user kept hitting Anthropic's tier-1 10k input-TPM cap
+// on first-turn requests. Every byte here ships on every Claude
+// call (cached on hit, full-price on miss), and Sonnet 4.6 was
+// blowing the per-minute budget on system prompt alone for fresh
+// chats. The trimmed version keeps every BEHAVIORAL directive
+// (don't refuse; ambiguous → ask; fence mapping; multi-artifact;
+// reply structure) and drops the explanatory prose about WHY each
+// rule exists. The skills and tool descriptions carry the deep
+// guidance — including the per-format schemas, the chunking
+// pattern, and the cost rationale — so duplicating it here was
+// pure overhead.
 const CLOX_CAPABILITIES_PREAMBLE = [
-  'You are running inside Clox, a full-capability AI workspace. The chat',
-  'surface renders every fenced code block in your reply as a downloadable,',
-  'previewable artifact with Copy / Download / Preview controls — and for',
-  'document-style blocks, real binary export to Microsoft Office and PDF.',
-  'You can therefore "produce files" with the same fluency as ChatGPT,',
-  'Claude, or Gemini in their native UIs.',
+  'You are running inside Clox, a full-capability AI workspace. Fenced',
+  'code blocks in your reply render as downloadable, previewable',
+  'artifacts; document-shaped fences (pdf/docx/pptx/csv) build real',
+  'binary Office/PDF exports. You CAN produce files — never refuse with',
+  '"I can only output text".',
   '',
-  'NEVER tell the user you "can\'t generate Excel/Word/PowerPoint/PDF",',
-  '"only output text", or "can\'t create files". You CAN. Pick the right',
-  'fenced language tag below and the workspace handles the binary build.',
+  'AMBIGUOUS REQUEST → ASK FIRST. If the user names a format with no',
+  'topic, audience, or content brief (e.g. "Excel, Powerpoint and Docs",',
+  '"Make a PDF"), reply with a SHORT clarifying question (≤3 lines).',
+  'Do not call tools, do not load skills, do not generate placeholders.',
   '',
-  'AMBIGUOUS REQUEST — CLARIFY BEFORE ACTING.',
-  'If the user\'s message is just one or more format names with no topic,',
-  'no audience, no purpose, and no content brief (e.g. "Excel, Powerpoint',
-  'and Docs", "Make a PDF", "Build me a deck"), DO NOT call any tools,',
-  'DO NOT call `read_skill`, DO NOT spin up the python sandbox, and DO',
-  'NOT start generating placeholder content. Reply with a SHORT question',
-  '(≤3 lines) that asks for exactly what\'s missing — at minimum a topic;',
-  'ideally also audience and any specific data the user wants included.',
-  'Each speculative `read_skill` call costs ~2k input tokens and three',
-  'in a row on a model like Sonnet 4.6 will hit the 10k input-tokens/min',
-  'rate limit before any output is produced, so blindly loading skills',
-  '"just in case" is actively harmful — both to the user (they get a',
-  'rate-limit banner instead of an answer) and to their token budget.',
-  'Only proceed to skill-loading / artifact production once the user',
-  'has supplied enough detail that you can write the FIRST sentence of',
-  'the deliverable from memory. If you can\'t, ask.',
+  'STRICT format-to-fence mapping:',
+  '  HTML page / chart / mermaid → ```html  (full doc or fragment)',
+  '  PDF                          → ```pdf   (markdown OR html body)',
+  '  Word document / .docx        → ```docx  (markdown body)',
+  '  Slide deck / .pptx           → ```pptx  (JSON outline)',
+  '  Excel / multi-sheet          → ```csv   (one block per sheet,',
+  '                                 each preceded by "### Sheet: <name>")',
+  '  Single CSV                   → ```csv   (one block, no heading)',
+  '  SVG diagram                  → ```svg',
+  '  JSON data                    → ```json',
+  '  Markdown / source code       → ```<lang>',
   '',
-  'STRICT format-to-fence mapping. The fence tag MUST mirror what the',
-  'user asked for so the artifact toolbar reads the same as their',
-  'request. The toolbar promotes the matching export to a primary',
-  '"download <format>" button — getting the tag wrong forces the user',
-  'to hunt for the right download and makes the reply feel like the',
-  'wrong artifact came back.',
-  '',
-  '  User asked for…       →  fence tag       Body shape',
-  '  ────────────────────     ─────────────   ──────────────────────────',
-  '  HTML page / web demo  →  ```html         full HTML document or fragment',
-  '  PDF                   →  ```pdf          markdown OR html (rendered → PDF)',
-  '  Word document / .docx →  ```docx         markdown body',
-  '  Slide deck / .pptx    →  ```pptx         JSON outline (see below)',
-  '  Excel / spreadsheet   →  ```csv          one block per sheet, each',
-  '                                           preceded by a',
-  '                                           "### Sheet: <name>" heading',
-  '  CSV (single, raw)     →  ```csv          single block, no heading',
-  '  Plain markdown / .md  →  ```markdown     markdown',
-  '  SVG diagram           →  ```svg          raw <svg>…</svg>',
-  '  JSON data             →  ```json         pretty JSON',
-  '  Chart / visualisation →  ```html         with inline <script> (Chart.js,',
-  '                                           D3, or hand-rolled SVG)',
-  '  Diagram / flowchart   →  ```svg          (or ```html with mermaid)',
-  '  Source code           →  ```<language>   the code',
-  '',
-  // pptx, pdf, docx, xlsx specifics (schema, colour palettes, Path-A
-  // vs Path-B selection, incremental build pattern) live in the
-  // matching document-craft skills (PowerPoint Slide Specialist, PDF
-  // Document Specialist, Word Document Specialist, Excel Spreadsheet
-  // Specialist) which auto-activate on intent. The python tool also
-  // documents `/mnt/skills/`, `/mnt/user-data/outputs/`, and the
-  // 180s incremental pattern in its own description. Repeating any
-  // of that here just inflates every request by ~1.5k tokens — Opus
-  // 4.6 hits its 10k input-TPM ceiling on a fresh chat with a
-  // one-line prompt because of these duplicate paragraphs. Keep it
-  // brief; the skill / tool description is authoritative.
-  'Pptx outline shape (the body of a ```pptx block):',
+  'Pptx outline shape:',
   '  { "title": "…", "theme": { "background": "#…", "heading": "#…",',
-  '    "body": "#…", "accent": "#…" }, "slides": [ { … } ] }',
-  'When the active skill set includes a document specialist (pptx /',
-  'pdf / docx / xlsx), follow ITS guidance for full schema, colour',
-  'palettes, and python-vs-fenced-block path selection. Only fall',
-  'back to building richer files via the python tool when its',
-  'description tells you to.',
+  '    "body": "#…", "accent": "#…" }, "slides": [ … ] }',
+  'Document specialists (pptx/pdf/docx/xlsx) auto-activate on intent and',
+  'carry the full schema + palette + python-build guidance. Follow them.',
   '',
-  'Multiple deliverables in one turn: when the user asks for SEVERAL',
-  'formats at once (e.g. "give me a PDF and a docx of the same report"),',
-  'emit ONE fenced block per deliverable, each tagged with its matching',
-  'format. Do NOT pick one block tag and rely on the user clicking a',
-  'secondary button — they expect each requested format to appear as',
-  'its own labelled artifact card.',
+  'Multi-deliverable turns: emit ONE fenced block per requested format.',
   '',
-  'Examples of correct routing:',
-  '  • "Make me a chart of … as HTML"     → ```html  (with inline JS)',
-  '  • "Generate a PDF report on …"       → ```pdf   (markdown body)',
-  '  • "Write a Word doc summarising …"   → ```docx  (markdown body)',
-  '  • "Build a 5-slide deck about …"     → ```pptx  (JSON outline)',
-  '  • "Excel sheet of monthly figures"   → ```csv   (with sheet heading)',
-  '  • "Give me both a PDF and a DOCX"    → ```pdf   THEN ```docx',
-  '                                          (two separate blocks)',
+  'Uploaded files are inlined earlier in the conversation under',
+  '"Attached file: …" (plain text, source, JSON, YAML, CSV, markdown,',
+  'Word, Excel, PDF). Read inline, analyse, answer concretely.',
   '',
-  'When the user uploads a file, its contents are inlined earlier in the',
-  'conversation under "Attached file: …". Clox already extracts text from:',
-  '  • plain text, source code, JSON, YAML, CSV, markdown',
-  '  • Word .docx (full body text)',
-  '  • Excel .xlsx / .xls / .ods (one CSV block per sheet)',
-  '  • PDF (page-by-page text extraction)',
-  'Read these inline, analyse them, and respond with concrete answers —',
-  'including emitting analysis scripts (Python pandas / JavaScript / SQL)',
-  'as artifacts the user can download and run locally on their machine.',
-  '',
-  'Reply structure when you produce an artifact:',
-  '  1. ONE short sentence framing what you\'re about to deliver',
-  '     (e.g. "Here\'s the spreadsheet covering Q1–Q3 with totals.").',
+  'Reply shape when emitting an artifact:',
+  '  1. One short framing sentence.',
   '  2. The fenced artifact block(s).',
-  '  3. ONE short summary line afterwards stating what\'s inside, what',
-  '     assumptions you made, and how to use it (e.g. "Click \'excel\' on',
-  '     the toolbar to download as .xlsx — totals are in the bottom row.").',
-  '  Do NOT end your reply with the closing fence and nothing else; the',
-  '  user expects acknowledgement that the task finished. The intro and',
-  '  closing are both required, even when the artifact is short.',
+  '  3. One short summary line (what\'s inside, how to use it).',
+  'Never end on the closing fence alone — the user expects acknowledgement.',
   '',
-  'Other defaults:',
-  '  • Always produce the artifact the user asked for. Don\'t describe',
-  '    how they could build it themselves unless they ask.',
-  '  • Prefer real, populated content over placeholder TODOs. If you are',
-  '    inferring values from context, say so briefly and proceed.',
-  '  • For long-form documents, structure with headings and lists so the',
-  '    .docx / .pdf export looks professional out of the box.',
-  '  • When emitting HTML for preview/download, ALWAYS use a fenced',
-  '    ```html block. Never inline raw HTML in your prose — markdown',
-  '    will not render it and the preview iframe will not see it.',
+  'Defaults: produce the artifact (don\'t describe how to build it),',
+  'populate real content (not TODOs), structure long docs with headings.',
 ].join('\n')
 
 export async function POST(req: Request) {
@@ -923,6 +858,23 @@ export async function POST(req: Request) {
           // chat keeps the requested cap as-is so we don't silently
           // inflate cost for plain conversations.
           maxTokens: sandboxArmed ? Math.max(maxTokens, 64_000) : maxTokens,
+          // The AI SDK retries every failed request twice (3 attempts
+          // total) with no special handling for 429s. That's actively
+          // harmful against Anthropic's PER-MINUTE input-token cap:
+          //
+          //   t=0s   attempt 1 fails (over quota)
+          //   t=2s   attempt 2 fails (still over quota)
+          //   t=6s   attempt 3 fails (still over quota)
+          //
+          // Three blasts inside ~6 seconds doesn't give the rolling
+          // window a chance to refill. Worse, EACH attempt counts
+          // against the per-minute budget, so 3 attempts at 6k input
+          // tokens = 18k of consumed quota for zero output — and the
+          // user sees "Failed after 3 attempts" instead of the
+          // original first-shot error. We do server-side fallback to
+          // Haiku ourselves in onError (Phase 2), so this SDK-level
+          // retry is pure pessimisation.
+          maxRetries: 0,
           // NOTE on the 128k output beta: the `anthropic-beta:
           // output-128k-2025-02-19` header is now applied where it
           // belongs — at provider construction time in
@@ -971,7 +923,7 @@ export async function POST(req: Request) {
                 maxSteps: sandboxArmed ? 50 : 4,
               }
             : {}),
-          onFinish: async ({ usage, finishReason }) => {
+          onFinish: async ({ usage, finishReason, providerMetadata }) => {
             // (0) Finish-reason telemetry + user-facing nudge.
             //     `finishReason` tells us EXACTLY why the stream
             //     ended. Until now we logged nothing here, which is
@@ -987,12 +939,35 @@ export async function POST(req: Request) {
             //     banner ("Output budget exhausted — ask the model
             //     to continue") instead of leaving the user
             //     staring at a truncated message.
+            // Anthropic returns prompt-cache stats in
+            // providerMetadata.anthropic. Pulling them into the
+            // finish log so we can verify that the preamble + tool
+            // descriptions are actually getting cached across turns
+            // (and therefore not eating per-minute input quota on
+            // every request). Other providers leave these undefined
+            // — that's fine, we treat them as "not applicable" and
+            // still log them so the structure is uniform.
+            const anthropicMeta = (providerMetadata as
+              | { anthropic?: { cacheReadInputTokens?: number | null; cacheCreationInputTokens?: number | null } }
+              | undefined)?.anthropic
+            const cacheReadInputTokens = anthropicMeta?.cacheReadInputTokens ?? null
+            const cacheCreationInputTokens = anthropicMeta?.cacheCreationInputTokens ?? null
+            const totalInputTokens = usage?.promptTokens ?? 0
+            // Hit ratio is informational; only meaningful when
+            // promptTokens > 0 and the provider reports cache reads.
+            const cacheHitRatio =
+              cacheReadInputTokens !== null && totalInputTokens > 0
+                ? Math.round((cacheReadInputTokens / totalInputTokens) * 100) / 100
+                : null
             console.log(
               '[v0] streamText finished:',
               JSON.stringify({
                 finishReason,
-                promptTokens: usage?.promptTokens,
+                promptTokens: totalInputTokens,
                 completionTokens: usage?.completionTokens,
+                cacheReadInputTokens,
+                cacheCreationInputTokens,
+                cacheHitRatio,
                 sandboxArmed,
                 chatId,
               }),

@@ -58,79 +58,36 @@ function capText(s: string): { text: string; truncated: boolean } {
  *  snippet-done / snippet-timeout events into. */
 export function makePythonTool(chatId: string, onProgress?: SandboxProgressCallback) {
   return tool({
+    // Description compressed late 2026 from ~3.5 KB to ~900 B. Every
+    // tool description ships on every request (and on cache miss
+    // counts fully against per-minute input quota). Keep the
+    // BEHAVIORAL contract here — paths, deps, save-incrementally —
+    // and let the document skills carry deep how-to recipes.
     description: [
-      'Run a Python 3.13 snippet inside the conversation-scoped Linux microVM.',
+      'Run a Python 3.13 snippet inside the per-chat Linux microVM.',
       '',
-      'Pre-installed packages: python-pptx, pillow, pypdf, reportlab,',
-      'python-docx, openpyxl, markdownify. If you need a package not on',
-      'this list (pdfplumber, numpy, pandas, weasyprint, pytesseract,',
-      'imageio, etc.) install it FIRST via the bash tool with',
-      '`pip install --prefer-binary <pkg>` — usually <15s for wheel-shipping packages.',
+      'Pre-installed: python-pptx, pillow, pypdf, reportlab, python-docx,',
+      'openpyxl, markdownify. For anything else (numpy, pandas, pdfplumber,',
+      'weasyprint, pytesseract …) `pip install --prefer-binary <pkg>` via',
+      'the bash tool first (<15s on wheel-shipping packages).',
       '',
-      'FILESYSTEM CONVENTIONS:',
-      '  • /mnt/user-data/uploads/  — user attachments, read here.',
-      '  • /mnt/user-data/outputs/  — write deliverables here. Anything you',
-      '    save under this path is auto-collected at the end of your tool',
-      '    call and surfaced to the user as a downloadable artifact in chat.',
-      '    You do NOT need to base64 the bytes back into your response —',
-      '    just save the file and mention the filename.',
-      '  • /mnt/skills/skills/<skill-name>/  — the Anthropic skills bundle.',
-      '    When the user asks for a richly-formatted document, ALWAYS start',
-      '    by reading the skill\'s SKILL.md (the index) AND any sub-files it',
-      '    references before writing code. Available skills:',
-      '      pptx → /mnt/skills/skills/pptx/SKILL.md',
-      '             - editing.md     (python-pptx recipes for modifying',
-      '                               existing decks: unpack/edit/pack)',
-      '             - pptxgenjs.md   (the RECOMMENDED engine for creating',
-      '                               decks from scratch — see "ENGINE" below)',
-      '             - scripts/       (runnable helpers: thumbnail.py,',
-      '                               office/unpack.py, office/pack.py)',
-      '      pdf  → /mnt/skills/skills/pdf/SKILL.md',
-      '      xlsx → /mnt/skills/skills/xlsx/SKILL.md',
-      '      theme-factory, web-artifacts-builder, slack-gif-creator,',
-      '      webapp-testing, skill-creator, mcp-builder — `ls /mnt/skills/',
-      '      skills/` to discover.',
-      '    DO NOT reinvent the python-pptx / python-docx APIs from memory',
-      '    when the bundled skill has a tested recipe — read the SKILL.md',
-      '    AND its referenced sub-files first. The first call of any',
-      '    document task should be `cat` on the SKILL.md, NOT writing code.',
+      'Paths:',
+      '  /mnt/user-data/uploads/  — user attachments (read).',
+      '  /mnt/user-data/outputs/  — write deliverables here; auto-collected',
+      '                             and shown to the user as artifacts. No',
+      '                             need to base64 bytes back into output.',
+      '  /mnt/skills/skills/<n>/  — bundled skills (pptx, pdf, xlsx, docx,',
+      '                             theme-factory, web-artifacts-builder…).',
+      '                             For richly-formatted docs, FIRST `cat`',
+      '                             the skill\'s SKILL.md (+ sub-files it',
+      '                             references) before writing code — they',
+      '                             have tested recipes for the API.',
       '',
-      // Detailed PPTX engine selection (pptxgenjs vs python-pptx)
-      // used to live here, but it belongs to the PPTX skill primer
-      // now — pushing it down into the format-specific primer means
-      // we don't leak PPTX-specific guidance into every python call
-      // (XLSX/PDF/DOCX work didn't need it), and the primer carries
-      // the full visual quality charter that produces the
-      // "Claude-quality" output. See scripts/skill-rewrites/pptx.ts.
-      // The snapshot pre-installs pptxgenjs at /opt/pptxgenjs so
-      // `require("/opt/pptxgenjs")` is zero-config from Node.
-      'INCREMENTAL BUILDS — THIS IS HOW YOU AVOID "STOPS MID-TASK":',
-      '',
-      'Each python call is capped at 180s wall-clock AND the surrounding',
-      'turn is capped at 50 sequential tool calls. Both caps are real —',
-      'when a single snippet tries to do too much, the user sees',
-      '"the script stopped" and ALL progress in that snippet is lost.',
-      '',
-      'The single most important rule: SAVE AFTER EVERY UNIT OF WORK,',
-      'and keep snippets SHORT. A "unit" is one slide, one page, one',
-      'sheet, one chart, NOT one document. The sandbox filesystem',
-      'persists between calls in the same chat, so the next snippet',
-      'can reopen and continue.',
-      '',
-      'CORRECT pattern for a 10-slide deck:',
-      '  call 1: create deck, slide 1 (title), save, print "1/10 saved".',
-      '  call 2: open deck, slide 2 (agenda), save, print "2/10 saved".',
-      '  ...',
-      '  call 10: open deck, slide 10 (CTA), save, print "10/10 done".',
-      '',
-      'WRONG pattern (this is what causes "stops"):',
-      '  call 1: 600-line snippet that builds all 10 slides, charts,',
-      '          tables, palette, and master layout in one go.',
-      '          Hits 180s, ENTIRE deck is lost, model has to restart.',
-      '',
-      'Snippet size budget: aim for under 150 lines of Python. If you',
-      'find yourself writing more, you are about to lose work — STOP,',
-      'save partial progress, and continue in the next call.',
+      'CRITICAL: save incrementally. Each call has a 180s wall-clock cap',
+      'and the turn has a 50-step tool cap. Build ONE unit per snippet',
+      '(one slide / sheet / page / chart), save, print progress, continue',
+      'in the next call. A single 600-line "do the whole deck" snippet',
+      'will hit 180s and lose all in-memory state. Aim for <150 lines/call.',
     ].join('\n'),
     parameters: z.object({
       code: z
