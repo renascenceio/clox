@@ -104,16 +104,33 @@ export function makePythonTool(chatId: string, onProgress?: SandboxProgressCallb
       // "Claude-quality" output. See scripts/skill-rewrites/pptx.ts.
       // The snapshot pre-installs pptxgenjs at /opt/pptxgenjs so
       // `require("/opt/pptxgenjs")` is zero-config from Node.
-      'INCREMENTAL BUILDS: each python call is capped at 180s wall-clock.',
-      'For multi-slide / multi-page deliverables, save after every step:',
-      '  call 1: open or create the file, add page/slide 1, save, print "1/N".',
-      '  call 2: reopen, add page/slide 2, save, print "2/N".',
-      '  ...',
-      'The sandbox preserves files between calls in the same chat. NEVER',
-      'cram an entire 10-slide deck or 30-page report into one snippet —',
-      'a wall-clock abort loses all progress.',
+      'INCREMENTAL BUILDS — THIS IS HOW YOU AVOID "STOPS MID-TASK":',
       '',
-      'Hard timeout per call: 180 seconds.',
+      'Each python call is capped at 180s wall-clock AND the surrounding',
+      'turn is capped at 50 sequential tool calls. Both caps are real —',
+      'when a single snippet tries to do too much, the user sees',
+      '"the script stopped" and ALL progress in that snippet is lost.',
+      '',
+      'The single most important rule: SAVE AFTER EVERY UNIT OF WORK,',
+      'and keep snippets SHORT. A "unit" is one slide, one page, one',
+      'sheet, one chart, NOT one document. The sandbox filesystem',
+      'persists between calls in the same chat, so the next snippet',
+      'can reopen and continue.',
+      '',
+      'CORRECT pattern for a 10-slide deck:',
+      '  call 1: create deck, slide 1 (title), save, print "1/10 saved".',
+      '  call 2: open deck, slide 2 (agenda), save, print "2/10 saved".',
+      '  ...',
+      '  call 10: open deck, slide 10 (CTA), save, print "10/10 done".',
+      '',
+      'WRONG pattern (this is what causes "stops"):',
+      '  call 1: 600-line snippet that builds all 10 slides, charts,',
+      '          tables, palette, and master layout in one go.',
+      '          Hits 180s, ENTIRE deck is lost, model has to restart.',
+      '',
+      'Snippet size budget: aim for under 150 lines of Python. If you',
+      'find yourself writing more, you are about to lose work — STOP,',
+      'save partial progress, and continue in the next call.',
     ].join('\n'),
     parameters: z.object({
       code: z
@@ -201,14 +218,23 @@ export function makePythonTool(chatId: string, onProgress?: SandboxProgressCallb
             exitCode: -1,
             stdout: '',
             stderr:
-              'Python snippet exceeded the 180s wall-clock cap and was aborted. ' +
-              'The previous output (if any) was lost.',
+              'TIMEOUT: snippet exceeded the 180s wall-clock cap and was aborted ' +
+              'mid-execution. Anything written to /mnt/user-data/outputs/ BEFORE the ' +
+              'abort is still there (run `ls -la /mnt/user-data/outputs/` to see), but ' +
+              'in-memory state (objects, variables, partially-built Presentation/' +
+              'Document/Workbook objects) is gone.',
             kind: 'timeout',
             durationMs: PYTHON_TIMEOUT_MS,
             suggestion:
-              'Split the work into smaller chunks: build one slide / page / sheet ' +
-              'at a time and append to the file across multiple python calls. Avoid ' +
-              'rendering many high-resolution images in a single snippet.',
+              'DO NOT retry the same snippet. Instead: ' +
+              '(1) Check what survived: `ls -la /mnt/user-data/outputs/`. ' +
+              '(2) If a partial file exists, reopen it and add ONE more unit ' +
+              '(one slide / one sheet / one page) per snippet, saving after each. ' +
+              '(3) If nothing survived, write a NEW snippet that builds only the ' +
+              'FIRST unit (max ~80 lines of Python) and saves it. Then continue in ' +
+              'subsequent calls. ' +
+              'NEVER try to render the whole document in one snippet — that\'s what ' +
+              'just failed. Aim for <150 lines per call.',
           }
         }
         return {

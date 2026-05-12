@@ -537,7 +537,7 @@ export async function POST(req: Request) {
       (Array.isArray(messages) ? messages : []).map(inflateAttachments),
     )
 
-    // ── Auto-compaction (Phase 3) ─────────────────────────────────
+    // ── Auto-compaction (Phase 3) ───────────────���─────────────────
     //
     // Long chats accumulate token cost linearly. By the time a chat
     // hits 20-30 turns, the message array alone can exceed 8k tokens
@@ -921,19 +921,78 @@ export async function POST(req: Request) {
                 tools: enabledTools as any,
                 // Cap the number of model<->tool round trips so a
                 // runaway chain (model keeps calling its tools
-                // forever) can't drain the user's budget. The happy
-                // path for docs is `bash ls → python v1 → bash list
-                // outputs → answer` (4 steps), but a realistic flow
-                // includes debugging: `bash ls → python v1
-                // (ModuleNotFoundError) → bash pip install → python
-                // v2 → bash inspect → python fix layout → bash list
-                // outputs → answer` (8 steps), and a multi-doc
-                // request can easily double that. 20 leaves headroom
-                // for retries while still bounding worst-case cost.
-                maxSteps: sandboxArmed ? 20 : 4,
+                // forever) can't drain the user's budget.
+                //
+                // Sizing it: each tool round trip = 2 steps (call +
+                // result). A realistic single-doc flow with one
+                // debugging pass is `read_skill → cat SKILL.md →
+                // python v1 (timeout) → python v2 → bash inspect →
+                // python fix → answer` = 14 steps. A multi-doc
+                // request (Excel + PPT + Docs) easily hits 40+:
+                //
+                //   Skill loads .................   6 steps (3 × 2)
+                //   Per-doc build + inspect ......  18 steps (3 × 6)
+                //   Per-doc fix-up ..............    6 steps (3 × 2)
+                //   Final compile / list outputs .   4 steps
+                //   Answer ......................    1 step
+                //                                 = 35 steps
+                //
+                // The old cap of 20 was hitting mid-build and the
+                // model would just terminate without an error — from
+                // the user's view, "the script stopped". Bumping to
+                // 50 leaves headroom for recovery loops while still
+                // bounding worst-case cost (~$0.15 per turn on
+                // Sonnet 4.6 at 50 steps assuming ~3k input tokens
+                // average per step). Single-doc tasks finish well
+                // under 20 steps so the bump only matters for the
+                // genuinely complex flows where the old cap actively
+                // hurt.
+                maxSteps: sandboxArmed ? 50 : 4,
               }
             : {}),
-          onFinish: async ({ usage }) => {
+          onFinish: async ({ usage, finishReason }) => {
+            // (0) Finish-reason telemetry + user-facing nudge.
+            //     `finishReason` tells us EXACTLY why the stream
+            //     ended. Until now we logged nothing here, which is
+            //     why "the script stopped" was such a mystery — the
+            //     model could hit the output token cap, the step
+            //     cap, or finish cleanly, and all three looked
+            //     identical from the chat surface (a sudden end of
+            //     stream with no explanation).
+            //
+            //     We log the reason server-side AND, for the two
+            //     "ran out of budget" reasons, write a message
+            //     annotation so the client can render a clear
+            //     banner ("Output budget exhausted — ask the model
+            //     to continue") instead of leaving the user
+            //     staring at a truncated message.
+            console.log(
+              '[v0] streamText finished:',
+              JSON.stringify({
+                finishReason,
+                promptTokens: usage?.promptTokens,
+                completionTokens: usage?.completionTokens,
+                sandboxArmed,
+                chatId,
+              }),
+            )
+            if (finishReason === 'length' || finishReason === 'other') {
+              try {
+                dataStream.writeMessageAnnotation({
+                  type: 'finish-warning',
+                  reason: finishReason,
+                  // Human-readable, surface this verbatim in the UI.
+                  message:
+                    finishReason === 'length'
+                      ? 'Hit the output token cap (Sonnet 4.6 maxes at 16K per turn). The work above is complete up to where the message ends — reply "continue" to resume.'
+                      : 'Hit the tool-step cap (50 sequential tool calls). The deliverables produced so far were saved to your outputs and uploaded; reply "continue" to finish the rest.',
+                })
+              } catch {
+                // Stream might already be closed; the server log
+                // above is enough for debugging either way.
+              }
+            }
+
             // (1) Usage accounting — unchanged from the old route.
             if (caller) {
               try {

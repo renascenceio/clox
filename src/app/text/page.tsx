@@ -1114,6 +1114,23 @@ export default function TextPage() {
           | { type: 'compaction'; compactedCount: number; beforeTokens: number; afterTokens: number }
           | undefined
 
+      // ── Finish-reason warning ──────────────────────────────────
+      // The route writes this annotation in `onFinish` when the
+      // model stopped because it hit the output token cap
+      // ('length') or the tool-step cap ('other'). Both look
+      // identical from the user's view — the message just ends
+      // mid-sentence — so without this banner the user has no way
+      // to know whether to retry, rephrase, or simply say
+      // "continue". We surface the reason + a recommended action
+      // so they know exactly what's going on.
+      const finishWarning:
+        | { type: 'finish-warning'; reason: 'length' | 'other'; message: string }
+        | undefined =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        annotations.find((a: any) => a && a.type === 'finish-warning') as
+          | { type: 'finish-warning'; reason: 'length' | 'other'; message: string }
+          | undefined
+
       // ── Sandbox progress strip ─────────────────────────────────────
       // We surface three kinds of progress so the user always sees
       // SOMETHING moving when the sandbox is at work:
@@ -1249,6 +1266,11 @@ export default function TextPage() {
         outputFiles.length > 0 ||
         progressEvents.length > 0 ||
         showContinueButton ||
+        // A finish-warning is meaningful on its own — the model may
+        // have stopped mid-prose without ever calling a tool or
+        // producing a file. We still need the wrapper to render the
+        // banner so the user knows WHY the answer is truncated.
+        finishWarning !== undefined ||
         // Render the wrapper while in-flight so the fallback "Working
         // in Python sandbox…" pulse below has a chance to appear even
         // before the model has emitted its first tool call. Without
@@ -1556,6 +1578,35 @@ export default function TextPage() {
                 >
                   Continue generation
                 </button>
+              </div>
+            )}
+            {finishWarning && (
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  alignSelf: 'stretch',
+                  padding: '8px 12px',
+                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  border: '1px solid var(--accent, currentColor)',
+                  borderRadius: 2,
+                  background: 'color-mix(in oklab, var(--accent, currentColor) 8%, transparent)',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    opacity: 0.7,
+                    marginBottom: 4,
+                  }}
+                >
+                  {finishWarning.reason === 'length' ? 'Output truncated' : 'Step budget exhausted'}
+                </div>
+                {finishWarning.message}
               </div>
             )}
             {compactionAnnotation && (
