@@ -151,13 +151,35 @@ export function resolveLanguageModel(
   )
 }
 
+/**
+ * Beta headers we always want on Anthropic requests. These unlock paid
+ * features that the default endpoint refuses with a 400 or, worse,
+ * silently downgrades.
+ *
+ *   - `output-128k-2025-02-19` — raises the per-turn output ceiling
+ *     from 32k → 128k for all Claude 4.x models. Without this header,
+ *     `maxTokens: 128_000` is silently clamped to 32k and the response
+ *     ends with `finishReason: 'length'` at exactly 32k tokens. THIS
+ *     is the bug that caused "the script stopped" mid-build even
+ *     after we'd bumped maxTokens in code — the cap was server-side.
+ *
+ * IMPORTANT: headers must go on `createAnthropic({ headers })`, NOT
+ * on `streamText({ providerOptions: { anthropic: { headers } } })`.
+ * The latter slot only accepts model-specific options (cacheControl
+ * etc.) and silently drops arbitrary HTTP headers. Took several
+ * truncated decks to figure out.
+ */
+const ANTHROPIC_BETA_HEADERS = {
+  'anthropic-beta': 'output-128k-2025-02-19',
+} as const
+
 /** Build a LanguageModel instance from the right @ai-sdk package. */
 function buildDirectModel(provider: AIProvider, modelId: string, key: string): unknown {
   switch (provider) {
     case 'openai':
       return createOpenAI({ apiKey: key })(modelId)
     case 'anthropic':
-      return createAnthropic({ apiKey: key })(modelId)
+      return createAnthropic({ apiKey: key, headers: ANTHROPIC_BETA_HEADERS })(modelId)
     case 'google':
       return createGoogleGenerativeAI({ apiKey: key })(modelId)
     case 'mistral':
