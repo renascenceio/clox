@@ -904,14 +904,47 @@ export async function POST(req: Request) {
           // Document-generation requests (sandbox armed) burn tokens
           // fast: per-slide content + multi-paragraph python snippets
           // + tool result reads. The 2048 default truncated a 5-slide
-          // PPT mid-deck. We auto-promote to the API default ceiling
-          // (32k for current Claude models) when the sandbox is armed.
+          // PPT mid-deck. We auto-promote to a high floor when the
+          // sandbox is armed so multi-doc flows can complete in a
+          // single turn without "reply continue" gymnastics.
+          //
+          // Floor sizing:
+          //   - 64k covers ~80% of legitimate doc-build turns (a
+          //     full 10-slide deck + python source + tool result
+          //     echoes lands around 40-50k output tokens).
+          //   - The cap still respects the per-model ceiling from
+          //     ai-capabilities.ts, so requesting 64k on Gemini 2.5
+          //     Flash (max 65k) is fine, on Sonnet 4.6 (max 128k
+          //     via beta header below) it's well under the limit.
+          //
           // Caller-supplied `maxTokens` still wins if it's higher
-          // (user explicitly opted into a bigger budget — clamped at
-          // the capability ceiling). A non-sandbox text chat keeps
-          // the requested cap as-is so we don't silently inflate
-          // cost for plain conversations.
-          maxTokens: sandboxArmed ? Math.max(maxTokens, 32_000) : maxTokens,
+          // (user explicitly opted into a bigger budget — clamped
+          // at the capability ceiling upstream). A non-sandbox text
+          // chat keeps the requested cap as-is so we don't silently
+          // inflate cost for plain conversations.
+          maxTokens: sandboxArmed ? Math.max(maxTokens, 64_000) : maxTokens,
+          // Anthropic 128k output beta. Forwarded by the AI Gateway
+          // when present on `providerOptions.anthropic`. Without
+          // this header Anthropic caps every Claude 4.x model at
+          // 32k output regardless of what we ask for — that's why
+          // a `maxTokens: 100_000` request still truncated at 32k.
+          // The header is namespaced to "anthropic" so OpenAI /
+          // Gemini / Grok / Mistral requests ignore it.
+          ...(isAnthropic
+            ? {
+                providerOptions: {
+                  anthropic: {
+                    // The header itself is dated by Anthropic; this
+                    // is the current GA value as of late 2026. If
+                    // they ship a new dated header, bump this
+                    // string and the capability ceilings in lockstep.
+                    headers: {
+                      'anthropic-beta': 'output-128k-2025-02-19',
+                    },
+                  },
+                },
+              }
+            : {}),
           // Only attach tools when at least one is armed. Passing an empty
           // map confuses some providers (Anthropic in particular emits a
           // 400 when `tools: {}` is sent), so we keep the request shape

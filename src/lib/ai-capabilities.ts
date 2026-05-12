@@ -520,24 +520,31 @@ const TEXT_CAPABILITIES: Capability[] = [
   geminiText('gemini-2.0-flash', 'Gemini 2.0 Flash', 1_000_000, 8_192),
   geminiText('gemini-1.5-pro',   'Gemini 1.5 Pro',     2_000_000, 8_192),
 
-  // OpenAI
-  gptText('gpt-4o',      'GPT-4o',      128_000, 16_384, { vision: true }),
-  gptText('gpt-4o-mini', 'GPT-4o mini', 128_000, 16_384, { vision: true }),
+  // OpenAI — ceilings set to each model's documented maximum:
+  //   - GPT-5 / 5.5  : 128,000 output tokens
+  //   - GPT-4o       :  16,384 output tokens (no higher tier)
+  //   - GPT-4o mini  :  16,384 output tokens (no higher tier)
+  gptText('gpt-5',       'GPT-5',       400_000, 128_000, { vision: true }),
+  gptText('gpt-5-mini',  'GPT-5 mini',  400_000, 128_000, { vision: true }),
+  gptText('gpt-4o',      'GPT-4o',      128_000,  16_384, { vision: true }),
+  gptText('gpt-4o-mini', 'GPT-4o mini', 128_000,  16_384, { vision: true }),
 
-  // Anthropic Claude. Output-token ceilings here match the actual
-  // API defaults (no anthropic-beta header required). For reference,
-  // the full ladder per Anthropic's docs:
-  //   - default            : 32k (Sonnet/Opus), 64k (Haiku 4.5)
-  //   - "output-64k" beta  : 64k
-  //   - "output-128k-…"   : 128k (requires `anthropic-beta` header)
-  // We were silently capped at 16k for Sonnet which is HALF the
-  // standard default — that's why document builds were truncating
-  // mid-deck even on plain text prompts. Bumping to 32k unblocks
-  // the user with zero header changes. 64k/128k tiers can be
-  // wired later by piping the beta header through the AI Gateway.
-  claudeText('claude-opus-4.6',   'Claude Opus 4.6',   200_000, 32_000, { extendedThinking: true }),
-  claudeText('claude-sonnet-4.6', 'Claude Sonnet 4.6', 200_000, 32_000, { extendedThinking: true }),
-  claudeText('claude-haiku-4.5',  'Claude Haiku 4.5',  200_000, 32_000),
+  // Anthropic Claude. Ceilings here represent the MAXIMUM each
+  // model supports when the request includes the
+  //   anthropic-beta: output-128k-2025-02-19
+  // header. That header is forwarded by the AI Gateway when we set
+  // it in providerOptions.anthropic.headers (see api/chat/route.ts).
+  // The full ladder per Anthropic's docs:
+  //   - default                            : 32k (Sonnet/Opus), 64k (Haiku 4.5)
+  //   - "output-64k" beta                  : 64k
+  //   - "output-128k-2025-02-19" beta      : 128k (active)
+  // We previously sat at 16k (half the default) which truncated
+  // document builds mid-deck. Now pinned at the documented max for
+  // each model so the user gets every output token Anthropic will
+  // sell us.
+  claudeText('claude-opus-4.6',   'Claude Opus 4.6',   200_000, 128_000, { extendedThinking: true }),
+  claudeText('claude-sonnet-4.6', 'Claude Sonnet 4.6', 200_000, 128_000, { extendedThinking: true }),
+  claudeText('claude-haiku-4.5',  'Claude Haiku 4.5',  200_000,  64_000),
 
   // Mistral
   mistralText('mistral-large-latest', 'Mistral Large', 128_000, 8_000),
