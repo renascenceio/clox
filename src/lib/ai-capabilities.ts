@@ -509,25 +509,57 @@ function zhipuText(id: string, label: string, ctx: number, maxOut: number): Capa
 
 const TEXT_CAPABILITIES: Capability[] = [
   // Google Gemini
-  geminiText('gemini-2.5-flash', 'Gemini 2.5 Flash', 1_000_000, 8192),
-  geminiText('gemini-2.0-flash', 'Gemini 2.0 Flash', 1_000_000, 8192),
-  geminiText('gemini-1.5-pro',   'Gemini 1.5 Pro',     2_000_000, 8192),
+  // Gemini output ceilings per Google's API docs (verified Nov 2026):
+  //   - 2.5 Flash : 65,536 output tokens (8x the prior 2.0 Flash limit)
+  //   - 2.0 Flash :  8,192 output tokens
+  //   - 1.5 Pro   :  8,192 output tokens
+  // The 2.5 Flash row was previously stuck at the 2.0 Flash value,
+  // which is what was clipping document builds when users switched
+  // away from Sonnet to dodge its (also-misconfigured) 16k limit.
+  geminiText('gemini-2.5-flash', 'Gemini 2.5 Flash', 1_000_000, 65_536),
+  geminiText('gemini-2.0-flash', 'Gemini 2.0 Flash', 1_000_000, 8_192),
+  geminiText('gemini-1.5-pro',   'Gemini 1.5 Pro',     2_000_000, 8_192),
 
-  // OpenAI
-  gptText('gpt-4o',      'GPT-4o',      128_000, 16_384, { vision: true }),
-  gptText('gpt-4o-mini', 'GPT-4o mini', 128_000, 16_384, { vision: true }),
+  // OpenAI — ceilings set to each model's documented maximum:
+  //   - GPT-5 / 5.5  : 128,000 output tokens
+  //   - GPT-4o       :  16,384 output tokens (no higher tier)
+  //   - GPT-4o mini  :  16,384 output tokens (no higher tier)
+  gptText('gpt-5',       'GPT-5',       400_000, 128_000, { vision: true }),
+  gptText('gpt-5-mini',  'GPT-5 mini',  400_000, 128_000, { vision: true }),
+  gptText('gpt-4o',      'GPT-4o',      128_000,  16_384, { vision: true }),
+  gptText('gpt-4o-mini', 'GPT-4o mini', 128_000,  16_384, { vision: true }),
 
-  // Anthropic Claude
-  claudeText('claude-opus-4.6',   'Claude Opus 4.6',   200_000, 32_000, { extendedThinking: true }),
-  claudeText('claude-sonnet-4.6', 'Claude Sonnet 4.6', 200_000, 16_000, { extendedThinking: true }),
-  claudeText('claude-haiku-4.5',  'Claude Haiku 4.5',  200_000, 8_000),
+  // Anthropic Claude.
+  //
+  // Input ceiling — Sonnet 4.6 and Opus 4.6 went GA with a 1M token
+  // context window in April 2026; the prior `context-1m-2025-08-07`
+  // beta header was retired on the same date because 1M became the
+  // default. So no header is needed, just the larger ceiling.
+  // Haiku 4.5 stays at its native 200K (no 1M tier).
+  //
+  // Output ceiling — set to the documented per-model maximum when
+  // the request includes
+  //   anthropic-beta: output-128k-2025-02-19
+  // (forwarded by the AI Gateway via providerOptions.anthropic.
+  // headers in api/chat/route.ts). The full ladder per Anthropic:
+  //   - default                            : 32k (Sonnet/Opus), 64k (Haiku 4.5)
+  //   - "output-64k" beta                  : 64k
+  //   - "output-128k-2025-02-19" beta      : 128k (active)
+  claudeText('claude-opus-4.6',   'Claude Opus 4.6',   1_000_000, 128_000, { extendedThinking: true }),
+  claudeText('claude-sonnet-4.6', 'Claude Sonnet 4.6', 1_000_000, 128_000, { extendedThinking: true }),
+  claudeText('claude-haiku-4.5',  'Claude Haiku 4.5',    200_000,  64_000),
 
-  // Mistral
+  // Mistral — current Large 2 and Small both ship with a 128K
+  // context window per Mistral's API docs. Output cap is 8K which
+  // matches what the model will actually emit before degradation.
   mistralText('mistral-large-latest', 'Mistral Large', 128_000, 8_000),
   mistralText('mistral-small-latest', 'Mistral Small', 128_000, 8_000),
 
-  // xAI Grok
-  grokText('grok-4', 'Grok 4', 1_000_000, 8_192, { reasoning: true, web: true }),
+  // xAI Grok 4 — API max is 256K per request (the Web/App UI is
+  // capped at 128K but our requests go through the API). We had
+  // this at 1M which was wrong and would have caused 400s once a
+  // chat's transcript drifted past ~256K of accumulated input.
+  grokText('grok-4', 'Grok 4', 256_000, 8_192, { reasoning: true, web: true }),
   grokText('grok-3', 'Grok 3',   131_072, 8_192, { web: true }),
 
   // DeepSeek
