@@ -923,28 +923,15 @@ export async function POST(req: Request) {
           // chat keeps the requested cap as-is so we don't silently
           // inflate cost for plain conversations.
           maxTokens: sandboxArmed ? Math.max(maxTokens, 64_000) : maxTokens,
-          // Anthropic 128k output beta. Forwarded by the AI Gateway
-          // when present on `providerOptions.anthropic`. Without
-          // this header Anthropic caps every Claude 4.x model at
-          // 32k output regardless of what we ask for — that's why
-          // a `maxTokens: 100_000` request still truncated at 32k.
-          // The header is namespaced to "anthropic" so OpenAI /
-          // Gemini / Grok / Mistral requests ignore it.
-          ...(isAnthropic
-            ? {
-                providerOptions: {
-                  anthropic: {
-                    // The header itself is dated by Anthropic; this
-                    // is the current GA value as of late 2026. If
-                    // they ship a new dated header, bump this
-                    // string and the capability ceilings in lockstep.
-                    headers: {
-                      'anthropic-beta': 'output-128k-2025-02-19',
-                    },
-                  },
-                },
-              }
-            : {}),
+          // NOTE on the 128k output beta: the `anthropic-beta:
+          // output-128k-2025-02-19` header is now applied where it
+          // belongs — at provider construction time in
+          // model-router.ts (createAnthropic({ headers })). It was
+          // previously set here on providerOptions.anthropic.headers,
+          // which AI SDK v4 silently drops (that slot accepts model
+          // options like cacheControl, not HTTP headers). That bug
+          // is what kept Claude responses ending at 32k regardless
+          // of what maxTokens we requested.
           // Only attach tools when at least one is armed. Passing an empty
           // map confuses some providers (Anthropic in particular emits a
           // 400 when `tools: {}` is sent), so we keep the request shape
