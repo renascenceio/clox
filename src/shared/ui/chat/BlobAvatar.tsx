@@ -79,7 +79,32 @@ export function BlobAvatar({
     ctx.scale(DPR, DPR)
 
     const C = size / 2
-    const R = size * 0.38 // radiusFactor — leaves a touch of breathing room
+    // Everything below is sized RELATIVE to the canvas, so the blob's
+    // total extent stays within the square regardless of `size`.
+    //
+    // Budget (worst-case point distance from center):
+    //   base * haloScale + maxNoise + maxCursorPush
+    //   = 0.28 * 1.08 + 0.10 + 0.05  ≈  0.452 × size
+    // That's comfortably under 0.5 × size, leaving ~1.3px margin on a
+    // 28px avatar so the contour never touches the canvas edge.
+    //
+    // Earlier versions used absolute pixel values (18 / 9 / 5 px of
+    // noise + 50 px cursor reach) which were tuned for a 120-180px
+    // hero blob. Dropped into 22px / 28px chat avatars they pushed
+    // the surface 30+ pixels past the canvas, producing the
+    // "rectangular clipping" the user reported as borders.
+    const R = size * 0.28
+    // Noise amplitudes (in CSS px). Sum ≈ 0.10 × size of total wobble.
+    const NOISE_LARGE = size * 0.060
+    const NOISE_MED   = size * 0.028
+    const NOISE_SMALL = size * 0.014
+    // Outer halo scale. Keep ≤ 1.10 so 0.28 × 1.10 + noise ≤ 0.43 < 0.5.
+    const HALO_SCALE  = 1.08
+    // Cap mouse deformation as a fraction of size, not the raw
+    // `fluidity` prop (which was up to 50px of push regardless of
+    // canvas size — the original "explodes outwards" bug).
+    const CURSOR_MAX_PUSH  = size * 0.05
+    const CURSOR_REACH     = size * 0.55
     const N = points
 
     // Per-point randomised phases / speeds. Re-randomised whenever the
@@ -129,25 +154,33 @@ export function BlobAvatar({
       for (let i = 0; i < N; i++) {
         const angle = (i / N) * Math.PI * 2 - Math.PI / 2
         const ph = phases[i]
+        // All three sine layers scale with `radiusScale` so the inner
+        // highlight wobbles less than the outer body — keeps the
+        // inner shape readable as "the same blob, just smaller".
         const noise =
-          Math.sin(time * ph.s1 * energy + ph.p1) * 18 * radiusScale +
-          Math.sin(time * ph.s2 * energy + ph.p2) * 9 * radiusScale +
-          Math.sin(time * 0.4 * energy + ph.p3) * 5 * radiusScale
+          Math.sin(time * ph.s1 * energy + ph.p1) * NOISE_LARGE * radiusScale +
+          Math.sin(time * ph.s2 * energy + ph.p2) * NOISE_MED   * radiusScale +
+          Math.sin(time * 0.4   * energy + ph.p3) * NOISE_SMALL * radiusScale
 
         let x = C + Math.cos(angle) * (R * radiusScale + noise)
         let y = C + Math.sin(angle) * (R * radiusScale + noise)
 
-        // Cursor deformation only on the outer surface — applying it
-        // to the inner highlight as well would over-distort and the
-        // shape would read as "broken" rather than "alive".
+        // Cursor deformation only on the outer surface (radiusScale==1).
+        // Applying it to the halo or the inner highlight would over-
+        // distort and read as "broken" rather than "alive". We also
+        // use a `fluidity` prop value to MODULATE the size-bounded
+        // cap, not as a raw pixel push — that's what was sending
+        // points 50+ px away from the canvas on the small avatars.
         if (radiusScale === 1 && mouse.active && interactive) {
           const dx = x - mouse.x
           const dy = y - mouse.y
           const dist = Math.sqrt(dx * dx + dy * dy)
-          const reach = fluidity * 3.2
-          if (dist < reach) {
-            const inf = 1 - dist / reach
-            const force = inf * inf * fluidity
+          if (dist < CURSOR_REACH) {
+            const inf = 1 - dist / CURSOR_REACH
+            // fluidity (0..80) maps onto 0..1 with default 50 → 0.625;
+            // multiplied into the size-relative cap, the biggest push
+            // anyone can ever get is CURSOR_MAX_PUSH = size * 0.05.
+            const force = inf * inf * CURSOR_MAX_PUSH * (fluidity / 80)
             x += (dx / (dist + 0.1)) * force
             y += (dy / (dist + 0.1)) * force
           }
@@ -183,9 +216,11 @@ export function BlobAvatar({
       ctx.clearRect(0, 0, size, size)
 
       // 1 — outer halo (slightly larger, semi-transparent peach).
+      // HALO_SCALE is pinned at 1.08 (was 1.14) so it never strays
+      // past the canvas boundary even with peak noise + cursor push.
       ctx.globalAlpha = 0.18
       ctx.fillStyle = colorLight
-      tracePath(getPoints(1.14))
+      tracePath(getPoints(HALO_SCALE))
       ctx.fill()
 
       // 2 — main terracotta body.
