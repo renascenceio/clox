@@ -509,9 +509,16 @@ function zhipuText(id: string, label: string, ctx: number, maxOut: number): Capa
 
 const TEXT_CAPABILITIES: Capability[] = [
   // Google Gemini
-  geminiText('gemini-2.5-flash', 'Gemini 2.5 Flash', 1_000_000, 8192),
-  geminiText('gemini-2.0-flash', 'Gemini 2.0 Flash', 1_000_000, 8192),
-  geminiText('gemini-1.5-pro',   'Gemini 1.5 Pro',     2_000_000, 8192),
+  // Gemini output ceilings per Google's API docs (verified Nov 2026):
+  //   - 2.5 Flash : 65,536 output tokens (8x the prior 2.0 Flash limit)
+  //   - 2.0 Flash :  8,192 output tokens
+  //   - 1.5 Pro   :  8,192 output tokens
+  // The 2.5 Flash row was previously stuck at the 2.0 Flash value,
+  // which is what was clipping document builds when users switched
+  // away from Sonnet to dodge its (also-misconfigured) 16k limit.
+  geminiText('gemini-2.5-flash', 'Gemini 2.5 Flash', 1_000_000, 65_536),
+  geminiText('gemini-2.0-flash', 'Gemini 2.0 Flash', 1_000_000, 8_192),
+  geminiText('gemini-1.5-pro',   'Gemini 1.5 Pro',     2_000_000, 8_192),
 
   // OpenAI
   gptText('gpt-4o',      'GPT-4o',      128_000, 16_384, { vision: true }),
