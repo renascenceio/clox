@@ -412,7 +412,8 @@ export async function POST(req: Request) {
     systemPrompt,
     apiKey,
     projectId,
-    chatId,
+    chatId: chatIdField,
+    id: idField,
     tools: requestedTools,
   }: {
     messages: unknown[]
@@ -424,11 +425,23 @@ export async function POST(req: Request) {
     apiKey?: string
     projectId?: string | null
     chatId?: string | null
+    /** `useChat`'s top-level `id` is sometimes echoed into the POST
+     *  body by the AI SDK. We accept it as a fallback so any future
+     *  caller that uses the SDK convention also gets a sandbox. */
+    id?: string | null
     /** Canonical tool ids the user has armed in the slash menu, e.g.
      *  ["web_search", "run_javascript"]. Anything else is ignored — the
      *  client is untrusted, so we only accept ids we know how to map. */
     tools?: string[]
   } = requestData
+  // Prefer the explicit `chatId` field, fall back to `id`. Without
+  // ONE of these the sandbox can't be armed (see line 673). Logged
+  // once at request start so a missing-id regression is easy to spot
+  // in production logs.
+  const chatId: string | null | undefined = chatIdField ?? idField
+  if (!chatId) {
+    console.warn('[v0] /api/chat called without chatId or id — sandbox tools will be disabled for this request')
+  }
 
   // Project budget gate — block before spending if the project is out of credit.
   if (projectId) {

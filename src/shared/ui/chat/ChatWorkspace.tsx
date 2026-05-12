@@ -26,6 +26,11 @@ import { I } from './icons'
 // "Regenerate avatar" button persists into `profiles.avatar_seed`, so the
 // rail footer chip stays in sync with whatever the user saved last.
 import Avatar from '@/shared/ui/components/Avatar'
+// Brand avatar — replaces the old "circled C" used in chat messages
+// and adds a tiny mark to the left of the wordmark in the sidebar.
+// The blob is canvas-based and runs its own rAF loop; it cleans up
+// listeners on unmount, so it's safe to drop one per chat message.
+import { BlobAvatar } from './BlobAvatar'
 import { useDictation, type DictationState } from './useDictation'
 import { useFileDrop } from './useFileDrop'
 import {
@@ -698,7 +703,21 @@ function LeftRail({
         padding: '16px 18px 12px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/*
+            Mini brand mark. `alignItems` on the wrapper had to switch
+            from `baseline` to `center` because the canvas has no text
+            baseline to align against — `baseline` would have parked
+            it sitting on the wordmark's descender line. The version
+            chip is small enough that the visual recovery from this
+            change is invisible.
+
+            Interaction is OFF here. The avatar in chat messages is
+            mouse-reactive (a small delight), but a 22px target in
+            the sidebar header is too tiny to land on meaningfully,
+            and skipping the listeners saves a few rAF wakeups.
+          */}
+          <BlobAvatar size={22} interactive={false} ariaLabel={brandName} />
           <span style={{ fontFamily: serif, fontSize: 19, fontStyle: 'italic', letterSpacing: '-0.01em' }}>{brandName}</span>
           <span style={{ fontFamily: mono, fontSize: 9.5, color: p.inkMuted, letterSpacing: '0.14em', textTransform: 'uppercase' }}>{brandVersion}</span>
         </div>
@@ -1257,12 +1276,14 @@ function ThinkingIndicator({ p, mono, serif }: { p: Palette; mono: string; serif
 
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-      <div style={{
-        width: 28, height: 28, flex: '0 0 28px',
-        border: `1px solid ${p.ink}`, borderRadius: '50%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: serif, fontStyle: 'italic', fontSize: 14, color: p.ink,
-      }}>C</div>
+      {/*
+        Blob avatar in place of the old serif-italic "C" disc. The
+        animation doubles as a "thinking" signal — while the model is
+        generating, the visible deformation of the surface reads as
+        the assistant being alive and working, which is exactly the
+        affordance this indicator is trying to communicate.
+      */}
+      <BlobAvatar size={28} ariaLabel="Clox is thinking" />
       <div style={{ paddingTop: 6 }}>
         <div style={{
           fontFamily: mono, fontSize: 10.5, letterSpacing: '0.18em',
@@ -1343,13 +1364,15 @@ function AiMsg({
 }: { p: Palette; mono: string; serif: string; m: TranscriptMessage }) {
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-      <div style={{
-        width: 28, height: 28, flex: '0 0 28px',
-        border: `1px solid ${p.ink}`, borderRadius: '50%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: serif, fontStyle: 'italic', fontSize: 14, color: p.ink,
-        marginTop: 18,
-      }}>C</div>
+      {/*
+        Replaces the old circled "C". The 18px top-margin keeps the
+        avatar visually aligned with the model/timestamp meta row
+        above the message body (which has its own 6px top padding +
+        the meta line height). Adjust together if either changes.
+      */}
+      <div style={{ marginTop: 18 }}>
+        <BlobAvatar size={28} ariaLabel="Clox" />
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontFamily: mono, fontSize: 9.5, letterSpacing: '0.16em', textTransform: 'uppercase',
