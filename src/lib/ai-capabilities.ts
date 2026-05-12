@@ -517,10 +517,20 @@ const TEXT_CAPABILITIES: Capability[] = [
   gptText('gpt-4o',      'GPT-4o',      128_000, 16_384, { vision: true }),
   gptText('gpt-4o-mini', 'GPT-4o mini', 128_000, 16_384, { vision: true }),
 
-  // Anthropic Claude
+  // Anthropic Claude. Output-token ceilings here match the actual
+  // API defaults (no anthropic-beta header required). For reference,
+  // the full ladder per Anthropic's docs:
+  //   - default            : 32k (Sonnet/Opus), 64k (Haiku 4.5)
+  //   - "output-64k" beta  : 64k
+  //   - "output-128k-…"   : 128k (requires `anthropic-beta` header)
+  // We were silently capped at 16k for Sonnet which is HALF the
+  // standard default — that's why document builds were truncating
+  // mid-deck even on plain text prompts. Bumping to 32k unblocks
+  // the user with zero header changes. 64k/128k tiers can be
+  // wired later by piping the beta header through the AI Gateway.
   claudeText('claude-opus-4.6',   'Claude Opus 4.6',   200_000, 32_000, { extendedThinking: true }),
-  claudeText('claude-sonnet-4.6', 'Claude Sonnet 4.6', 200_000, 16_000, { extendedThinking: true }),
-  claudeText('claude-haiku-4.5',  'Claude Haiku 4.5',  200_000, 8_000),
+  claudeText('claude-sonnet-4.6', 'Claude Sonnet 4.6', 200_000, 32_000, { extendedThinking: true }),
+  claudeText('claude-haiku-4.5',  'Claude Haiku 4.5',  200_000, 32_000),
 
   // Mistral
   mistralText('mistral-large-latest', 'Mistral Large', 128_000, 8_000),

@@ -537,7 +537,7 @@ export async function POST(req: Request) {
       (Array.isArray(messages) ? messages : []).map(inflateAttachments),
     )
 
-    // ── Auto-compaction (Phase 3) ───────────────���─────────────────
+    // ── Auto-compaction (Phase 3) ───────────────�����─────────────────
     //
     // Long chats accumulate token cost linearly. By the time a chat
     // hits 20-30 turns, the message array alone can exceed 8k tokens
@@ -904,13 +904,14 @@ export async function POST(req: Request) {
           // Document-generation requests (sandbox armed) burn tokens
           // fast: per-slide content + multi-paragraph python snippets
           // + tool result reads. The 2048 default truncated a 5-slide
-          // PPT mid-deck. We auto-promote to a much higher ceiling
-          // when the sandbox is armed — caller-supplied `maxTokens`
-          // still wins if it's higher (the user explicitly opted in
-          // to a bigger budget). A non-sandbox text chat keeps the
-          // requested cap as-is so we don't silently inflate cost
-          // for plain conversations.
-          maxTokens: sandboxArmed ? Math.max(maxTokens, 16384) : maxTokens,
+          // PPT mid-deck. We auto-promote to the API default ceiling
+          // (32k for current Claude models) when the sandbox is armed.
+          // Caller-supplied `maxTokens` still wins if it's higher
+          // (user explicitly opted into a bigger budget — clamped at
+          // the capability ceiling). A non-sandbox text chat keeps
+          // the requested cap as-is so we don't silently inflate
+          // cost for plain conversations.
+          maxTokens: sandboxArmed ? Math.max(maxTokens, 32_000) : maxTokens,
           // Only attach tools when at least one is armed. Passing an empty
           // map confuses some providers (Anthropic in particular emits a
           // 400 when `tools: {}` is sent), so we keep the request shape
@@ -984,7 +985,7 @@ export async function POST(req: Request) {
                   // Human-readable, surface this verbatim in the UI.
                   message:
                     finishReason === 'length'
-                      ? 'Hit the output token cap (Sonnet 4.6 maxes at 16K per turn). The work above is complete up to where the message ends — reply "continue" to resume.'
+                      ? 'Reached the model\'s per-turn output limit. The work above is complete up to where the message ends — reply "continue" to resume.'
                       : 'Hit the tool-step cap (50 sequential tool calls). The deliverables produced so far were saved to your outputs and uploaded; reply "continue" to finish the rest.',
                 })
               } catch {
