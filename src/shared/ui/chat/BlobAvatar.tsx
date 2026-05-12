@@ -82,24 +82,31 @@ export function BlobAvatar({
     // Everything below is sized RELATIVE to the canvas, so the blob's
     // total extent stays within the square regardless of `size`.
     //
-    // Budget (worst-case point distance from center):
-    //   base * haloScale + maxNoise + maxCursorPush
-    //   = 0.28 * 1.08 + 0.10 + 0.05  ≈  0.452 × size
-    // That's comfortably under 0.5 × size, leaving ~1.3px margin on a
-    // 28px avatar so the contour never touches the canvas edge.
+    // Budget (worst-case point distance from center, normalised by size):
+    //   (R + NOISE_TOTAL) × HALO_SCALE  must stay < 0.5
+    //   = (0.32 + 0.090) × 1.07         ≈ 0.439
+    // Leaves a ~1.2px margin per side on a 40px avatar — comfortably
+    // off the canvas edge under peak wobble.
+    //
+    // R was 0.28; at that radius on a 28px canvas the visible body
+    // diameter was only ~16px, which read as a smudge in the chat
+    // screenshot. Bumping to 0.32 gives ~26px of visible body on a
+    // 40px canvas while staying inside the square. Halo + noise were
+    // tightened a touch to absorb the extra base radius without
+    // clipping.
     //
     // Earlier versions used absolute pixel values (18 / 9 / 5 px of
     // noise + 50 px cursor reach) which were tuned for a 120-180px
-    // hero blob. Dropped into 22px / 28px chat avatars they pushed
-    // the surface 30+ pixels past the canvas, producing the
-    // "rectangular clipping" the user reported as borders.
-    const R = size * 0.28
-    // Noise amplitudes (in CSS px). Sum ≈ 0.10 × size of total wobble.
-    const NOISE_LARGE = size * 0.060
-    const NOISE_MED   = size * 0.028
-    const NOISE_SMALL = size * 0.014
-    // Outer halo scale. Keep ≤ 1.10 so 0.28 × 1.10 + noise ≤ 0.43 < 0.5.
-    const HALO_SCALE  = 1.08
+    // hero blob. Dropped into small chat avatars they pushed the
+    // surface 30+ pixels past the canvas, producing the "rectangular
+    // clipping" the user reported as borders.
+    const R = size * 0.32
+    // Noise amplitudes (in CSS px). Sum ≈ 0.090 × size of total wobble.
+    const NOISE_LARGE = size * 0.052
+    const NOISE_MED   = size * 0.026
+    const NOISE_SMALL = size * 0.012
+    // Outer halo scale. Worst-case extent calc above keeps us < 0.5.
+    const HALO_SCALE  = 1.07
     // Cap mouse deformation as a fraction of size, not the raw
     // `fluidity` prop (which was up to 50px of push regardless of
     // canvas size — the original "explodes outwards" bug).

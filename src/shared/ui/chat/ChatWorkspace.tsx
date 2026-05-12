@@ -713,11 +713,15 @@ function LeftRail({
             change is invisible.
 
             Interaction is OFF here. The avatar in chat messages is
-            mouse-reactive (a small delight), but a 22px target in
+            mouse-reactive (a small delight), but a 28px target in
             the sidebar header is too tiny to land on meaningfully,
             and skipping the listeners saves a few rAF wakeups.
+
+            Sized at 28px (was 22px) so the blob renders with enough
+            visible body to read as a shape — at 22px on a retina
+            screen the curves smoothed out into a brown smudge.
           */}
-          <BlobAvatar size={22} interactive={false} ariaLabel={brandName} />
+          <BlobAvatar size={28} interactive={false} ariaLabel={brandName} />
           <span style={{ fontFamily: serif, fontSize: 19, fontStyle: 'italic', letterSpacing: '-0.01em' }}>{brandName}</span>
           <span style={{ fontFamily: mono, fontSize: 9.5, color: p.inkMuted, letterSpacing: '0.14em', textTransform: 'uppercase' }}>{brandVersion}</span>
         </div>
@@ -1283,7 +1287,7 @@ function ThinkingIndicator({ p, mono, serif }: { p: Palette; mono: string; serif
         the assistant being alive and working, which is exactly the
         affordance this indicator is trying to communicate.
       */}
-      <BlobAvatar size={28} ariaLabel="Clox is thinking" />
+      <BlobAvatar size={40} ariaLabel="Clox is thinking" />
       <div style={{ paddingTop: 6 }}>
         <div style={{
           fontFamily: mono, fontSize: 10.5, letterSpacing: '0.18em',
@@ -1365,14 +1369,20 @@ function AiMsg({
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
       {/*
-        Replaces the old circled "C". The 18px top-margin keeps the
-        avatar visually aligned with the model/timestamp meta row
-        above the message body (which has its own 6px top padding +
-        the meta line height). Adjust together if either changes.
+        Replaces the old circled "C". Anchored to the TOP of the
+        column (flex-start + no top-margin) so the blob sits beside
+        the "clox · model · time" meta row that introduces every AI
+        turn — same affordance as the ChatGPT/Claude pattern. An
+        earlier revision pushed it down with marginTop:18 to align
+        with the bubble interior, which left the blob floating in
+        the gap between meta and bubble; reverted.
+
+        Sized at 40px (was 28px) so the deforming surface actually
+        reads as a shape rather than a brown smudge. The 40px canvas
+        gives ~26px of visible body — comparable to the avatars on
+        Claude.ai and ChatGPT.
       */}
-      <div style={{ marginTop: 18 }}>
-        <BlobAvatar size={28} ariaLabel="Clox" />
-      </div>
+      <BlobAvatar size={40} ariaLabel="Clox" />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontFamily: mono, fontSize: 9.5, letterSpacing: '0.16em', textTransform: 'uppercase',
