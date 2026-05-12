@@ -923,7 +923,7 @@ export async function POST(req: Request) {
                 maxSteps: sandboxArmed ? 50 : 4,
               }
             : {}),
-          onFinish: async ({ usage, finishReason }) => {
+          onFinish: async ({ usage, finishReason, providerMetadata }) => {
             // (0) Finish-reason telemetry + user-facing nudge.
             //     `finishReason` tells us EXACTLY why the stream
             //     ended. Until now we logged nothing here, which is
@@ -939,12 +939,35 @@ export async function POST(req: Request) {
             //     banner ("Output budget exhausted — ask the model
             //     to continue") instead of leaving the user
             //     staring at a truncated message.
+            // Anthropic returns prompt-cache stats in
+            // providerMetadata.anthropic. Pulling them into the
+            // finish log so we can verify that the preamble + tool
+            // descriptions are actually getting cached across turns
+            // (and therefore not eating per-minute input quota on
+            // every request). Other providers leave these undefined
+            // — that's fine, we treat them as "not applicable" and
+            // still log them so the structure is uniform.
+            const anthropicMeta = (providerMetadata as
+              | { anthropic?: { cacheReadInputTokens?: number | null; cacheCreationInputTokens?: number | null } }
+              | undefined)?.anthropic
+            const cacheReadInputTokens = anthropicMeta?.cacheReadInputTokens ?? null
+            const cacheCreationInputTokens = anthropicMeta?.cacheCreationInputTokens ?? null
+            const totalInputTokens = usage?.promptTokens ?? 0
+            // Hit ratio is informational; only meaningful when
+            // promptTokens > 0 and the provider reports cache reads.
+            const cacheHitRatio =
+              cacheReadInputTokens !== null && totalInputTokens > 0
+                ? Math.round((cacheReadInputTokens / totalInputTokens) * 100) / 100
+                : null
             console.log(
               '[v0] streamText finished:',
               JSON.stringify({
                 finishReason,
-                promptTokens: usage?.promptTokens,
+                promptTokens: totalInputTokens,
                 completionTokens: usage?.completionTokens,
+                cacheReadInputTokens,
+                cacheCreationInputTokens,
+                cacheHitRatio,
                 sandboxArmed,
                 chatId,
               }),
