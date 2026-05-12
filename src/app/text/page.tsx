@@ -502,6 +502,112 @@ export default function TextPage() {
     handleInputChange?.({ target: { value: v } } as unknown as React.ChangeEvent<HTMLTextAreaElement>)
   }
 
+  // ── Auto-fallback on Claude rate-limit ─────────────────────────
+  //
+  // Anthropic's tier-1 cap is 10k input tokens/minute. A single doc
+  // skill primer load + tool definitions + recent history can hit
+  // that cap on the first request of a turn, even with prompt
+  // caching. The existing recovery banner offers a manual "Switch
+  // to Haiku 4.5 & Retry" button — but the user has explicitly
+  // asked for this to happen automatically so document builds feel
+  // as reliable as Claude.ai's own interface.
+  //
+  // The effect below fires the SAME swap-and-retry the manual
+  // button does, but does so as soon as `chatError` materialises.
+  // Dedup is keyed off the last user-message id so:
+  //   1. We auto-switch at most ONCE per user turn (no infinite
+  //      loop if Haiku itself 429s — the banner will then show
+  //      and the user can pick a different action).
+  //   2. A fresh user send creates a new last-user-msg-id and re-
+  //      enables auto-fallback for the next turn.
+  //
+  // We only fall back FROM Claude flagships (Sonnet/Opus). Other
+  // providers don't share the same per-minute squeeze, and a
+  // cross-provider hop without user consent feels wrong; for
+  // those, the manual banner remains the path.
+  const lastAutoFallbackUserMsgIdRef = useRef<string | null>(null)
+  const [autoFallbackPendingForMsgId, setAutoFallbackPendingForMsgId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!chatError) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user')
+    if (!lastUserMsg?.id) return
+    if (lastAutoFallbackUserMsgIdRef.current === lastUserMsg.id) return
+
+    const raw = chatError instanceof Error ? chatError.message
+      : String((chatError as { message?: unknown })?.message ?? chatError)
+    const isRateLimit = /rate.?limit|429|tokens? per (minute|second)|tpm|exceed/i.test(raw.toLowerCase())
+    if (!isRateLimit) return
+
+    const currentId = selectedTextModel.id
+    const isClaudeFlagship =
+      currentId === 'claude-sonnet-4.6' ||
+      currentId === 'claude-opus-4.6' ||
+      currentId === 'claude-opus-4.7'
+    if (!isClaudeFlagship) return
+
+    // Opus → Sonnet first (same family, ~8× TPM), Sonnet → Haiku.
+    // Mirrors the existing manual banner's alternateModel picker so
+    // auto and manual paths agree.
+    const fallbackId = (currentId === 'claude-opus-4.6' || currentId === 'claude-opus-4.7')
+      ? 'claude-sonnet-4.6'
+      : 'claude-haiku-4.5'
+    const fallback = TEXT_MODELS.find(m => m.id === fallbackId)
+    if (!fallback) return
+
+    // Record dedup key BEFORE firing reload so any re-render
+    // racing through this effect for the same user msg short-
+    // circuits at the guard above.
+    lastAutoFallbackUserMsgIdRef.current = lastUserMsg.id
+    setAutoFallbackPendingForMsgId(lastUserMsg.id)
+    setSelectedTextModel(fallback)
+
+    const altLabel = shortName(fallback.version, fallback.name)
+    if (pendingModelRef.current.length > 0) {
+      pendingModelRef.current[0] = altLabel
+    } else {
+      pendingModelRef.current.push(altLabel)
+    }
+
+    console.log('[v0] auto-fallback', {
+      from: currentId,
+      to: fallback.id,
+      forUserMsg: lastUserMsg.id,
+    })
+
+    try {
+      chatReload?.({
+        body: {
+          model: fallback.id,
+          provider: fallback.provider,
+          systemPrompt: composedSystemPrompt,
+          temperature,
+          maxTokens,
+          apiKey: currentApiKey,
+          tools: enabledToolIds,
+        },
+      })
+    } catch (e) {
+      console.error('[v0] auto-fallback reload failed', e)
+    }
+    // Intentionally omit composedSystemPrompt / temperature / maxTokens /
+    // currentApiKey / enabledToolIds from the dep list: they're read
+    // at fire-time inside the body builder, and including them would
+    // re-run this effect every time those values churn (e.g. the
+    // user toggles a skill mid-stream), risking duplicate reloads.
+    // The dedup ref protects us either way.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatError, messages, selectedTextModel.id, chatReload])
+
+  // Clear the "pending" UI flag once a new stream actually starts.
+  // Without this, the banner would keep showing the auto-fallback
+  // copy after Haiku had already begun producing tokens.
+  useEffect(() => {
+    if (isStreaming && autoFallbackPendingForMsgId) {
+      setAutoFallbackPendingForMsgId(null)
+    }
+  }, [isStreaming, autoFallbackPendingForMsgId])
+
   /** Live auto-detection ids for the current draft, filtered by
    *  dismissals. Empty in non-text modalities and when the draft is empty.
    *
@@ -1667,7 +1773,22 @@ export default function TextPage() {
     const lastWasUserOrphan =
       !!lastMsg && lastMsg.role === 'user' && !isStreaming && msgArr.length > 0
     const hasError = !!chatError
-    if (hasError || lastWasUserOrphan) {
+    // If our auto-fallback effect just fired for this exact user
+    // message, skip rendering the rate-limit banner entirely — a
+    // new request is already in flight against the fallback model
+    // and will either clear `chatError` (success) or set a NEW
+    // error keyed to a fresh dedup state (Haiku also 429ed, in
+    // which case the next render WILL show the banner because
+    // `lastAutoFallbackUserMsgIdRef.current === lastMsg.id` blocks
+    // a second auto-switch, the `autoFallbackPendingForMsgId` flag
+    // clears once that retry's stream begins, and the manual
+    // banner takes over from there).
+    const isAutoFallbackPendingThisTurn =
+      hasError &&
+      !!lastMsg &&
+      lastMsg.role === 'user' &&
+      autoFallbackPendingForMsgId === lastMsg.id
+    if ((hasError || lastWasUserOrphan) && !isAutoFallbackPendingThisTurn) {
       // ── Error categorisation ───────────────────────────────────────
       // Anthropic / OpenAI / Google all phrase their errors very
       // differently and stuff multi-paragraph rate-limit copy into
