@@ -47,6 +47,7 @@ export default function UsersPage() {
   const [role, setRole] = useState<RoleFilter>('all')
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(initialId)
+  const [showCreate, setShowCreate] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -87,10 +88,20 @@ export default function UsersPage() {
               <path d="M11 6.5a4.5 4.5 0 1 1-1.32-3.18M11 1.5v3H8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </AdminIconBtn>
-          <AdminBtn primary onClick={() => router.push('/admin/billing')}>billing →</AdminBtn>
+          <AdminBtn onClick={() => router.push('/admin/billing')}>billing →</AdminBtn>
+          <AdminBtn primary onClick={() => setShowCreate(true)}>+ new user</AdminBtn>
         </>
       }
     >
+      {showCreate && (
+        <CreateUserPanel
+          onClose={() => setShowCreate(false)}
+          onCreated={() => {
+            setShowCreate(false)
+            setRefreshTick(t => t + 1)
+          }}
+        />
+      )}
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 border border-hairline rounded-card bg-surface mb-[18px]">
         <KpiCell label="Accounts (filtered)" value={users.length.toLocaleString()} />
@@ -284,4 +295,203 @@ function hashIndex(s: string, mod: number): number {
   let h = 0
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
   return h % mod
+}
+
+/**
+ * CreateUserPanel — inline modal that POSTs to /api/admin/users.
+ *
+ * Two flows:
+ *   • "Send invite link" — Supabase mails the user a magic-link signup
+ *     invite. Operator picks the role and (optionally) the name.
+ *   • "Set password now" — operator types a password and hands the
+ *     credentials over manually. The auth user is marked email-confirmed
+ *     so they can sign in immediately.
+ *
+ * Lives in the file rather than a shared component because it is the
+ * only consumer; if a second admin surface needs user creation we can
+ * lift it then.
+ */
+function CreateUserPanel({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void
+  onCreated: () => void
+}) {
+  const [email, setEmail] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [role, setRole] = useState<'user' | 'super_admin'>('user')
+  const [mode, setMode] = useState<'invite' | 'password'>('invite')
+  const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setSubmitting(true)
+    try {
+      const body: Record<string, unknown> = {
+        email: email.trim(),
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
+        role,
+      }
+      if (mode === 'invite') {
+        body.send_invite = true
+      } else {
+        body.password = password
+      }
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const j = await res.json()
+      if (!res.ok) {
+        setError(j.error ?? 'create failed')
+        setSubmitting(false)
+        return
+      }
+      onCreated()
+    } catch (err) {
+      console.error('[v0] create user failed', err)
+      setError('network error')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="bg-surface border border-hairline rounded-card mb-[18px] overflow-hidden">
+      <div className="flex items-baseline justify-between px-[18px] py-3.5 border-b border-hairline-soft">
+        <h3 className="font-serif italic font-normal text-[19px] tracking-[-0.01em] m-0">
+          New user
+        </h3>
+        <button
+          type="button"
+          onClick={onClose}
+          className="font-mono text-[10px] tracking-[0.08em] uppercase text-ink-muted hover:text-ink"
+        >
+          close
+        </button>
+      </div>
+      <form onSubmit={handleSubmit} className="px-[18px] py-4 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Email" required>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className="w-full h-[34px] px-2.5 bg-bg border border-hairline-soft rounded-sharp text-[13px] focus:border-ink outline-none transition-colors"
+              placeholder="name@company.com"
+            />
+          </Field>
+          <Field label="Role">
+            <select
+              value={role}
+              onChange={e => setRole(e.target.value as 'user' | 'super_admin')}
+              className="w-full h-[34px] px-2.5 bg-bg border border-hairline-soft rounded-sharp text-[13px] focus:border-ink outline-none transition-colors"
+            >
+              <option value="user">user</option>
+              <option value="super_admin">super admin</option>
+            </select>
+          </Field>
+          <Field label="First name">
+            <input
+              type="text"
+              value={firstName}
+              onChange={e => setFirstName(e.target.value)}
+              className="w-full h-[34px] px-2.5 bg-bg border border-hairline-soft rounded-sharp text-[13px] focus:border-ink outline-none transition-colors"
+            />
+          </Field>
+          <Field label="Last name">
+            <input
+              type="text"
+              value={lastName}
+              onChange={e => setLastName(e.target.value)}
+              className="w-full h-[34px] px-2.5 bg-bg border border-hairline-soft rounded-sharp text-[13px] focus:border-ink outline-none transition-colors"
+            />
+          </Field>
+        </div>
+
+        <div className="border-t border-hairline-soft pt-4">
+          <div className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted mb-2">
+            how should they sign in?
+          </div>
+          <div className="flex gap-2 mb-3">
+            <ModeChip active={mode === 'invite'} onClick={() => setMode('invite')}>
+              send invite link
+            </ModeChip>
+            <ModeChip active={mode === 'password'} onClick={() => setMode('password')}>
+              set password now
+            </ModeChip>
+          </div>
+          {mode === 'password' ? (
+            <Field label="Password (min 8 chars)" required>
+              <input
+                type="text"
+                required
+                minLength={8}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="w-full h-[34px] px-2.5 bg-bg border border-hairline-soft rounded-sharp text-[13px] font-mono focus:border-ink outline-none transition-colors"
+                placeholder="they'll need this to sign in"
+              />
+            </Field>
+          ) : (
+            <p className="text-[12.5px] text-ink-soft leading-relaxed">
+              Supabase will email <span className="font-mono">{email || 'them'}</span> a magic link. They&apos;ll set their own password on first sign-in.
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <div className="font-mono text-[11px] text-[rgb(181_58_40)] border border-[rgb(181_58_40_/_0.3)] rounded-sharp px-2.5 py-2">
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-hairline-soft">
+          <AdminBtn onClick={onClose}>cancel</AdminBtn>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="inline-flex items-center gap-2 px-3 h-[30px] font-mono text-[10.5px] tracking-[0.08em] uppercase border bg-ink text-bg border-ink hover:bg-ink/90 rounded-sharp transition-colors disabled:opacity-50"
+          >
+            {submitting ? 'creating…' : mode === 'invite' ? 'send invite' : 'create user'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted">
+        {label}
+        {required && <span className="text-accent"> *</span>}
+      </span>
+      <div className="mt-1.5">{children}</div>
+    </label>
+  )
+}
+
+function ModeChip({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10.5px] tracking-[0.06em] uppercase border rounded-sharp transition-colors ${
+        active
+          ? 'text-bg bg-ink border-ink'
+          : 'text-ink-soft border-hairline-soft hover:border-hairline'
+      }`}
+    >
+      {children}
+    </button>
+  )
 }

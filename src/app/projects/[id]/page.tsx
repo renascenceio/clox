@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState, useCallback, use } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 
 // Same chrome contract as /history, /gallery, /skills, /settings and
 // /projects (index). Using `ChatWorkspace` here keeps the topstrip nav
@@ -24,8 +24,15 @@ type Tab = 'chats' | 'members' | 'usage' | 'files' | 'settings'
 
 export default function ProjectWorkspacePage({
   params,
-}: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+}: { params: { id: string } }) {
+  // Next 14 ships params as a synchronous plain object on client pages.
+  // An earlier revision typed this as `Promise<{ id }>` + React.use() —
+  // that's the Next 15 contract, and on Next 14 it throws React error
+  // #438 ("'use' was called on a value that is not a thenable") at
+  // runtime, which is what the production crash on /projects/[id] was.
+  // Switch back to direct destructuring; if/when this app upgrades to
+  // Next 15, restore the Promise type and wrap with React.use().
+  const { id } = params
   const chrome = useChatChrome('projects')
   const [project, setProject] = useState<ProjectFull | null>(null)
   const [error, setError] = useState<string | null>(null)
