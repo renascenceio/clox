@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, use } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -31,8 +31,10 @@ type InviteResponse = {
 
 export default function InviteAcceptPage({
   params,
-}: { params: Promise<{ token: string }> }) {
-  const { token } = use(params)
+}: { params: { token: string } }) {
+  // See note in /projects/[id]/page.tsx — Next 14 ships sync params on
+  // client pages; React.use() on a plain object throws error #438.
+  const { token } = params
   const router = useRouter()
   const [info, setInfo] = useState<InviteResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
