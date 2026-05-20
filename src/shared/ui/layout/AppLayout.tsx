@@ -135,17 +135,39 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
   // Initial state is the cached profile so the rail renders fully populated
   // on first paint. We only show the empty placeholder for genuinely-new
   // visitors who haven't authenticated yet.
-  const [profile, setProfile] = useState<UserProfile>(() => readCachedProfile() ?? {
+  const cached = readCachedProfile()
+  const [profile, setProfile] = useState<UserProfile>(() => cached ?? {
     email: '',
     firstName: '',
     role: 'user',
     balance: '0.00',
     avatarSeed: '',
   })
+  // Tracks whether `loadProfile` has finished at least once. We use this
+  // to distinguish "rail just hasn't fetched yet" from "user is signed
+  // out" — without it, navigating from an admin page (which doesn't
+  // populate AppLayout's profile cache) into /text briefly rendered an
+  // empty rail that *looked* signed-out for ~500ms, which is what the
+  // operator reported. While loading we now show a faint shimmer label.
+  const [profileLoaded, setProfileLoaded] = useState<boolean>(cached !== null)
 
   const loadProfile = useCallback(async () => {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    // Bug we used to hit: navigating /admin → /text could land us
+    // here mid-cookie-rotation; getUser() would briefly return
+    // {user:null}, we'd silently `return`, and the rail would stay
+    // stuck on the empty placeholder ("0.00 balance, no name") that
+    // *looks* signed-out even though the session was about to be
+    // present 50ms later. We now retry once after a short delay
+    // before giving up — middleware handles the genuinely-logged-out
+    // case via redirect, so a real null here is rare enough to
+    // tolerate the extra round-trip.
+    let { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      await new Promise(r => setTimeout(r, 250))
+      const retry = await supabase.auth.getUser()
+      user = retry.data.user
+    }
     if (!user) return
 
     const email = user.email || ''
@@ -167,6 +189,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     }
     writeCachedProfile(next)
     setProfile(next)
+    setProfileLoaded(true)
   }, [])
 
   // Refetch only once per session. Subsequent navigations read the cached
@@ -203,6 +226,10 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
       profileMemo = null
       profileFetchedThisSession = false
       try { window.sessionStorage.removeItem(PROFILE_CACHE_KEY) } catch { /* fine */ }
+      // Don't flip `profileLoaded` to false here — we still have the
+      // current `profile` in state and the rail can keep showing it
+      // until the refetch resolves. Toggling it would create a
+      // flicker on every settings save.
       void loadProfile()
     }
     const onProfileChanged = () => refresh()
@@ -374,14 +401,26 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
             <Avatar seed={profile.avatarSeed || undefined} size={24} className="rounded-full" />
             <div className="flex-1 min-w-0 text-left">
               <div className="text-[12.5px] leading-tight truncate text-ink capitalize">
-                {profile.firstName || '\u00a0'}
+                {/* While the profile fetch is in flight on a fresh tab
+                    we show a subtle dash so the rail doesn't look like
+                    "you are signed out" — the previous behaviour of
+                    rendering an empty `\u00a0` was the source of the
+                    flicker the operator reported when bouncing between
+                    /admin and the studio. */}
+                {profileLoaded
+                  ? (profile.firstName || '\u00a0')
+                  : <span className="text-ink-muted font-mono text-[11px]">loading…</span>}
               </div>
               <div className="font-mono text-[10px] tracking-[0.04em] text-ink-muted truncate">
-                {roleLabel.toLowerCase()}
-                {' · '}
-                {isFreeDomain
-                  ? 'pro'
-                  : <span className="text-ink-soft">${profile.balance}</span>}
+                {profileLoaded ? (
+                  <>
+                    {roleLabel.toLowerCase()}
+                    {' · '}
+                    {isFreeDomain
+                      ? 'pro'
+                      : <span className="text-ink-soft">${profile.balance}</span>}
+                  </>
+                ) : '\u00a0'}
               </div>
             </div>
             <span

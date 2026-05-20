@@ -333,15 +333,9 @@ export default function AdminShell({
             <div className="text-[12.5px] truncate">{adminEmail || 'admin'}</div>
             <div className="font-mono text-[10px] text-ink-muted">superadmin</div>
           </div>
-          <button
-            onClick={() => router.push('/text')}
-            className="w-7 h-7 inline-flex items-center justify-center border border-hairline-soft rounded-sharp text-ink-soft hover:border-ink hover:text-ink transition-colors"
-            title="Return to studio"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M3 6h6M6 3l3 3-3 3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+          {/* The "Go to App" affordance lives in the top strip now —
+              kept the rail footer minimal so identity (avatar + email)
+              reads first. */}
         </div>
       </aside>
 
@@ -362,6 +356,21 @@ export default function AdminShell({
                 {syncHint}
               </span>
             )}
+            {/* Go to App — symmetric counterpart to the user-menu's
+                "Super Admin" link inside AppLayout. Lets the operator
+                bounce between the studio and the admin surface without
+                a sign-out detour. */}
+            <button
+              type="button"
+              onClick={() => router.push('/text')}
+              className="inline-flex items-center gap-2 px-3 h-[30px] font-mono text-[10.5px] tracking-[0.08em] uppercase border border-hairline hover:border-ink rounded-sharp transition-colors"
+              title="Return to the Clox app"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+                <path d="M9 6H3M6 3 3 6l3 3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>Go to App</span>
+            </button>
             {actions}
           </div>
         </div>
