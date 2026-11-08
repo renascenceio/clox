@@ -1936,6 +1936,7 @@ function ToolsMenu({ p, mono, toolsState, onToggleTool, left = 12 }: {
     'web search':     'tavily · live web results',
     'code execute':   'in-process node vm · 1s timeout',
     'python sandbox': 'micro-vm · python 3.13 + bash',
+    'browser':        'headless chrome · clicks, reads, screenshots',
   }
 
   return (

@@ -154,15 +154,14 @@ class Report:
         register_pdf_fonts()
         t = self.theme
         f = t.font
-        registerFontFamily("Inter-Regular", normal="Inter-Regular", bold="Inter-Bold", italic="Inter-Italic",
-                           boldItalic="Inter-Bold")
+        registerFontFamily(f("body"), normal=f("body"), bold=f("bold"), italic=f("italic"), boldItalic=f("bold"))
         page = letter if str(self.meta.get("size", "A4")).lower() == "letter" else A4
         PW, PH = page
         ML = MR = 20 * mm
         MT, MB = 24 * mm, 20 * mm
         CW = PW - ML - MR
         ink, muted, acc = _hx(t.ink), _hx(t.muted), _hx(t.accent if contrast(t.accent, t.bg) >= 2.6 else t.ink)
-        serif = t.fonts == "editorial"
+        serif = t.serif
         S = {
             "body": ParagraphStyle("body", fontName=f("body"), fontSize=10.2, leading=15.6, textColor=ink,
                                    spaceAfter=7),

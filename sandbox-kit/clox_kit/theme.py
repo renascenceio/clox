@@ -83,7 +83,15 @@ class Theme:
     negative: str = "#FF3B5C"
     radius: int = 28   # card corner radius in canvas px (1920x1080 grid)
     upper_kicker: bool = True
+    # "bold" = filled cards, chunky accent bars, big type (the default).
+    # "luxe" = premium: no filled panels, hairlines, airy spacing, lighter
+    #          headline weight, widely tracked small caps, accent used sparingly.
+    style: str = "bold"
     extra: dict = field(default_factory=dict)
+
+    @property
+    def luxe(self) -> bool:
+        return self.style == "luxe"
 
     @property
     def hero_ink(self) -> str:
@@ -98,7 +106,22 @@ class Theme:
         return on(self.accent)
 
     def font(self, role: str) -> str:
+        if self.fonts not in FONT_SETS:
+            from .fonts import ensure
+            ensure(self.fonts)
         return FONT_SETS[self.fonts].get(role, FONT_SETS[self.fonts]["body"])
+
+    @property
+    def serif(self) -> bool:
+        """Headlines in a serif face — lets layouts give them a little more size."""
+        if self.fonts == "editorial":
+            return True
+        if self.fonts.startswith("gf:"):
+            fam = self.fonts[3:].split("|")[0].lower()
+            return any(k in fam for k in ("serif", "playfair", "fraunces", "garamond", "lora", "merriweather",
+                                          "libre baskerville", "dm serif", "cormorant", "newsreader", "gelasio",
+                                          "crimson", "spectral", "bodoni", "prata", "young serif"))
+        return False
 
     def color(self, i: int) -> str:
         return self.series[i % len(self.series)]
@@ -146,6 +169,20 @@ THEMES: dict[str, Theme] = {
         series=("#000000", "#FF4F00", "#8C8C8C", "#FFB199", "#3D3D3D", "#C8C8C8"),
         fonts="grotesk", radius=0,
     ),
+    # Premium, dark: black, ivory type, champagne-gold hairlines. Luxury, hospitality, private banking.
+    "noir": Theme(
+        name="noir", bg="#0E0D0B", surface="#171512", ink="#F2EDE4", muted="#A39B8E",
+        rule="#2E2A24", accent="#C8A96B", accent2="#8C8273", hero="#0E0D0B",
+        series=("#C8A96B", "#F2EDE4", "#8C8273", "#6B5A3E", "#D9CBB0", "#4A453D"),
+        fonts="editorial", dark=True, radius=0, style="luxe", positive="#9DBF8A", negative="#C9786B",
+    ),
+    # Premium, light: warm ivory, deep ink, bronze. Real estate, fashion, wealth, fine dining.
+    "ivory": Theme(
+        name="ivory", bg="#F6F2EA", surface="#EEE8DC", ink="#1B1814", muted="#6F665A",
+        rule="#DDD4C4", accent="#8C6A3F", accent2="#1B1814", hero="#1B1814",
+        series=("#1B1814", "#8C6A3F", "#B8A07A", "#6F665A", "#D8C7A8", "#3E4A3F"),
+        fonts="editorial", radius=0, style="luxe", positive="#4F7A4A", negative="#A4453A",
+    ),
     # Deep green + mint. Sustainability, health, finance-with-calm.
     "forest": Theme(
         name="forest", bg="#F6F8F5", surface="#E9EFE8", ink="#0C2A20", muted="#55685F",
@@ -173,6 +210,15 @@ def theme(name: str | Theme | None = None, *, brand: str | None = None, dark: bo
         base = THEMES[key]
     if brand and name:
         overrides.setdefault("accent", brand)
+    if "fonts" in overrides and overrides["fonts"] not in FONT_SETS:
+        from .fonts import key_for
+        try:
+            overrides["fonts"] = key_for(overrides["fonts"]) or base.fonts
+        except (OSError, ValueError) as e:
+            # A font that can't be fetched must not stop the deck: keep the
+            # theme's own fonts and say so (lines starting "!" are defects).
+            print(f"! fonts {overrides['fonts']!r} not used, kept the theme's fonts: {e}")
+            overrides["fonts"] = base.fonts
     if "series" in overrides and not isinstance(overrides["series"], tuple):
         overrides["series"] = tuple(overrides["series"])
     return replace(base, **overrides) if overrides else base

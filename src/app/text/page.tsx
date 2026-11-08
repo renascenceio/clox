@@ -4,8 +4,10 @@ import { useChat } from '@ai-sdk/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { CodeArtifact } from '@/shared/ui/components/CodeArtifact'
 import { DownloadStrip, type DownloadStripFile } from '@/shared/ui/components/DownloadStrip'
+import { BrowserPanel, type BrowserInvocation, type BrowserProgressEvent } from '@/shared/ui/components/BrowserPanel'
 
 import ChatWorkspace, {
   type Attachment,
@@ -425,7 +427,7 @@ export default function TextPage() {
     // The two sandbox tool ids ride on a single composer toggle because a
     // user enabling Python almost always wants `bash` for filesystem ops too,
     // and surfacing them as separate switches just adds a footgun.
-    const TOOL_LABELS = ['web search', 'code execute', 'python sandbox'] as const
+    const TOOL_LABELS = ['web search', 'browser', 'code execute', 'python sandbox'] as const
     if (typeof window === 'undefined') {
       return TOOL_LABELS.map(label => ({ label, on: false }))
     }
@@ -460,6 +462,7 @@ export default function TextPage() {
       // them to the same per-chat microVM and the model picks `bash` vs
       // `python` per call.
       if (t.label === 'python sandbox') ids.push('bash', 'python')
+      if (t.label === 'browser')        ids.push('browser')
     }
     return ids
   }, [toolsState])
@@ -1148,8 +1151,14 @@ export default function TextPage() {
            */
           <div className="prose">
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 code: CodeArtifact,
+                table: ({ children }) => (
+                  <div className="prose-table-wrap">
+                    <table>{children}</table>
+                  </div>
+                ),
                 // Strip the default <pre> wrapper because CodeArtifact
                 // ships its own framed container; nesting another
                 // <pre> would double-pad and disable horizontal scroll.
@@ -1265,6 +1274,10 @@ export default function TextPage() {
         tool?: 'python' | 'bash'
         preview?: string
       }
+      const browserInvocations = toolInvocations.filter(inv => inv.toolName === 'browser') as BrowserInvocation[]
+      const browserProgress: BrowserProgressEvent[] = annotations
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((a: any) => a && a.type === 'browser-progress' && typeof a.phase === 'string')
       const progressEvents: ProgressEvent[] = annotations
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((a: any) => a && a.type === 'sandbox-progress' && typeof a.phase === 'string')
@@ -1321,6 +1334,7 @@ export default function TextPage() {
           return q ? `Searching the web — “${q}”` : 'Searching the web…'
         }
         if (name === 'run_javascript') return 'Running JavaScript…'
+        if (name === 'browser') return 'Using the browser…'
         return name ? `Running ${name}…` : null
       })()
 
@@ -1419,7 +1433,7 @@ export default function TextPage() {
                     animation: 'cloxPulse 1.4s ease-in-out infinite',
                   }}
                 />
-                <span>Working in Python sandbox — this can take 30–60s on a cold start</span>
+                <span>Working — the first step can take 30–60s on a cold start</span>
                 {/* Inline keyframes — declared here so we don't have
                     to add a new globals.css rule for a one-off
                     animation that's only used by this fallback. */}
@@ -1497,9 +1511,12 @@ export default function TextPage() {
                 })}
               </div>
             )}
-            {toolInvocations.length > 0 && (
+            {browserInvocations.length > 0 && (
+              <BrowserPanel invocations={browserInvocations} progress={browserProgress} live={isInFlight} />
+            )}
+            {toolInvocations.some(inv => inv.toolName !== 'browser') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {toolInvocations.map((inv, ti) => {
+              {toolInvocations.filter(inv => inv.toolName !== 'browser').map((inv, ti) => {
                 const name = String(inv.toolName ?? 'tool')
                 const isRunning = inv.state !== 'result'
                 // Pretty-print the tool call header so users see exactly
@@ -1740,7 +1757,7 @@ export default function TextPage() {
                 Auto-compacted {compactionAnnotation.compactedCount} earlier turns
               </div>
             )}
-            {outputFiles.length > 0 && <DownloadStrip files={outputFiles} />}
+            {outputFiles.length > 0 && <DownloadStrip files={outputFiles} defaultPreview={isLastMessage} />}
           </div>
         )
       }
@@ -1823,8 +1840,9 @@ export default function TextPage() {
         return text
       })()
       const lower = rawMessage.toLowerCase()
-      const errorKind: 'rate_limit' | 'overloaded' | 'timeout' | 'no_response' | 'generic' =
+      const errorKind: 'rate_limit' | 'overloaded' | 'timeout' | 'no_response' | 'missing_tool' | 'generic' =
         !chatError                                                ? 'no_response'
+        : /unavailable tool|no such tool|nosuchtool/i.test(lower) ? 'missing_tool'
         : /rate.?limit|429|tokens? per (minute|second)|tpm|exceed/i.test(lower) ? 'rate_limit'
         : /overload|529|temporarily unavailable|service unavail/i.test(lower)   ? 'overloaded'
         : /timeout|timed out|aborted|deadline/i.test(lower)       ? 'timeout'
@@ -1895,6 +1913,9 @@ export default function TextPage() {
             return 'The request timed out before the model finished. ' +
                    'For long deliverables (PPTX, multi-page PDFs), break the work into ' +
                    'smaller follow-up turns instead of one big request.'
+          case 'missing_tool':
+            return 'Clox tried to run code to rebuild the file, but the code tools were not attached to that message. ' +
+                   'This was a Clox problem, not the model. It is fixed now: try again and the same request will run.'
           case 'no_response':
             return 'The model stopped without producing a response. ' +
                    'This usually means the request timed out, hit the token limit, ' +
@@ -1935,6 +1956,7 @@ export default function TextPage() {
                errorKind === 'overloaded' ? 'Provider overloaded' :
                errorKind === 'timeout'    ? 'Request timed out' :
                errorKind === 'no_response' ? 'No response' :
+               errorKind === 'missing_tool' ? 'Tools not attached' :
                'Stream error'}
             </div>
             <div style={{ opacity: 0.85 }}>
@@ -2059,7 +2081,7 @@ export default function TextPage() {
                   opacity: isStreaming ? 0.5 : 1,
                 }}
               >
-                Retry on {selectedTextModel.name}
+                {canSuggestSwap ? `Retry on ${selectedTextModel.name}` : 'Try again'}
               </button>
             </div>
           </div>

@@ -102,7 +102,7 @@ def pptx_chart(cv, kind, categories, series, x, y, w, h, fmt=None, labels=None, 
     gf = cv.slide.shapes.add_chart(types[kind], cv.e(x), cv.e(y), cv.e(w), cv.e(h), cd)
     ch = gf.chart
     ch.has_title = False
-    body_font = cv.map.get(t.font("body"), ("Aptos",))[0]
+    body_font = cv.font_name(t.font("body"))
     ch.font.name = body_font
     ch.font.size = Pt(20 * PT)
     ch.font.color.rgb = cv._rgb(t.muted)
@@ -237,7 +237,13 @@ def _mpl(t: Theme):
             if fn.endswith(".ttf"):
                 font_manager.fontManager.addfont(os.path.join(FONT_DIR, fn))
         _MPL_READY = True
-    body = {"inter": "Inter", "editorial": "Inter", "grotesk": "Inter"}[t.fonts]
+    body_stem = t.font("body")
+    body = "Inter"
+    if body_stem.startswith("gf-"):
+        from .fonts import pptx_name
+        from .text import font_path
+        font_manager.fontManager.addfont(font_path(body_stem))
+        body = pptx_name(body_stem)[0]
     plt.rcParams.update({
         "font.family": body, "font.size": 10, "text.color": t.ink, "axes.labelcolor": t.muted,
         "xtick.color": t.muted, "ytick.color": t.muted, "axes.edgecolor": t.rule,

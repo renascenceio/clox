@@ -10,6 +10,10 @@ FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
 
 
 def font_path(name: str) -> str:
+    """Bundled fonts live beside the kit; Google Fonts fetched on demand live in the cache."""
+    if name.startswith("gf-"):
+        from .fonts import cache_dir
+        return os.path.join(cache_dir(), name + ".ttf")
     return os.path.join(FONT_DIR, name + ".ttf")
 
 

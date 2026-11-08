@@ -1,1 +1,1 @@
-Inter, Instrument Serif, Space Grotesk and JetBrains Mono are licensed under the SIL Open Font License 1.1 (https://openfontlicense.org). Files here are Latin/Greek/Cyrillic subsets.
+Inter, Instrument Serif, Space Grotesk and JetBrains Mono are licensed under the SIL Open Font License 1.1 (https://openfontlicense.org). Files here are Latin/Greek/Cyrillic subsets. Gelasio (SIL OFL 1.1) is metric-compatible with Georgia and is only used to measure text that PowerPoint draws in Georgia.

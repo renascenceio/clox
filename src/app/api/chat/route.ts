@@ -12,8 +12,9 @@ import { webSearchTool } from '@/lib/tools/web-search'
 import { runJavaScriptTool } from '@/lib/tools/run-javascript'
 import { makeBashTool } from '@/lib/tools/sandbox-bash'
 import { makePythonTool } from '@/lib/tools/sandbox-python'
-import { mountAttachments, collectOutputs, prewarmSandbox, type AttachmentToMount } from '@/lib/sandbox/manager'
-import { uploadChatOutput } from '@/lib/storage/chat-outputs'
+import { mountAttachments, collectOutputs, collectState, prewarmSandbox, setSandboxOwner, type AttachmentToMount } from '@/lib/sandbox/manager'
+import { uploadChatOutput, saveWorkspaceFile } from '@/lib/storage/chat-outputs'
+import { makeBrowserTool } from '@/lib/tools/browser'
 
 // Streaming chat responses can legitimately run for several minutes
 // when the python sandbox is in play: cold microVM boot (~5-10s), pip
@@ -663,7 +664,10 @@ export async function POST(req: Request) {
       /\b(xlsx|excel|spreadsheet|pivot table|workbook|pptx|powerpoint|slides?|deck|presentation|pdf|docx|word doc|word document|csv|chart|graph)\b/i
     const userHasFileAttachment = (() => {
       for (const m of messageList) {
-        if (m?.role === 'user' && Array.isArray(m.content)) {
+        if (m?.role !== 'user') continue
+        const atts = (m as { experimental_attachments?: unknown[] }).experimental_attachments
+        if (Array.isArray(atts) && atts.length > 0) return true
+        if (Array.isArray(m.content)) {
           for (const part of m.content as Array<{ type?: string }>) {
             if (part?.type === 'file' || part?.type === 'image') return true
           }
@@ -671,20 +675,71 @@ export async function POST(req: Request) {
       }
       return false
     })()
+    // Follow-ups like "make it more premium" name no document, yet they
+    // continue a document task. Look at the recent conversation, not just
+    // the last line, and at whether code already ran in this chat.
+    const recentUserText = messageList
+      .filter(m => m?.role === 'user')
+      .slice(-6)
+      .map(m => typeof m.content === 'string'
+        ? m.content
+        : Array.isArray(m.content)
+          ? (m.content as Array<{ type?: string; text?: string }>).map(p => (p?.type === 'text' && p.text) || '').join(' ')
+          : '')
+      .join(' ')
+    const conversationRanCode = messageList.some(m => {
+      if (m?.role !== 'assistant') return false
+      const msg = m as {
+        toolInvocations?: Array<{ toolName?: string }>
+        parts?: Array<{ type?: string; toolInvocation?: { toolName?: string } }>
+      }
+      const names = [
+        ...(msg.toolInvocations ?? []).map(t => t?.toolName),
+        ...(msg.parts ?? []).filter(p => p?.type === 'tool-invocation').map(p => p.toolInvocation?.toolName),
+      ]
+      return names.some(n => n === 'python' || n === 'bash')
+    })
     const userIntentNeedsDocs =
-      DOC_KEYWORDS_RE.test(lastUserMessage) || userHasFileAttachment
-    const catalogNeedsSandbox = userIntentNeedsDocs && (() => {
+      DOC_KEYWORDS_RE.test(lastUserMessage) ||
+      DOC_KEYWORDS_RE.test(recentUserText) ||
+      userHasFileAttachment ||
+      conversationRanCode
+    const catalogHasSandboxSkills = (() => {
       for (const skill of Array.from(skillCatalog.values())) {
         if (skill.system_prompt.includes('/mnt/user-data/')) return true
       }
       return false
     })()
+    const catalogNeedsSandbox = userIntentNeedsDocs && catalogHasSandboxSkills
     const skillsRequireSandbox =
       composedSystem.includes('/mnt/user-data/') || catalogNeedsSandbox
     const userArmedSandbox =
       Array.isArray(requestedTools) &&
       (requestedTools.includes('bash') || requestedTools.includes('python'))
+    // `sandboxArmed` = boot the VM now and mount uploads (costs time).
     const sandboxArmed = Boolean(chatId) && (userArmedSandbox || skillsRequireSandbox)
+    // `sandboxBound` = the model can CALL python/bash. Any skill it reads
+    // with read_skill may tell it to run code, and tools can't be added
+    // mid-stream — so whenever such a skill exists the tools are attached;
+    // the VM still only starts on the first call. Without this a skill
+    // loaded on a follow-up turn ended in "unavailable tool 'python'".
+    const sandboxBound = Boolean(chatId) && (sandboxArmed || catalogHasSandboxSkills)
+
+    // The browser is attached when the user turns it on, mentions a web
+    // address or asks to visit/browse a site, or when this chat already
+    // used it (so "now click pricing" keeps working).
+    const BROWSE_RE =
+      /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|io|ai|org|net|dev|app|co|ae|uk|de)\b|\b(browse|browser|visit|navigate|go to|open (the |this |that )?(site|website|page|link|url)|log ?in to|sign ?in to|fill (in|out) the form|screenshot of|look at (the|this|their) (site|website|page)))/i
+    const conversationBrowsed = messageList.some(m => {
+      if (m?.role !== 'assistant') return false
+      const msg = m as { toolInvocations?: Array<{ toolName?: string }> }
+      return (msg.toolInvocations ?? []).some(t => t?.toolName === 'browser')
+    })
+    const browserBound = Boolean(chatId) && (
+      (Array.isArray(requestedTools) && requestedTools.includes('browser')) ||
+      BROWSE_RE.test(lastUserMessage) ||
+      conversationBrowsed
+    )
 
     if (Array.isArray(requestedTools)) {
       if (requestedTools.includes('web_search'))     enabledTools.web_search     = webSearchTool
@@ -799,9 +854,19 @@ export async function POST(req: Request) {
         // a model that has `python` but not `bash` can't `pip install`
         // a missing package, can't `ls` to see what was uploaded, and
         // can't `file` to disambiguate a binary upload. They're a pair.
-        if (sandboxArmed && chatId) {
+        if (sandboxBound && chatId) {
+          if (caller) setSandboxOwner(chatId, caller.userId)
           enabledTools.bash   = makeBashTool(chatId, writeProgress)
           enabledTools.python = makePythonTool(chatId, writeProgress)
+        }
+        if (browserBound && chatId) {
+          enabledTools.browser = makeBrowserTool(chatId, caller?.userId ?? null, event => {
+            try {
+              dataStream.writeMessageAnnotation({ type: 'browser-progress', ts: Date.now(), ...event })
+            } catch { /* stream closed — cosmetic */ }
+          })
+        }
+        if (sandboxArmed && chatId) {
           // Pre-warm the sandbox immediately. Kicks off (a) microVM
           // cold-boot (~5-10s) and (b) pip-installing the canonical
           // Python deps (~30-40s on a fresh VM, instant under the
@@ -880,7 +945,7 @@ export async function POST(req: Request) {
           // inflate cost for plain conversations.
           maxTokens: Math.min(
             sampling.maxOutput,
-            Math.max(sampling.minTokens, sandboxArmed ? Math.max(sampling.maxTokens, 64_000) : sampling.maxTokens),
+            Math.max(sampling.minTokens, sandboxArmed ? Math.max(sampling.maxTokens, 64_000) : sandboxBound ? Math.max(sampling.maxTokens, 32_000) : sampling.maxTokens),
           ),
           // The AI SDK retries every failed request twice (3 attempts
           // total) with no special handling for 429s. That's actively
@@ -944,7 +1009,7 @@ export async function POST(req: Request) {
                 // under 20 steps so the bump only matters for the
                 // genuinely complex flows where the old cap actively
                 // hurt.
-                maxSteps: sandboxArmed ? 50 : 4,
+                maxSteps: sandboxBound ? 50 : 4,
               }
             : {}),
           onFinish: async ({ usage, finishReason, providerMetadata, steps }) => {
@@ -1096,7 +1161,10 @@ export async function POST(req: Request) {
             // and a signed URL is written to the assistant message's
             // annotations array so the client can render a download
             // chip without polling.
-            if (sandboxArmed && chatId && caller) {
+            const ranCodeThisTurn = (steps ?? []).some(st =>
+              (st.toolCalls ?? []).some(c => c.toolName === 'python' || c.toolName === 'bash'),
+            )
+            if ((sandboxArmed || ranCodeThisTurn) && chatId && caller) {
               try {
                 const outputs = await collectOutputs(chatId)
                 for (const o of outputs) {
@@ -1118,6 +1186,12 @@ export async function POST(req: Request) {
                   } catch (e) {
                     console.error('[v0] chat-output upload failed:', (e as Error).message)
                   }
+                }
+                // Keep the kit's working state (deck JSON …) so a later
+                // sandbox for this chat can carry on editing the same file.
+                for (const f of await collectState(chatId)) {
+                  await saveWorkspaceFile({ userId: caller.userId, chatId, name: f.name, content: f.content })
+                    .catch(e => console.error('[v0] workspace save failed:', (e as Error).message))
                 }
               } catch (e) {
                 console.error('[v0] sandbox collect failed:', (e as Error).message)

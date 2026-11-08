@@ -49,18 +49,112 @@ function formatTag(filename: string, mime: string): string {
   return 'FILE'
 }
 
-export function DownloadStrip({ files }: { files: DownloadStripFile[] }) {
-  if (!Array.isArray(files) || files.length === 0) return null
+type PreviewKind = 'pdf' | 'image' | 'html'
+
+function previewKind(f: DownloadStripFile): PreviewKind | null {
+  const ext = f.filename.toLowerCase().split('.').pop() ?? ''
+  if (ext === 'pdf' || f.mime.includes('pdf')) return 'pdf'
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext) || f.mime.startsWith('image/')) return 'image'
+  if (ext === 'html' || ext === 'htm') return 'html'
+  return null
+}
+
+const baseName = (name: string) => name.replace(/\.[^.]+$/, '').toLowerCase()
+
+/** What to show when a chip's preview is opened. A deck or document is
+ *  previewed through the PDF the kit writes beside it (deck.pptx → deck.pdf),
+ *  because browsers can't draw .pptx/.docx themselves. */
+function previewTarget(f: DownloadStripFile, files: DownloadStripFile[]): { file: DownloadStripFile; kind: PreviewKind } | null {
+  const own = previewKind(f)
+  if (own) return { file: f, kind: own }
+  const twin = files.find(o => o !== f && previewKind(o) === 'pdf' && baseName(o.filename) === baseName(f.filename))
+  return twin ? { file: twin, kind: 'pdf' } : null
+}
+
+function Preview({ file, kind, onClose }: { file: DownloadStripFile; kind: PreviewKind; onClose: () => void }) {
   return (
+    <figure
+      style={{
+        margin: '10px 0 0', border: '1px solid currentColor', borderRadius: 6,
+        overflow: 'hidden', width: '100%', maxWidth: 760,
+      }}
+    >
+      <figcaption
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+          padding: '6px 10px', borderBottom: '1px solid currentColor',
+          fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 11,
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          Preview · {file.filename}
+        </span>
+        <span style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
+          <a href={file.url} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>Open full size</a>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: 'none', border: 0, padding: 0, color: 'inherit', cursor: 'pointer', font: 'inherit' }}
+          >
+            Hide
+          </button>
+        </span>
+      </figcaption>
+      {kind === 'image' ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={file.url} alt={`Preview of ${file.filename}`} style={{ display: 'block', width: '100%', height: 'auto' }} />
+      ) : (
+        <iframe
+          title={`Preview of ${file.filename}`}
+          src={kind === 'pdf' ? `${file.url}#view=FitH&navpanes=0` : file.url}
+          sandbox={kind === 'html' ? 'allow-scripts' : undefined}
+          style={{ display: 'block', width: '100%', height: kind === 'pdf' ? 460 : 520, border: 0, background: '#fff' }}
+        />
+      )}
+    </figure>
+  )
+}
+
+export function DownloadStrip({ files, defaultPreview = false }: { files: DownloadStripFile[]; defaultPreview?: boolean }) {
+  const list = Array.isArray(files) ? files : []
+  // Open the first previewable deliverable on the newest turn, so a deck can be
+  // checked and amended in the chat without downloading it each time.
+  const firstPreviewable = list.findIndex(f => previewTarget(f, list))
+  const [openIndex, setOpenIndex] = React.useState<number | null>(
+    defaultPreview && firstPreviewable >= 0 ? firstPreviewable : null,
+  )
+  if (list.length === 0) return null
+  const open = openIndex !== null ? previewTarget(list[openIndex], list) : null
+  return (
+    <div style={{ marginTop: 8 }}>
     <div
       style={{
         display: 'flex', flexWrap: 'wrap', gap: 6,
-        marginTop: 8,
       }}
     >
-      {files.map((f, i) => (
+      {list.map((f, i) => {
+        const canPreview = previewTarget(f, list) !== null
+        return (
+        <div key={`${f.filename}-${i}`} style={{ display: 'inline-flex', alignItems: 'stretch', gap: 0 }}>
+        {canPreview && (
+          <button
+            type="button"
+            onClick={() => setOpenIndex(openIndex === i ? null : i)}
+            aria-pressed={openIndex === i}
+            aria-label={`${openIndex === i ? 'Hide' : 'Show'} preview of ${f.filename}`}
+            style={{
+              padding: '0 10px', border: '1px solid currentColor', borderRight: 0,
+              borderRadius: '2px 0 0 2px', background: 'transparent',
+              color: 'inherit', cursor: 'pointer',
+              fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 10,
+              letterSpacing: '0.12em', textTransform: 'uppercase',
+              textDecoration: openIndex === i ? 'underline' : 'none', textUnderlineOffset: 3,
+            }}
+          >
+            {openIndex === i ? 'Hide' : 'Preview'}
+          </button>
+        )}
         <a
-          key={`${f.filename}-${i}`}
           href={f.url}
           download={f.filename}
           target="_blank"
@@ -69,7 +163,7 @@ export function DownloadStrip({ files }: { files: DownloadStripFile[] }) {
             display: 'inline-flex', flexDirection: 'column', gap: 2,
             padding: '6px 10px',
             border: '1px solid currentColor',
-            borderRadius: 2,
+            borderRadius: canPreview ? '0 2px 2px 0' : 2,
             opacity: 0.95,
             textDecoration: 'none',
             color: 'inherit',
@@ -103,7 +197,11 @@ export function DownloadStrip({ files }: { files: DownloadStripFile[] }) {
             {formatBytes(f.size)}
           </div>
         </a>
-      ))}
+        </div>
+        )
+      })}
+    </div>
+    {open && <Preview key={open.file.url} file={open.file} kind={open.kind} onClose={() => setOpenIndex(null)} />}
     </div>
   )
 }
