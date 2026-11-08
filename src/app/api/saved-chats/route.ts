@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const { supabase } = await requireUser()
+    const { user, supabase } = await requireUser()
     const { data, error } = await supabase
       .from('saved_chats')
       .select('chat_id, modality, record, history_bytes, deleted_at, updated_at')
@@ -17,6 +17,7 @@ export async function GET() {
       .limit(2000)
     if (error) throw error
     return NextResponse.json({
+      userId: user.id,
       chats: (data ?? []).map(r => ({
         chatId: r.chat_id,
         modality: r.modality,

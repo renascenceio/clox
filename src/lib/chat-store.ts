@@ -163,7 +163,7 @@ export function saveChats(chats: Chat[]): void {
       if (prev.get(c.id) !== norm(c)) emitChatChange({ kind: 'record', chatId: c.id })
       prev.delete(c.id)
     }
-    for (const id of prev.keys()) emitChatChange({ kind: 'removed', chatId: id })
+    prev.forEach((_, id) => emitChatChange({ kind: 'removed', chatId: id }))
   }
   window.dispatchEvent(new CustomEvent('clox-chats-changed'))
 }

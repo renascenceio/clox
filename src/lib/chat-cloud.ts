@@ -42,6 +42,7 @@ function slim(value: unknown, limit = LONG_STRING): unknown {
     if (value.startsWith('data:') && value.length > 2048) return ''
     return value.length > limit ? `${value.slice(0, limit)}\n…[trimmed]` : value
   }
+  if (value instanceof Date) return value.toISOString()
   if (Array.isArray(value)) return value.map(v => slim(v, limit))
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {}
@@ -101,7 +102,7 @@ async function send(chatId: string, p: Pending, keepalive = false): Promise<bool
 
 async function flush(keepalive = false) {
   timer = null
-  const batch = [...queue.entries()]
+  const batch = Array.from(queue.entries())
   queue.clear()
   await Promise.all(batch.map(async ([id, p]) => {
     try {
@@ -132,6 +133,20 @@ type RemoteChat = {
 }
 
 const textHistoryKey = (id: string) => `chat-history-${id}`
+const OWNER_KEY = 'clox_chats_owner'
+
+function clearLocalChats() {
+  withoutChangeFeed(() => {
+    for (const c of listChats()) {
+      const mod = c.modality ?? 'text'
+      localStorage.removeItem(mod === 'text' ? textHistoryKey(c.id) : `${mod}-history-${c.id}`)
+    }
+    saveChats([])
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith('activeChatId')) localStorage.removeItem(k)
+    }
+  })
+}
 
 function localHistory(chat: Chat): unknown[] {
   const mod = chat.modality ?? 'text'
@@ -147,7 +162,15 @@ async function pull() {
   const res = await fetch('/api/saved-chats', { cache: 'no-store' })
   if (res.status === 401) { disabled = true; return }
   if (!res.ok) return
-  const { chats: remote } = (await res.json()) as { chats: RemoteChat[] }
+  const { chats: remote, userId } = (await res.json()) as { chats: RemoteChat[]; userId: string }
+
+  // Chats in this browser belong to whoever was signed in when they were
+  // made. If someone else signs in here, those chats are theirs only on the
+  // server — clear them locally instead of uploading them to this account.
+  const owner = localStorage.getItem(OWNER_KEY)
+  if (owner && owner !== userId) clearLocalChats()
+  localStorage.setItem(OWNER_KEY, userId)
+
   const byId = new Map(remote.map(r => [r.chatId, r]))
   const local = listChats()
   const localIds = new Set(local.map(c => c.id))
@@ -170,7 +193,7 @@ async function pull() {
       const next = [...local.filter(c => !removed.has(c.id)), ...added]
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
       saveChats(next)
-      for (const id of removed) localStorage.removeItem(textHistoryKey(id))
+      removed.forEach(id => localStorage.removeItem(textHistoryKey(id)))
     })
   }
 

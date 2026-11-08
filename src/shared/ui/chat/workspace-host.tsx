@@ -15,6 +15,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -22,6 +23,7 @@ import {
 } from 'react'
 import { usePathname } from 'next/navigation'
 import ChatWorkspace, { type ChatWorkspaceProps } from './ChatWorkspace'
+import { startChatCloud } from '@/lib/chat-cloud'
 
 type Register = (owner: object, props: ChatWorkspaceProps | null) => void
 
@@ -59,9 +61,17 @@ export function WorkspaceHost({ children }: { children: ReactNode }) {
 let hostMounted = false
 
 function HostReady() {
+  const pathname = usePathname()
   useLayoutEffect(() => { hostMounted = true }, [])
+  // Save chats on the server and bring down ones from other devices. Only
+  // inside the app — the public pages have no chats and no session.
+  useEffect(() => {
+    if (APP_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`))) startChatCloud()
+  }, [pathname])
   return null
 }
+
+const APP_PATHS = ['/text', '/chats', '/projects', '/files', '/gallery', '/history', '/settings', '/skills', '/archives', '/deleted', '/image', '/video', '/audio']
 
 /** Drop-in replacement for a page's `<ChatWorkspace … />`. */
 export default function WorkspaceSlot(props: ChatWorkspaceProps) {

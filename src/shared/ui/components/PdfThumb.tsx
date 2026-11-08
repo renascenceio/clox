@@ -32,7 +32,7 @@ export default function PdfThumb({ url, alt, fallback }: { url: string; alt: str
       ;(async () => {
         try {
           const pdfjs = await loadPdfJs()
-          const doc = await pdfjs.getDocument({ url, isEvalSupported: false }).promise
+          const doc = await pdfjs.getDocument({ url }).promise
           const page = await doc.getPage(1)
           const base = page.getViewport({ scale: 1 })
           const viewport = page.getViewport({ scale: Math.min(2, 640 / base.width) })

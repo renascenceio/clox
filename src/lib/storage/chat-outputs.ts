@@ -114,7 +114,9 @@ export async function uploadChatOutput(
   // The Files library lists from this table. Images handed to a provider
   // as input aren't something the user made, so they stay out of it.
   if (!filename.startsWith('input-')) {
-    const { error: rowError } = await supabase.from('chat_files').upsert(
+    // chat_files isn't in the generated Database types yet.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: rowError } = await (supabase as any).from('chat_files').upsert(
       {
         user_id: input.userId,
         chat_id: input.chatId,
@@ -217,18 +219,6 @@ export async function deleteChatOutput(userId: string, path: string): Promise<vo
   const { error } = await supabase.storage.from(BUCKET).remove([path])
   if (error) throw new Error(`delete failed: ${error.message}`)
   await supabase.from('chat_files').delete().eq('path', path).eq('user_id', userId)
-}
-
-/** Remove everything a chat stored (files, working state, screenshots). */
-export async function deleteChatFolder(userId: string, chatId: string): Promise<void> {
-  const supabase = getServiceClient()
-  const bucket = supabase.storage.from(BUCKET)
-  const base = `${userId}/${chatId}`
-  const names = async (dir: string) => ((await bucket.list(dir, { limit: 1000 })).data ?? [])
-    .filter(f => f.id).map(f => `${dir}/${f.name}`)
-  const all = (await Promise.all([base, `${base}/_workspace`, `${base}/_browser`].map(names))).flat()
-  if (all.length) await bucket.remove(all)
-  await supabase.from('chat_files').delete().eq('user_id', userId).eq('chat_id', chatId)
 }
 
 /** Browser screenshots live beside the chat's files, out of sight of the

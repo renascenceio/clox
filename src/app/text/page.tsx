@@ -56,6 +56,7 @@ import {
   createChat,
   ensureActiveChat,
   getActiveChatId,
+  getChatById,
   listChats,
   setActiveChatId as persistActiveChatId,
   touchChat,
@@ -65,6 +66,8 @@ import type { AppLanguage } from '@/shared/ui/chat/ChatWorkspace'
 import { formatCredits, planFor } from '@/lib/plans'
 import { SIGNED_OUT_USER, cachedIdentity, watchIdentity } from '@/shared/ui/chat/chrome-identity'
 import { saveTranscript } from '@/lib/transcript-store'
+import { restoreTranscript } from '@/lib/chat-cloud'
+import { fitAttachments } from '@/lib/request-fit'
 import { parseStored } from '@/lib/storage/file-url'
 
 /* =====================================================================
@@ -474,10 +477,11 @@ export default function TextPage() {
     return ids
   }, [toolsState])
 
+  const chatRequestBodyRef = useRef<Record<string, unknown>>({})
   const chat = useChat({
     id: activeChatId,
     api: '/api/chat',
-    body: {
+    body: chatRequestBodyRef.current = {
       model: selectedTextModel.id,
       provider: selectedTextModel.provider,
       systemPrompt: composedSystemPrompt,
@@ -507,6 +511,18 @@ export default function TextPage() {
       // python-pptx (stateful, incremental) instead.
       chatId: activeChatId,
     },
+    // useChat resends the whole conversation every turn, attachments
+    // included. A couple of earlier images pushed the request past the
+    // 4.5 MB body limit of the hosting platform and every later message
+    // failed. Older attachment bodies are dropped (newest kept) until the
+    // request fits; the text of the conversation always goes.
+    experimental_prepareRequestBody: ({ id, messages, requestData, requestBody }) => ({
+      id,
+      messages: fitAttachments(messages),
+      data: requestData,
+      ...chatRequestBodyRef.current,
+      ...(requestBody as object | undefined),
+    }),
     onError: error => console.error('[v0] chat api error:', error),
     onFinish: (message: { id?: string }) => {
       // The label was pushed in handleSend right before handleSubmit, so
@@ -734,12 +750,21 @@ export default function TextPage() {
   }, [])
 
   useEffect(() => {
+    if (!setMessages) return
     const saved = localStorage.getItem(`chat-history-${activeChatId}`)
-    if (saved && setMessages) {
+    if (saved) {
       try { setMessages(parseStored(saved)) } catch { setMessages([]) }
-    } else if (setMessages) {
-      setMessages([])
+      return
     }
+    setMessages([])
+    // Not in this browser (another device, cleared storage, or evicted to
+    // make room): load the server copy.
+    if (!activeChatId || !getChatById(activeChatId)) return
+    let cancelled = false
+    restoreTranscript(activeChatId).then(history => {
+      if (!cancelled && history?.length) setMessages(history as Parameters<typeof setMessages>[0])
+    })
+    return () => { cancelled = true }
   }, [activeChatId, setMessages])
 
   /* ----- attachments ------------------------------------------------- */
@@ -748,15 +773,16 @@ export default function TextPage() {
   // be passed straight to useChat's `experimental_attachments`.
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
-  // Hard cap so a stray drag of a 50 MB PSD doesn't kill the request body.
-  const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024 // 8 MB per file
+  // Files travel inside the request as base64 (+33%), and the hosting
+  // platform refuses bodies over 4.5 MB — an 8 MB cap let people attach
+  // files that could never be sent.
+  const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024 // 3 MB per file
 
   async function handleAttach(files: FileList) {
     const next: Attachment[] = []
     for (const file of Array.from(files)) {
       if (file.size > MAX_ATTACHMENT_BYTES) {
-        console.warn('[v0] attachment too large, skipping:', file.name, file.size)
-        window.alert(`"${file.name}" is too large (max 8 MB).`)
+        window.alert(`"${file.name}" is too large to attach (max 3 MB).`)
         continue
       }
       try {

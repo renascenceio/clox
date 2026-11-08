@@ -80,7 +80,7 @@ export function groupFiles(files: StoredFile[]): Deliverable[] {
     else groups.set(key, [f])
   }
   const out: Deliverable[] = []
-  for (const [key, list] of groups) {
+  for (const [key, list] of Array.from(groups.entries())) {
     const rank = (f: StoredFile) => {
       const i = PRIMARY_ORDER.indexOf(ext(f.filename))
       return i < 0 ? PRIMARY_ORDER.length : i
