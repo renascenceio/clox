@@ -283,7 +283,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     try { window.sessionStorage.removeItem(PROFILE_CACHE_KEY) } catch { /* fine */ }
     const supabase = createClient()
     await supabase.auth.signOut()
-    window.location.href = '/auth/login'
+    window.location.href = '/login'
   }
 
   const handleDeleteAccount = async () => {
@@ -295,7 +295,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     const { data: { user } } = await supabase.auth.getUser()
     if (user) await supabase.from('profiles').delete().eq('id', user.id)
     await supabase.auth.signOut()
-    window.location.href = '/auth/login'
+    window.location.href = '/login'
   }
 
   const isSuperAdmin = profile.role === 'super_admin'

@@ -1808,9 +1808,19 @@ export default function TextPage() {
       //   generic     → anything else; we show the raw message
       const rawMessage = (() => {
         if (!chatError) return ''
-        if (chatError instanceof Error) return chatError.message
-        try { return String((chatError as { message?: unknown })?.message ?? chatError) }
-        catch { return 'Unknown error' }
+        let text: string
+        if (chatError instanceof Error) text = chatError.message
+        else {
+          try { text = String((chatError as { message?: unknown })?.message ?? chatError) }
+          catch { return 'Unknown error' }
+        }
+        // Our own routes answer with `{ error: "…" }` (sign-in, credit,
+        // budget) — show the sentence, not the JSON.
+        try {
+          const parsed = JSON.parse(text)
+          if (parsed && typeof parsed.error === 'string') return parsed.error
+        } catch { /* plain text */ }
+        return text
       })()
       const lower = rawMessage.toLowerCase()
       const errorKind: 'rate_limit' | 'overloaded' | 'timeout' | 'no_response' | 'generic' =
@@ -2243,6 +2253,7 @@ export default function TextPage() {
     email?: string
     avatarSeed?: string
   }>({ initial: '·', name: 'Signed out', plan: 'guest' })
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -2256,12 +2267,13 @@ export default function TextPage() {
         const [profile, credits] = await Promise.all([
           supabase
             .from('profiles')
-            .select('first_name, last_name, plan, avatar_seed')
+            .select('first_name, last_name, plan, avatar_seed, role')
             .eq('id', authUser.id)
             .single(),
           supabase.from('credits').select('balance_usd').eq('user_id', authUser.id).single(),
         ])
         if (cancelled) return
+        setIsSuperAdmin(profile.data?.role === 'super_admin')
 
         const first = (profile.data?.first_name ?? '').trim()
         const last  = (profile.data?.last_name  ?? '').trim()
@@ -2380,7 +2392,7 @@ export default function TextPage() {
         onChangeTheme={handleThemeChange}
         language={language}
         onChangeLanguage={handleChangeLanguage}
-        onOpenSuperAdmin={() => router.push('/admin')}
+        onOpenSuperAdmin={isSuperAdmin ? () => router.push('/admin') : undefined}
         onOpenSkills={() => router.push('/skills')}
         onSignOut={handleSignOut}
         onDeleteAccount={handleDeleteAccount}

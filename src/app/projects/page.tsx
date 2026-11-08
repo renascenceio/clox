@@ -59,7 +59,7 @@ export default function ProjectsIndexPage() {
     try {
       const res = await fetch('/api/projects', { cache: 'no-store' })
       if (res.status === 401) {
-        window.location.href = '/auth/login?redirect=/projects'
+        window.location.href = '/login?redirect=/projects'
         return
       }
       if (!res.ok) {

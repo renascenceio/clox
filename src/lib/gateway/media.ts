@@ -4,7 +4,8 @@
  * browser.
  */
 import { assertBudget } from '@/lib/projects/server'
-import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
+import { recordUsage, type getCallerForLogging } from '@/lib/projects/usage'
+import { checkCredit } from '@/lib/credits'
 import { uploadChatOutput } from '@/lib/storage/chat-outputs'
 import { getCapability, type ModalityKind } from '@/lib/ai-capabilities'
 import { describeGatewayError } from './server'
@@ -48,8 +49,10 @@ export async function readMediaRequest(request: Request): Promise<MediaRequest |
 
 /** Budget gate. Returns a Response to send back when the project is out of credit. */
 export async function checkBudget(projectId: string | null) {
-  const caller = await getCallerForLogging()
-  if (projectId && caller) {
+  const gate = await checkCredit()
+  if (gate.blocked) return { caller: null, blocked: gate.blocked }
+  const caller = gate.caller
+  if (projectId) {
     try {
       await assertBudget({ projectId, userId: caller.userId })
     } catch (e) {

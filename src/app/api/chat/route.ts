@@ -1,12 +1,13 @@
 import { streamText, createDataStreamResponse, type JSONValue } from 'ai'
 import { resolveLanguageModel, AIProvider } from '@/domains/text-generation/services/model-router'
 import { catalogEntry, takesTools } from '@/lib/gateway/catalog'
-import { CLAUDE_EFFORT_HEADER, describeGatewayError } from '@/lib/gateway/server'
+import { CLAUDE_EFFORT_HEADER, CLAUDE_USAGE_HEADER, describeGatewayError, takeClaudeUsage } from '@/lib/gateway/server'
+import { checkCredit } from '@/lib/credits'
 import { assertBudget } from '@/lib/projects/server'
 import { loadSkillCatalog, buildSkillIndex } from '@/lib/skills-index'
 import { makeReadSkillTool } from '@/lib/tools/read-skill'
 import { compactTranscript } from '@/lib/transcript-compact'
-import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
+import { recordUsage, getCallerForLogging, computeCostUsd } from '@/lib/projects/usage'
 import { webSearchTool } from '@/lib/tools/web-search'
 import { runJavaScriptTool } from '@/lib/tools/run-javascript'
 import { makeBashTool } from '@/lib/tools/sandbox-bash'
@@ -446,16 +447,15 @@ export async function POST(req: Request) {
     console.warn('[v0] /api/chat called without chatId or id — sandbox tools will be disabled for this request')
   }
 
-  // Project budget gate — block before spending if the project is out of credit.
+  // Sign-in + personal credit gate, then the project budget gate.
+  const gate = await checkCredit()
+  if (gate.blocked) return gate.blocked
   if (projectId) {
-    const caller = await getCallerForLogging()
-    if (caller) {
-      try {
-        await assertBudget({ projectId, userId: caller.userId })
-      } catch (e) {
-        const err = e as Error & { status?: number }
-        return Response.json({ error: err.message }, { status: err.status ?? 402 })
-      }
+    try {
+      await assertBudget({ projectId, userId: gate.caller.userId })
+    } catch (e) {
+      const err = e as Error & { status?: number }
+      return Response.json({ error: err.message }, { status: err.status ?? 402 })
     }
   }
 
@@ -470,6 +470,8 @@ export async function POST(req: Request) {
     const { model: resolved, modelId: gatewayModelId } = await resolveLanguageModel(model)
     const modelInfo = catalogEntry(gatewayModelId)
     const sampling = buildSamplingOptions(gatewayModelId, modelInfo, { temperature, maxTokens, params })
+    const isClaude = gatewayModelId.startsWith('anthropic/')
+    const usageId = crypto.randomUUID()
 
     // Inflate `experimental_attachments` from useChat into multimodal content
     // parts. Vision-capable models (gpt-4o, claude 3.x, gemini 2.5, etc.) read
@@ -852,7 +854,9 @@ export async function POST(req: Request) {
           ...(sampling.temperature !== undefined ? { temperature: sampling.temperature } : {}),
           ...(sampling.stopSequences ? { stopSequences: sampling.stopSequences } : {}),
           ...(sampling.providerOptions ? { providerOptions: sampling.providerOptions } : {}),
-          ...(sampling.headers ? { headers: sampling.headers } : {}),
+          ...(sampling.headers || isClaude
+            ? { headers: { ...(sampling.headers ?? {}), ...(isClaude ? { [CLAUDE_USAGE_HEADER]: usageId } : {}) } }
+            : {}),
           // Document-generation requests (sandbox armed) burn tokens
           // fast: per-slide content + multi-paragraph python snippets
           // + tool result reads. The 2048 default truncated a 5-slide
@@ -970,9 +974,19 @@ export async function POST(req: Request) {
             const anthropicMeta = (providerMetadata as
               | { anthropic?: { cacheReadInputTokens?: number | null; cacheCreationInputTokens?: number | null } }
               | undefined)?.anthropic
-            const cacheReadInputTokens = anthropicMeta?.cacheReadInputTokens ?? null
-            const cacheCreationInputTokens = anthropicMeta?.cacheCreationInputTokens ?? null
-            const totalInputTokens = usage?.promptTokens ?? 0
+            // For Claude, the counts come from the stream tap (see
+            // takeClaudeUsage) — the SDK's own numbers are 0 via the gateway.
+            const claudeUsage = isClaude ? takeClaudeUsage(usageId) : null
+            const cacheReadInputTokens = claudeUsage?.cacheReadTokens ?? anthropicMeta?.cacheReadInputTokens ?? null
+            const cacheCreationInputTokens = claudeUsage?.cacheWriteTokens ?? anthropicMeta?.cacheCreationInputTokens ?? null
+            const totalInputTokens = claudeUsage
+              ? claudeUsage.inputTokens + claudeUsage.cacheReadTokens + claudeUsage.cacheWriteTokens
+              : usage?.promptTokens ?? 0
+            // Cache reads bill at 10% of the input price and cache writes at
+            // 125%, so charge Claude by the equivalent token count.
+            const billableInputTokens = claudeUsage
+              ? Math.round(claudeUsage.inputTokens + claudeUsage.cacheReadTokens * 0.1 + claudeUsage.cacheWriteTokens * 1.25)
+              : totalInputTokens
             // Hit ratio is informational; only meaningful when
             // promptTokens > 0 and the provider reports cache reads.
             const cacheHitRatio =
@@ -1059,8 +1073,14 @@ export async function POST(req: Request) {
                   model: gatewayModelId,
                   modality: 'text',
                   chatType: 'text',
-                  promptTokens: usage?.promptTokens,
+                  promptTokens: totalInputTokens,
                   completionTokens: usage?.completionTokens,
+                  costUsd: computeCostUsd({
+                    modality: 'text',
+                    model: gatewayModelId,
+                    promptTokens: billableInputTokens,
+                    completionTokens: usage?.completionTokens,
+                  }),
                   projectId: projectId ?? null,
                   chatId: chatId ?? null,
                 })

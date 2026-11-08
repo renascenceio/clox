@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { transcribe } from 'ai7'
 import { defaultModelId, resolveModelId } from '@/lib/gateway/catalog'
 import { describeGatewayError, mediaGateway } from '@/lib/gateway/server'
+import { checkCredit } from '@/lib/credits'
 
 /**
  * POST /api/transcribe
@@ -16,6 +17,8 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 export async function POST(req: Request) {
+  const gate = await checkCredit()
+  if (gate.blocked) return gate.blocked
   try {
     const form = await req.formData()
     const audio = form.get('audio')

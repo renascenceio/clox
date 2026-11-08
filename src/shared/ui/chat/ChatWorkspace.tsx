@@ -1017,10 +1017,12 @@ function UserMenu({
 
       <div style={{ height: 1, background: p.hairlineSoft, margin: '6px 12px' }} />
 
-      <UserMenuRow
-        p={p} icon={I.shield} label="Super Admin"
-        onClick={() => { onOpenSuperAdmin?.(); onClose() }}
-      />
+      {onOpenSuperAdmin ? (
+        <UserMenuRow
+          p={p} icon={I.shield} label="Super Admin"
+          onClick={() => { onOpenSuperAdmin(); onClose() }}
+        />
+      ) : null}
       <UserMenuRow
         p={p} icon={I.bulb} label="Skills"
         onClick={() => { onOpenSkills?.(); onClose() }}

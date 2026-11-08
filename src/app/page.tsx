@@ -613,7 +613,6 @@ export default function LandingPage() {
             <a href="#surfaces" className="hover:text-ink">Commands</a>
             <a href="#pricing" className="hover:text-ink">Pricing</a>
             <Link href="/skills" className="hover:text-ink">Skills</Link>
-            <Link href="/admin" className="hover:text-ink">Admin</Link>
           </nav>
           <div className="ml-auto flex items-center gap-2.5 md:ml-0">
             <Link
@@ -647,10 +646,10 @@ export default function LandingPage() {
             </p>
             <div className="mt-8 flex items-center gap-3">
               <Link
-                href="/text"
+                href="/signup"
                 className="inline-flex items-center gap-2 rounded-sharp border border-ink bg-ink px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-surface hover:bg-black"
               >
-                Try the workspace
+                Create a free account
               </Link>
               <a
                 href="#modes"
@@ -796,7 +795,7 @@ export default function LandingPage() {
             blurb="For trying out the editorial way of thinking with an AI."
             features={['Sonnet 4.5 · 50 chats / month', 'Chat & Research modes', 'One workspace', 'Public archive']}
             cta="Start reading"
-            ctaHref="/login"
+            ctaHref="/signup"
           />
           <Tier
             feature

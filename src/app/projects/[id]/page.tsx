@@ -85,7 +85,7 @@ export default function ProjectWorkspacePage({
     try {
       const res = await fetch(`/api/projects/${id}`, { cache: 'no-store' })
       if (res.status === 401) {
-        window.location.href = `/auth/login?redirect=/projects/${id}`
+        window.location.href = `/login?redirect=/projects/${id}`
         return
       }
       if (res.status === 404) {
