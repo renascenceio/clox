@@ -3,7 +3,7 @@
  * reports with embedded fonts) or Deck(...).pdf() for slide-style PDFs;
  * reading/manipulating stays on pypdf / pdfplumber / pikepdf.
  */
-import { CHARTER_VERSION, CHUNKING, CRAFT, FAILURES, FORMATS, MOUNTS, PRECEDENCE, THEMES } from './charter'
+import { CHARTER_VERSION, CHUNKING, CRAFT, FAILURES, FORMATS, MOUNTS, PRECEDENCE, PREMIUM, THEMES } from './charter'
 
 const API = `CREATE — from clox_kit import Report
 r = Report("ev-market-brief", theme="editorial", title="EV Market Brief", subtitle="Q4 2026",
@@ -45,6 +45,8 @@ ${CHUNKING}
 ${API}
 
 ${THEMES}
+
+${PREMIUM}
 
 ${SHAPE}
 

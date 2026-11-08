@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { CodeArtifact } from '@/shared/ui/components/CodeArtifact'
 import { DownloadStrip, type DownloadStripFile } from '@/shared/ui/components/DownloadStrip'
+import { BrowserPanel, type BrowserInvocation, type BrowserProgressEvent } from '@/shared/ui/components/BrowserPanel'
 
 import ChatWorkspace, {
   type Attachment,
@@ -426,7 +427,7 @@ export default function TextPage() {
     // The two sandbox tool ids ride on a single composer toggle because a
     // user enabling Python almost always wants `bash` for filesystem ops too,
     // and surfacing them as separate switches just adds a footgun.
-    const TOOL_LABELS = ['web search', 'code execute', 'python sandbox'] as const
+    const TOOL_LABELS = ['web search', 'browser', 'code execute', 'python sandbox'] as const
     if (typeof window === 'undefined') {
       return TOOL_LABELS.map(label => ({ label, on: false }))
     }
@@ -461,6 +462,7 @@ export default function TextPage() {
       // them to the same per-chat microVM and the model picks `bash` vs
       // `python` per call.
       if (t.label === 'python sandbox') ids.push('bash', 'python')
+      if (t.label === 'browser')        ids.push('browser')
     }
     return ids
   }, [toolsState])
@@ -1272,6 +1274,10 @@ export default function TextPage() {
         tool?: 'python' | 'bash'
         preview?: string
       }
+      const browserInvocations = toolInvocations.filter(inv => inv.toolName === 'browser') as BrowserInvocation[]
+      const browserProgress: BrowserProgressEvent[] = annotations
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((a: any) => a && a.type === 'browser-progress' && typeof a.phase === 'string')
       const progressEvents: ProgressEvent[] = annotations
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((a: any) => a && a.type === 'sandbox-progress' && typeof a.phase === 'string')
@@ -1328,6 +1334,7 @@ export default function TextPage() {
           return q ? `Searching the web — “${q}”` : 'Searching the web…'
         }
         if (name === 'run_javascript') return 'Running JavaScript…'
+        if (name === 'browser') return 'Using the browser…'
         return name ? `Running ${name}…` : null
       })()
 
@@ -1426,7 +1433,7 @@ export default function TextPage() {
                     animation: 'cloxPulse 1.4s ease-in-out infinite',
                   }}
                 />
-                <span>Working in Python sandbox — this can take 30–60s on a cold start</span>
+                <span>Working — the first step can take 30–60s on a cold start</span>
                 {/* Inline keyframes — declared here so we don't have
                     to add a new globals.css rule for a one-off
                     animation that's only used by this fallback. */}
@@ -1504,9 +1511,12 @@ export default function TextPage() {
                 })}
               </div>
             )}
-            {toolInvocations.length > 0 && (
+            {browserInvocations.length > 0 && (
+              <BrowserPanel invocations={browserInvocations} progress={browserProgress} live={isInFlight} />
+            )}
+            {toolInvocations.some(inv => inv.toolName !== 'browser') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {toolInvocations.map((inv, ti) => {
+              {toolInvocations.filter(inv => inv.toolName !== 'browser').map((inv, ti) => {
                 const name = String(inv.toolName ?? 'tool')
                 const isRunning = inv.state !== 'result'
                 // Pretty-print the tool call header so users see exactly

@@ -28,7 +28,8 @@
  */
 
 import { Sandbox } from '@vercel/sandbox'
-import { installKit } from './kit'
+import { installKit, kitVersion } from './kit'
+import { loadChatFiles } from '@/lib/storage/chat-outputs'
 
 /** Progress events the manager can emit while booting a sandbox or
  *  installing the canonical Python package set. The route subscribes
@@ -81,7 +82,25 @@ interface SandboxRecord {
   packagesReady: Promise<void>
   /** Resolved once clox_kit is copied in and importable. */
   kitReady: Promise<void>
+  /** Resolved once the chat's earlier files are copied back in. */
+  restored: Promise<void>
+  /** Network policy + kit version this sandbox was set up with. */
+  settings: string
+  /** Working-state files already saved to storage (name::size::mtime). */
+  stateKeys: Set<string>
 }
+
+/** Who owns each chat, so a new sandbox can be seeded with the files the
+ *  chat already made. Set by the route before any tool runs. */
+const OWNERS = new Map<string, string>()
+
+export function setSandboxOwner(chatId: string, userId: string): void {
+  OWNERS.set(chatId, userId)
+}
+
+/** Kit working state (deck JSON …) — see `_state_dir` in clox_kit. */
+export const STATE_DIR = '/mnt/user-data/.clox'
+const OUTPUTS_DIR = '/mnt/user-data/outputs'
 
 /** In-process map. Module scope means it survives across requests
  *  hitting the same lambda instance. */
@@ -122,6 +141,13 @@ const NETWORK_POLICY = {
  *  description ("python-pptx, pypdf, openpyxl … pre-installed") is
  *  actually true. */
 const SKILLS_SNAPSHOT_ID = process.env.SANDBOX_SKILLS_SNAPSHOT_ID
+
+/** Fingerprint of everything a running sandbox must match. When it
+ *  changes (new allow-list, new kit) a reused sandbox is brought up to
+ *  date in place instead of running on the old setup until it expires. */
+async function currentSettings(): Promise<string> {
+  return `${JSON.stringify(NETWORK_POLICY)}|${await kitVersion()}`
+}
 
 /** Canonical Python package set the document-handling skills depend
  *  on. Trimmed to "things wheels exist for on PyPI" so `--prefer-binary`
@@ -292,6 +318,7 @@ export async function getOrCreateSandboxForChat(
         // the user-facing tool call to abort because of a refresh
         // hiccup.
       }
+      await refreshSettings(existing)
       return existing.sandbox
     }
     REGISTRY.delete(chatId)
@@ -316,17 +343,95 @@ export async function getOrCreateSandboxForChat(
   // reasons (e.g. mounting attachments early in the request) don't
   // block on a 30-40s install they may never need. The python tool
   // gates on this Promise via `waitForPackages` before each snippet.
-  const kitReady = installKit(sandbox).then(() => undefined)
+  const settings = await currentSettings()
   const record: SandboxRecord = {
     sandbox,
     lastUsedAt: Date.now(),
     mountedKeys: new Set(),
     collectedKeys: new Set(),
-    kitReady,
-    packagesReady: Promise.all([installFallbackPackages(sandbox, fromSnapshot, onProgress), kitReady]).then(() => undefined),
+    stateKeys: new Set(),
+    settings,
+    kitReady: Promise.resolve(),
+    restored: Promise.resolve(),
+    packagesReady: Promise.resolve(),
   }
+  record.restored = restoreChatFiles(chatId, record)
+  record.kitReady = Promise.all([installKit(sandbox), record.restored]).then(() => undefined)
+  record.packagesReady = Promise.all([installFallbackPackages(sandbox, fromSnapshot, onProgress), record.kitReady]).then(() => undefined)
   REGISTRY.set(chatId, record)
   return sandbox
+}
+
+/** Bring a reused sandbox up to the current allow-list and kit. */
+async function refreshSettings(record: SandboxRecord): Promise<void> {
+  const settings = await currentSettings()
+  if (record.settings === settings) return
+  record.settings = settings
+  try {
+    await record.sandbox.updateNetworkPolicy(NETWORK_POLICY)
+  } catch (e) {
+    console.error('[v0] sandbox: network policy update failed:', (e as Error).message)
+  }
+  record.kitReady = installKit(record.sandbox).then(() => undefined)
+  record.packagesReady = Promise.all([record.packagesReady, record.kitReady]).then(() => undefined)
+  await record.kitReady
+  console.log('[v0] sandbox: settings refreshed in place')
+}
+
+/** List files in a sandbox folder as name → key (name::size::mtime). */
+async function listFiles(sandbox: Sandbox, dir: string): Promise<{ name: string; key: string }[]> {
+  const r = await sandbox.runCommand({
+    cmd: 'sh',
+    args: ['-lc', `find ${dir} -maxdepth 1 -type f -printf '%f\\t%s\\t%T@\\n' 2>/dev/null || true`],
+  })
+  return (await r.stdout())
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(l => {
+      const [name, size, mtime] = l.split('\t')
+      return { name, key: `${name}::${size}::${Math.floor(Number(mtime ?? '0'))}` }
+    })
+    .filter(f => f.name)
+}
+
+/** A new sandbox for a chat that already made files (the old one expired,
+ *  or another server instance owns it): copy its deliverables and kit
+ *  state back so "make it more premium" edits the same deck. Restored
+ *  files are marked as already collected so they aren't re-announced. */
+async function restoreChatFiles(chatId: string, record: SandboxRecord): Promise<void> {
+  const userId = OWNERS.get(chatId)
+  if (!userId) return
+  try {
+    const { outputs, state } = await loadChatFiles(userId, chatId)
+    if (outputs.length === 0 && state.length === 0) return
+    await record.sandbox.runCommand('mkdir', ['-p', OUTPUTS_DIR, STATE_DIR])
+    await record.sandbox.writeFiles([
+      ...outputs.map(f => ({ path: `${OUTPUTS_DIR}/${f.name}`, content: f.content })),
+      ...state.map(f => ({ path: `${STATE_DIR}/${f.name}`, content: f.content })),
+    ])
+    for (const f of await listFiles(record.sandbox, OUTPUTS_DIR)) record.collectedKeys.add(f.key)
+    for (const f of await listFiles(record.sandbox, STATE_DIR)) record.stateKeys.add(f.key)
+    console.log(`[v0] sandbox: restored ${outputs.length} outputs + ${state.length} state files for ${chatId}`)
+  } catch (e) {
+    console.error('[v0] sandbox: restore failed:', (e as Error).message)
+  }
+}
+
+/** Kit state files that changed since the last save. */
+export async function collectState(chatId: string): Promise<{ name: string; content: Buffer }[]> {
+  const record = REGISTRY.get(chatId)
+  if (!record) return []
+  await record.restored
+  const fresh = (await listFiles(record.sandbox, STATE_DIR)).filter(f => !record.stateKeys.has(f.key))
+  const out: { name: string; content: Buffer }[] = []
+  for (const f of fresh) {
+    const buf = await record.sandbox.readFileToBuffer({ path: `${STATE_DIR}/${f.name}` }).catch(() => null)
+    if (!buf) continue
+    record.stateKeys.add(f.key)
+    out.push({ name: f.name, content: buf })
+  }
+  return out
 }
 
 /** Block until the canonical Python deps are installed in this chat's
@@ -452,6 +557,7 @@ function mimeFromName(name: string): string {
 export async function collectOutputs(chatId: string): Promise<CollectedOutput[]> {
   const record = REGISTRY.get(chatId)
   if (!record) return []
+  await record.restored
 
   // List files with size + mtime. Using `stat` keeps the parsing
   // simple — one line per file, tab-separated. We restrict to plain

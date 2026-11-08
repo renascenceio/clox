@@ -124,3 +124,76 @@ export async function uploadChatOutput(
     size: input.content.byteLength,
   }
 }
+
+/** Hidden sibling folder holding the kit's working state (deck JSON
+ *  etc.) so a chat's files survive when its sandbox is replaced. The
+ *  chat UI only shows files announced by annotations, never this. */
+const WORKSPACE_DIR = '_workspace'
+
+/** Save one working-state file (e.g. `/mnt/user-data/.clox/deck.json`)
+ *  under `<user>/<chat>/_workspace/<name>`. */
+export async function saveWorkspaceFile(input: {
+  userId: string
+  chatId: string
+  name: string
+  content: Buffer
+}): Promise<void> {
+  const supabase = getServiceClient()
+  const path = `${input.userId}/${input.chatId}/${WORKSPACE_DIR}/${safeFilename(input.name)}`
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, input.content, { contentType: 'application/octet-stream', upsert: true })
+  if (error) throw new Error(`workspace save failed: ${error.message}`)
+}
+
+export interface StoredChatFiles {
+  /** Deliverables, restored into /mnt/user-data/outputs/. */
+  outputs: { name: string; content: Buffer }[]
+  /** Working state, restored into /mnt/user-data/.clox/. */
+  state: { name: string; content: Buffer }[]
+}
+
+/** Everything a chat produced so far, for re-seeding a new sandbox. */
+export async function loadChatFiles(userId: string, chatId: string): Promise<StoredChatFiles> {
+  const supabase = getServiceClient()
+  const bucket = supabase.storage.from(BUCKET)
+  const base = `${userId}/${chatId}`
+  const list = async (dir: string) => {
+    const { data } = await bucket.list(dir, { limit: 200 })
+    return (data ?? []).filter(f => f.id && f.name && !f.name.startsWith('.'))
+  }
+  const download = async (path: string) => {
+    const { data } = await bucket.download(path)
+    return data ? Buffer.from(await data.arrayBuffer()) : null
+  }
+  const [top, state] = await Promise.all([list(base), list(`${base}/${WORKSPACE_DIR}`)])
+  const fetchAll = async (dir: string, files: { name: string }[]) =>
+    (await Promise.all(files.map(async f => {
+      const content = await download(`${dir}/${f.name}`)
+      return content ? { name: f.name, content } : null
+    }))).flatMap(f => (f ? [f] : []))
+  return {
+    outputs: await fetchAll(base, top),
+    state: await fetchAll(`${base}/${WORKSPACE_DIR}`, state),
+  }
+}
+
+/** Browser screenshots live beside the chat's files, out of sight of the
+ *  workspace restore. Signed for a week so the chat can replay them. */
+const SHOT_TTL_SECONDS = 7 * 24 * 60 * 60
+
+export async function saveBrowserShot(input: {
+  userId: string
+  chatId: string
+  name: string
+  content: Buffer
+}): Promise<string> {
+  const supabase = getServiceClient()
+  const path = `${input.userId}/${input.chatId}/_browser/${safeFilename(input.name)}`
+  const bucket = supabase.storage.from(BUCKET)
+  const { error } = await bucket.upload(path, input.content, { contentType: 'image/png', upsert: true })
+  if (error) throw new Error(`screenshot upload failed: ${error.message}`)
+  const { data, error: signError } = await bucket.createSignedUrl(path, SHOT_TTL_SECONDS)
+  if (signError || !data?.signedUrl) throw new Error(`screenshot sign failed: ${signError?.message ?? 'no url'}`)
+  return data.signedUrl
+}

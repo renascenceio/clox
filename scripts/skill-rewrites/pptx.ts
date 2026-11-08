@@ -5,7 +5,7 @@
  * 100-line template per slide (plain-looking, expensive). v3: the design
  * lives in clox_kit; the primer teaches the API + editorial rules.
  */
-import { CHARTER_VERSION, CHUNKING, CRAFT, FAILURES, FORMATS, MOUNTS, PRECEDENCE, THEMES } from './charter'
+import { CHARTER_VERSION, CHUNKING, CRAFT, FAILURES, FORMATS, MOUNTS, PRECEDENCE, PREMIUM, THEMES } from './charter'
 
 const API = `API — from clox_kit import Deck
 d = Deck("q3-board-review", theme="studio", title="Q3 Board Review", brand="Acme", new=True)
@@ -57,6 +57,8 @@ ${CHUNKING}
 ${API}
 
 ${THEMES}
+
+${PREMIUM}
 
 ${SHAPE}
 

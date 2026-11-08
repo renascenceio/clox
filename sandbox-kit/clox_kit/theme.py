@@ -83,7 +83,15 @@ class Theme:
     negative: str = "#FF3B5C"
     radius: int = 28   # card corner radius in canvas px (1920x1080 grid)
     upper_kicker: bool = True
+    # "bold" = filled cards, chunky accent bars, big type (the default).
+    # "luxe" = premium: no filled panels, hairlines, airy spacing, lighter
+    #          headline weight, widely tracked small caps, accent used sparingly.
+    style: str = "bold"
     extra: dict = field(default_factory=dict)
+
+    @property
+    def luxe(self) -> bool:
+        return self.style == "luxe"
 
     @property
     def hero_ink(self) -> str:
@@ -160,6 +168,20 @@ THEMES: dict[str, Theme] = {
         rule="#E0E0E0", accent="#FF4F00", accent2="#000000", hero="#FF4F00",
         series=("#000000", "#FF4F00", "#8C8C8C", "#FFB199", "#3D3D3D", "#C8C8C8"),
         fonts="grotesk", radius=0,
+    ),
+    # Premium, dark: black, ivory type, champagne-gold hairlines. Luxury, hospitality, private banking.
+    "noir": Theme(
+        name="noir", bg="#0E0D0B", surface="#171512", ink="#F2EDE4", muted="#A39B8E",
+        rule="#2E2A24", accent="#C8A96B", accent2="#8C8273", hero="#0E0D0B",
+        series=("#C8A96B", "#F2EDE4", "#8C8273", "#6B5A3E", "#D9CBB0", "#4A453D"),
+        fonts="editorial", dark=True, radius=0, style="luxe", positive="#9DBF8A", negative="#C9786B",
+    ),
+    # Premium, light: warm ivory, deep ink, bronze. Real estate, fashion, wealth, fine dining.
+    "ivory": Theme(
+        name="ivory", bg="#F6F2EA", surface="#EEE8DC", ink="#1B1814", muted="#6F665A",
+        rule="#DDD4C4", accent="#8C6A3F", accent2="#1B1814", hero="#1B1814",
+        series=("#1B1814", "#8C6A3F", "#B8A07A", "#6F665A", "#D8C7A8", "#3E4A3F"),
+        fonts="editorial", radius=0, style="luxe", positive="#4F7A4A", negative="#A4453A",
     ),
     # Deep green + mint. Sustainability, health, finance-with-calm.
     "forest": Theme(

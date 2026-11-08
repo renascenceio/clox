@@ -16,7 +16,9 @@
 //      charts, design review (`check()`), new Data skill. ~70% fewer tokens.
 // v4 — Google Fonts pairings (fonts=(display, body)), "!" warnings must be fixed,
 //      one chart per scale.
-export const CHARTER_VERSION = 4
+// v5 — style axis (bold | luxe), premium themes noir + ivory, PREMIUM rules:
+//      "premium" is a style (restraint, hairlines, space), not a colour pick.
+export const CHARTER_VERSION = 5
 
 export const PRECEDENCE = `The user's brief wins: colours, fonts, brand, length, file name, tone and structure they specify override every default below.`
 
@@ -30,12 +32,27 @@ export const THEMES = `THEMES (pick by audience; never default to plain white + 
   navy       white + navy + gold, serif — finance, board, legal, formal
   swiss      white, black, blaze orange, grotesk — clean, confident, design-led
   forest     soft green + mint — sustainability, health, calm finance
+  noir       PREMIUM dark: black, ivory serif type, champagne-gold hairlines — luxury, hospitality, private wealth
+  ivory      PREMIUM light: warm ivory, deep ink, bronze — real estate, fashion, fine dining, family offices
+STYLE (decks) is separate from colour: style="bold" (filled cards, chunky accent bars — the default for most themes) or
+style="luxe" (no filled panels, hairlines, airy spacing, lighter headline weight, tracked small caps, framed
+covers). noir/ivory are luxe already; any theme or brand colour can go luxe: Deck(..., theme="navy", style="luxe"),
+theme="studio", brand="#0B3D2E", style="luxe", or d.restyle(style="luxe").
 Brand colour: theme="studio", brand="#E4002B" (or dark=True). Fine-tune any token:
 accent=, accent2=, hero= (cover/section colour), bg=, ink=, series=[...].
 TYPE: any Google Font pairing — fonts=("Playfair Display", "DM Sans") (display, body; "Fraunces:600" picks the
 headline weight). Files are fetched once, text is fitted with their real metrics and embedded in PDFs. Pair a
 characterful display face with a quiet sans; match the mood (luxury → Playfair/Cormorant, tech → Space Grotesk/
 Inter, editorial → Fraunces/Newsreader, friendly → DM Sans/Manrope). Honour any font the user names.`
+
+export const PREMIUM = `PREMIUM / LUXURY / HIGH-END / ELEGANT / EXECUTIVE briefs — premium is a STYLE, not a palette:
+  - Use style="luxe" (noir, ivory, or the user's colours with style="luxe"). Never electric/midnight/neon.
+  - Palette: one dark, one light, ONE metallic or deep accent used only on hairlines, a key figure, a label.
+  - Type: a refined serif display (Cormorant Garamond, Playfair Display, Fraunces, or the theme's) + a quiet sans.
+  - Restraint: ≤ 4 items per slide, titles ≤ 8 words, one figure or one idea per slide; cut adjectives.
+  - Space: more statement / quote / full-bleed image slides; let slides breathe rather than filling them.
+  - Words: calm and specific ("Three residences remain"), never hype ("Unbelievable luxury!!!").
+  check() enforces the item / title limits on luxe decks.`
 
 export const FORMATS = `Number formats (fmt=): "money" ($4.2M), "money:€", "pct" (0.34 → 34%), "%" (34 → 34%), "int", "1dp", "k", "m".
 Chart kinds: bar, barh, stacked, stacked100, barh_stacked, line, area, pie, donut, scatter.

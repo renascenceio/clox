@@ -108,18 +108,45 @@ def _accent_on(t: Theme, bg: str) -> str:
     return on(bg)
 
 
+def _kicker(cv, t, x, y, w, text, color, size=22):
+    """Small label above a title. Luxe = smaller, lighter, widely tracked capitals."""
+    if t.luxe:
+        cv.text(x, y + 4, w, 30, text, role="medium", size=size * 0.78, color=color, upper=True,
+                tracking=0.3, max_lines=1, min_size=13)
+    else:
+        cv.text(x, y, w, 34, text, role="semibold", size=size, color=color, upper=t.upper_kicker,
+                tracking=0.12, max_lines=1, min_size=16)
+
+
+def _mark(cv, t, x, y, color, w=56, h=8):
+    """The short accent bar. Luxe draws a hairline instead."""
+    if t.luxe:
+        cv.rect(x, y + h / 2 - 1, 72, 2, color)
+    else:
+        cv.rect(x, y, w, h, color, radius=h / 2 if t.radius else 0)
+
+
+def _panel(cv, t, x, y, w, h, fill, top_rule=None):
+    """Card background. Luxe = no fill, a single hairline on top."""
+    if t.luxe:
+        cv.line(x, y, x + w, y, top_rule or t.rule, 1.5)
+    else:
+        cv.rect(x, y, w, h, fill, radius=t.radius)
+
+
 def _header(cv, ctx, kicker, title, width=BW, x=MX, bg=None):
     t = ctx.t
     bg = bg or t.bg
-    y = 92
+    y = 104 if t.luxe else 92
     if kicker:
-        cv.text(x, y, width, 34, kicker, role="semibold", size=22, color=_accent_on(t, bg),
-                upper=t.upper_kicker, tracking=0.12, max_lines=1, min_size=16)
-        y += 48
-    big = 1.2 if t.fonts == "editorial" else 1.0   # Instrument Serif is condensed; other faces aren't
-    used = cv.text(x, y, width, 210 * big, title, role="display", size=74 * big, min_size=44, lh=1.04,
+        _kicker(cv, t, x, y, width, kicker, _accent_on(t, bg))
+        y += 56 if t.luxe else 48
+    big = 1.2 if t.serif else 1.0   # serif faces read smaller at the same size
+    size = (64 if t.luxe else 74) * big
+    used = cv.text(x, y, width, 210 * big, title, role="display" if t.serif or not t.luxe else "display_soft",
+                   size=size, min_size=40, lh=1.06 if t.luxe else 1.04,
                    color=t.ink if bg in (t.bg, t.surface) else on(bg), max_lines=2)
-    return max(300, y + used + 64)
+    return max(320 if t.luxe else 300, y + used + (88 if t.luxe else 64))
 
 
 def _footer(cv, ctx, bg=None, right_x=MX + BW, color=None):
@@ -127,10 +154,11 @@ def _footer(cv, ctx, bg=None, right_x=MX + BW, color=None):
     bg = bg or t.bg
     col = color or mix(t.ink if bg in (t.bg, t.surface) else on(bg), bg, 0.45)
     label = ctx.deck.footer_label
+    lux = dict(upper=True, tracking=0.26, size=14) if t.luxe else dict(size=18)
     if label:
-        cv.text(MX, 1000, 900, 30, label, role="medium", size=18, color=col, max_lines=1)
-    cv.text(right_x - 200, 1000, 200, 30, f"{ctx.page:02d}", role="medium", size=18, color=col,
-            align="right", max_lines=1)
+        cv.text(MX, 1000, 900, 30, label, role="medium", color=col, max_lines=1, **lux)
+    cv.text(right_x - 200, 1000, 200, 30, f"{ctx.page:02d}", role="medium", color=col,
+            align="right", max_lines=1, **lux)
 
 
 def _orbs(cv, t: Theme, side="right"):
@@ -171,11 +199,15 @@ def _points(cv, t, x, y, w, max_h, items, head=40, body=28, numbered=True, color
     cy = y
     for i, (h_, b_) in enumerate(items):
         if numbered:
-            cv.text(x, cy + 4, marker_w, hs, f"{i + 1:02d}", role="semibold", size=hs * 0.62, color=_accent_on(t, bg),
-                    max_lines=1, tracking=0.04)
+            cv.text(x, cy + 4, marker_w, hs, f"{i + 1:02d}", role="medium" if t.luxe else "semibold",
+                    size=hs * (0.5 if t.luxe else 0.62), color=_accent_on(t, bg), max_lines=1,
+                    tracking=0.16 if t.luxe else 0.04)
+        elif t.luxe:
+            cv.rect(x, cy + hs * 0.55, 18, 1.5, _accent_on(t, bg))
         else:
             cv.rect(x, cy + hs * 0.42, 12, 12, _accent_on(t, bg), radius=3)
-        hh = cv.text(x + marker_w, cy, tw, hs * 4, h_, role="semibold", size=hs, color=ink, lh=1.16)
+        hh = cv.text(x + marker_w, cy, tw, hs * 4, h_, role="medium" if t.luxe else "semibold", size=hs, color=ink,
+                     lh=1.16)
         cy += hh
         if b_:
             cy += 10
@@ -193,27 +225,40 @@ def s_cover(cv, ctx, title, subtitle=None, kicker=None, meta=None, image=None):
     if image:
         cv.image(image, 1000, 0, 920, H)
         tw = 780
+    elif t.luxe:
+        _frame(cv, t)
     else:
         _orbs(cv, t, "right")
     ink, mut = t.hero_ink, t.hero_muted
     if kicker:
-        cv.text(MX, 100, tw, 34, kicker, role="semibold", size=22, color=ink, upper=t.upper_kicker,
-                tracking=0.14, max_lines=1)
+        _kicker(cv, t, MX, 100, tw, kicker, _accent_on(t, t.hero) if t.luxe else ink)
     if meta:
         cv.text(MX, 960, tw, 34, meta, role="medium", size=22, color=mut, max_lines=1)
     sub_h = cv.measure(subtitle, "body", 34, tw, 1.3) if subtitle else 0
     bottom = 900 - (sub_h + 52 if subtitle else 0)
-    cv.text(MX, 240, tw, bottom - 240, title, role="display", size=140, min_size=64, lh=1.0, color=ink,
+    if t.luxe:
+        _mark(cv, t, MX, 196, _accent_on(t, t.hero))
+    cv.text(MX, 240, tw, bottom - 240, title, role="display" if t.serif or not t.luxe else "display_soft",
+            size=124 if t.luxe else 140, min_size=60, lh=1.02 if t.luxe else 1.0, color=ink,
             valign="bottom", max_lines=4)
     if subtitle:
         cv.text(MX, bottom + 52, tw, sub_h + 4, subtitle, role="body", size=34, color=mut, lh=1.3)
 
 
+def _frame(cv, t):
+    """Luxe covers: a hairline frame inset from the edge instead of colour blobs."""
+    c = mix(t.hero_ink, t.hero, 0.72)
+    cv.rect(48, 48, W - 96, H - 96, None, line=c, line_w=1.2)
+
+
 def s_closing(cv, ctx, title="Thank you", subtitle=None, contact=None):
     t = ctx.t
     cv.background(t.hero)
-    _orbs(cv, t, "left")
-    x, tw = 760, 1040
+    if t.luxe:
+        _frame(cv, t)
+    else:
+        _orbs(cv, t, "left")
+    x, tw = (MX, 1400) if t.luxe else (760, 1040)
     cv.text(x, 260, tw, 420, title, role="display", size=132, min_size=60, lh=1.0, color=t.hero_ink,
             valign="bottom", max_lines=3)
     y = 720
@@ -228,11 +273,18 @@ def s_section(cv, ctx, title, number=None, subtitle=None):
     cv.background(t.hero)
     num = number if number is not None else ctx.deck._section_no(ctx.page)
     o1 = t.accent2 if t.hero.lower() == t.accent.lower() else t.accent
-    cv.text(MX, 110, 900, 260, f"{int(num):02d}" if str(num).isdigit() else str(num), role="display", size=240,
-            color=o1, lh=1.0, max_lines=1)
+    label = f"{int(num):02d}" if str(num).isdigit() else str(num)
+    if t.luxe:
+        _frame(cv, t)
+        acc = _accent_on(t, t.hero)
+        _kicker(cv, t, MX, 330, 900, f"Chapter {label}" if str(num).isdigit() else label, acc)
+        _mark(cv, t, MX, 384, acc)
+    else:
+        cv.text(MX, 110, 900, 260, label, role="display", size=240, color=o1, lh=1.0, max_lines=1)
     sub_h = cv.measure(subtitle, "body", 32, 1400, 1.3) if subtitle else 0
     bottom = 900 - (sub_h + 32 if subtitle else 0)
-    cv.text(MX, 420, 1500, bottom - 420, title, role="display", size=112, min_size=56, lh=1.02,
+    cv.text(MX, 420, 1500, bottom - 420, title, role="display" if t.serif or not t.luxe else "display_soft",
+            size=104 if t.luxe else 112, min_size=56, lh=1.04 if t.luxe else 1.02,
             color=t.hero_ink, valign="bottom", max_lines=3)
     if subtitle:
         cv.text(MX, bottom + 32, 1400, sub_h + 4, subtitle, role="body", size=32, color=t.hero_muted, lh=1.3)
@@ -245,12 +297,11 @@ def s_statement(cv, ctx, text, kicker=None, attribution=None, bg=None):
     ink = t.ink if bgc in (t.bg, t.surface) else on(bgc)
     top = 180
     if kicker:
-        cv.text(MX, 110, BW, 34, kicker, role="semibold", size=22, color=_accent_on(t, bgc), upper=t.upper_kicker,
-                tracking=0.12, max_lines=1)
-    cv.rect(MX, top, 120, 10, _accent_on(t, bgc), radius=5 if t.radius else 0)
+        _kicker(cv, t, MX, 110, BW, kicker, _accent_on(t, bgc))
+    _mark(cv, t, MX, top, _accent_on(t, bgc), w=120, h=10)
     att_h = 70 if attribution else 0
-    cv.text(MX, top + 60, 1560, 880 - top - 60 - att_h, text, role="display", size=104, min_size=48, lh=1.05,
-            color=ink, valign="middle")
+    cv.text(MX, top + 60, 1560, 880 - top - 60 - att_h, text, role="display", size=92 if t.luxe else 104,
+            min_size=44, lh=1.1 if t.luxe else 1.05, color=ink, valign="middle")
     if attribution:
         cv.text(MX, 880 - 40, BW, 40, attribution, role="medium", size=28, color=mix(ink, bgc, 0.35), max_lines=1)
     _footer(cv, ctx, bg=bgc)
@@ -269,8 +320,11 @@ def s_bullets(cv, ctx, title, points, kicker=None, aside=None, numbered=True):
         _points(cv, t, MX, y0, lw, avail, items, numbered=numbered)
         ax = MX + lw + 80
         aw = MX + BW - ax
-        cv.rect(ax, y0, aw, avail, t.surface, radius=t.radius)
-        cv.rect(ax + 48, y0 + 52, 56, 8, t.accent, radius=4 if t.radius else 0)
+        if t.luxe:
+            cv.line(ax, y0, ax, y0 + avail, t.rule, 1.5)
+        else:
+            cv.rect(ax, y0, aw, avail, t.surface, radius=t.radius)
+        _mark(cv, t, ax + 48, y0 + 52, _accent_on(t, t.bg if t.luxe else t.surface))
         cv.text(ax + 48, y0 + 92, aw - 96, avail - 140, aside, role="display_soft", size=44, min_size=26, lh=1.14,
                 color=t.ink)
     elif len(items) >= 5 and not any(b for _, b in items):
@@ -283,8 +337,9 @@ def s_bullets(cv, ctx, title, points, kicker=None, aside=None, numbered=True):
         for i, (h_, _b) in enumerate(sub):
             n = half + i + 1
             hs = 36
-            cv.text(MX + cw + 80, cy + 4, 76, hs, f"{n:02d}", role="semibold", size=hs * 0.62,
-                    color=_accent_on(t, t.bg), max_lines=1)
+            cv.text(MX + cw + 80, cy + 4, 76, hs, f"{n:02d}", role="medium" if t.luxe else "semibold",
+                    size=hs * (0.5 if t.luxe else 0.62), color=_accent_on(t, t.bg), max_lines=1,
+                    tracking=0.16 if t.luxe else 0)
             cy += cv.text(MX + cw + 80 + 76, cy, cw - 76, hs * 4, h_, role="semibold", size=hs, lh=1.16) + 40
     else:
         _points(cv, t, MX, y0, BW if len(items) > 2 else 1300, avail, items, numbered=numbered)
@@ -304,15 +359,28 @@ def s_kpis(cv, ctx, title, items, kicker=None, note=None, highlight=None):
     cw = (BW - gap * (cols - 1)) / cols
     ch = min(500, (BOTTOM - y0 - note_h - gap * (rows - 1)) / rows)
     pad = 44 if cols < 4 else 36
+    if t.luxe:
+        _kpis_luxe(cv, t, items, y0, cols, cw, gap, note, highlight)
+        _footer(cv, ctx)
+        return
     for i, (value, label, delta) in enumerate(items):
         r, c = divmod(i, cols)
         x, y = MX + c * (cw + gap), y0 + r * (ch + gap)
         hi = highlight == i
         fill = t.accent if hi else t.surface
-        ink = on(fill) if hi else t.ink
-        sub = mix(ink, fill, 0.35)
-        cv.rect(x, y, cw, ch, fill, radius=t.radius)
-        top = y + pad
+        if t.luxe:
+            # No boxes: a hairline over each figure; the highlight is the figure in the accent colour.
+            fill = t.bg
+            _panel(cv, t, x, y, cw, ch, fill, top_rule=_accent_on(t, t.bg) if hi else None)
+            ink = _accent_on(t, t.bg) if hi else t.ink
+            sub = t.muted
+            pad = 0
+            hi = False
+        else:
+            ink = on(fill) if hi else t.ink
+            sub = mix(ink, fill, 0.35)
+            cv.rect(x, y, cw, ch, fill, radius=t.radius)
+        top = y + (36 if t.luxe else pad)
         if delta:
             ds = str(delta)
             neg = ds.strip().startswith(("-", "−", "▼", "↓"))
@@ -320,18 +388,52 @@ def s_kpis(cv, ctx, title, items, kicker=None, note=None, highlight=None):
             dcol = ink if hi else (t.negative if neg else t.positive if pos else t.accent)
             from .text import width as tw
             pw = tw(ds, t.font("semibold"), 22) + 40
-            cv.rect(x + pad, top, pw, 46, mix(fill, dcol, 0.16 if not hi else 0.2), radius=23)
-            cv.text(x + pad, top + 8, pw, 30, ds, role="semibold", size=23, color=dcol, align="center", max_lines=1)
+            if t.luxe:
+                cv.text(x, top + 8, cw, 30, ds, role="medium", size=21, color=dcol, max_lines=1, tracking=0.08)
+            else:
+                cv.rect(x + pad, top, pw, 46, mix(fill, dcol, 0.16 if not hi else 0.2), radius=23)
+                cv.text(x + pad, top + 8, pw, 30, ds, role="semibold", size=23, color=dcol, align="center", max_lines=1)
         label_h = cv.measure(label, "body", 30, cw - 2 * pad, 1.25) if label else 0
         vbot = y + ch - pad - (label_h + 14 if label else 0)
         vtop = top + (66 if delta else 0)
-        cv.text(x + pad, vtop, cw - 2 * pad, vbot - vtop, value, role="display", size=min(150, (vbot - vtop)),
-                min_size=40, lh=1.0, color=ink, valign="bottom", max_lines=1)
+        cv.text(x + pad, vtop, cw - 2 * pad - (24 if t.luxe else 0), vbot - vtop, value, role="display",
+                size=min(130 if t.luxe else 150, (vbot - vtop)), min_size=40, lh=1.0, color=ink, valign="bottom",
+                max_lines=1)
         if label:
             cv.text(x + pad, vbot + 14, cw - 2 * pad, label_h + 4, label, role="body", size=30, color=sub, lh=1.25)
     if note:
         cv.text(MX, BOTTOM - 44, BW, 44, note, role="body", size=22, color=t.muted, max_lines=2, lh=1.25)
     _footer(cv, ctx)
+
+
+def _kpis_luxe(cv, t, items, y0, cols, cw, gap, note, highlight):
+    """Figures under a hairline, read top-down: number, label, change. No boxes."""
+    gap = 72
+    cw = (BW - gap * (cols - 1)) / cols
+    rows = math.ceil(len(items) / cols)
+    room = BOTTOM - y0 - (70 if note else 0)
+    ch = min(380, (room - 56 * (rows - 1)) / rows)
+    y_start = y0 + max(0, (room - rows * ch - 56 * (rows - 1)) * 0.35)
+    for i, (value, label, delta) in enumerate(items):
+        r, c = divmod(i, cols)
+        x, y = MX + c * (cw + gap), y_start + r * (ch + 56)
+        hi = highlight == i
+        acc = _accent_on(t, t.bg)
+        cv.line(x, y, x + cw, y, acc if hi else t.rule, 1.5)
+        vh = min(130, ch * 0.42)
+        cy = y + 40
+        cy += cv.text(x, cy, cw, vh * 1.05, value, role="display", size=vh, min_size=40, lh=1.0,
+                      color=acc if hi else t.ink, max_lines=1) + 20
+        if label:
+            cy += cv.text(x, cy, cw - 24, ch - (cy - y) - 40, label, role="body", size=26, color=t.muted, lh=1.3) + 16
+        if delta:
+            ds = str(delta).strip()
+            neg = ds.startswith(("-", "−", "▼", "↓"))
+            pos = ds.startswith(("+", "▲", "↑"))
+            cv.text(x, cy, cw, 30, ds, role="medium", size=20, color=t.negative if neg else t.positive if pos else acc,
+                    max_lines=1, tracking=0.12, upper=True)
+    if note:
+        cv.text(MX, BOTTOM - 44, BW, 44, note, role="body", size=22, color=t.muted, max_lines=2, lh=1.25)
 
 
 def s_chart(cv, ctx, title, kind, categories, series, kicker=None, takeaway=None, points=None, fmt=None,
@@ -355,7 +457,7 @@ def s_chart(cv, ctx, title, kind, categories, series, kicker=None, takeaway=None
         px, pw = MX + cw + 90, BW - cw - 90
         cy = y0 + 8
         if takeaway:
-            cv.rect(px, cy, 56, 8, t.accent, radius=4 if t.radius else 0)
+            _mark(cv, t, px, cy, _accent_on(t, t.bg))
             cy += 40
             cy += cv.text(px, cy, pw, 380, takeaway, role="display_soft", size=50, min_size=28, lh=1.12) + 44
         if points:
@@ -370,7 +472,7 @@ def s_compare(cv, ctx, title, left, right, kicker=None):
     t = ctx.t
     cv.background(t.bg)
     y0 = _header(cv, ctx, kicker, title)
-    gap = 40
+    gap = 120 if t.luxe else 40
     cw = (BW - gap) / 2
     ch = BOTTOM - y0
     for i, side in enumerate((left, right)):
@@ -378,15 +480,19 @@ def s_compare(cv, ctx, title, left, right, kicker=None):
             side = {"title": side[0], "points": side[1] if len(side) > 1 else []}
         x = MX + i * (cw + gap)
         fill = t.surface if i == 0 else mix(t.bg, t.accent, 0.12 if not t.dark else 0.16)
-        cv.rect(x, y0, cw, ch, fill, radius=t.radius)
-        pad = 56
-        cy = y0 + pad
+        if t.luxe:
+            fill = t.bg
+            _panel(cv, t, x, y0, cw, ch, fill, top_rule=_accent_on(t, t.bg) if i == 1 else None)
+        else:
+            cv.rect(x, y0, cw, ch, fill, radius=t.radius)
+        pad = 0 if t.luxe else 56
+        cy = y0 + (44 if t.luxe else pad)
         lab = side.get("label")
         if lab:
-            cv.text(x + pad, cy, cw - 2 * pad, 30, lab, role="semibold", size=22,
-                    color=t.muted if i == 0 else _accent_on(t, fill), upper=t.upper_kicker, tracking=0.12, max_lines=1)
+            _kicker(cv, t, x + pad, cy, cw - 2 * pad, lab, t.muted if i == 0 else _accent_on(t, fill))
             cy += 52
-        cy += cv.text(x + pad, cy, cw - 2 * pad, 220, side.get("title", ""), role="display_soft", size=54,
+        cy += cv.text(x + pad, cy, cw - 2 * pad, 220, side.get("title", ""),
+                      role="display" if t.luxe and t.serif else "display_soft", size=54,
                       min_size=30, lh=1.1, max_lines=3) + 36
         pts = side.get("points") or []
         if pts:
@@ -442,10 +548,11 @@ def s_table(cv, ctx, title, columns, rows, kicker=None, highlight=None, highligh
                 mix(t.bg, t.accent, 0.1 if not t.dark else 0.16), radius=min(t.radius, 16))
     for ci, c in enumerate(columns):
         pad = 20
-        cv.text(xs[ci] + pad, y0 + 12, widths[ci] - 2 * pad, 34, c, role="semibold", size=20,
-                color=t.muted if ci != highlight else _accent_on(t, t.bg), upper=True, tracking=0.08, max_lines=1,
+        cv.text(xs[ci] + pad, y0 + 12, widths[ci] - 2 * pad, 34, c, role="medium" if t.luxe else "semibold",
+                size=17 if t.luxe else 20, color=t.muted if ci != highlight else _accent_on(t, t.bg), upper=True,
+                tracking=0.22 if t.luxe else 0.08, max_lines=1,
                 align="right" if numeric[ci] else "left", min_size=12)
-    cv.line(MX, y0 + head_h, MX + BW, y0 + head_h, t.ink, 2)
+    cv.line(MX, y0 + head_h, MX + BW, y0 + head_h, t.ink if not t.luxe else _accent_on(t, t.bg), 1.2 if t.luxe else 2)
     for ri, r in enumerate(body):
         ry = y0 + head_h + ri * rh
         if highlight_row == ri:
@@ -458,7 +565,7 @@ def s_table(cv, ctx, title, columns, rows, kicker=None, highlight=None, highligh
                     role="semibold" if bold else "body", size=fs, color=t.ink, max_lines=1,
                     align="right" if numeric[ci] else "left", min_size=12)
         if ri < len(body) - 1:
-            cv.line(MX, ry + rh, MX + BW, ry + rh, t.rule, 1.5)
+            cv.line(MX, ry + rh, MX + BW, ry + rh, t.rule, 1 if t.luxe else 1.5)
     if note:
         cv.text(MX, BOTTOM - 36, BW, 36, note, role="body", size=20, color=t.muted, max_lines=1)
     _footer(cv, ctx)
@@ -472,7 +579,8 @@ def s_timeline(cv, ctx, title, steps, kicker=None, current=None):
     n = len(steps)
     cw = BW / n
     ly = y0 + max(130, (BOTTOM - y0) * 0.4)
-    cv.line(MX, ly, MX + BW, ly, t.rule, 4)
+    lw = 1.5 if t.luxe else 4
+    cv.line(MX, ly, MX + BW, ly, t.rule, lw)
     acc = _accent_on(t, t.bg)
     room = BOTTOM - (ly + 52)
     for ws, ds in ((40, 30), (36, 28), (34, 26), (32, 24), (30, 22), (26, 20)):
@@ -484,14 +592,14 @@ def s_timeline(cv, ctx, title, steps, kicker=None, current=None):
         x = MX + i * cw
         done = current is None or i <= current
         if current is not None and i <= current:
-            cv.line(x, ly, min(x + cw, MX + BW) if i < current else x, ly, acc, 4)
-        d = 34 if i == current else 26
-        cv.ellipse(x - 2, ly - d / 2, d, d, acc if done else t.bg, line=acc, line_w=4)
+            cv.line(x, ly, min(x + cw, MX + BW) if i < current else x, ly, acc, lw)
+        d = (18 if i == current else 12) if t.luxe else (34 if i == current else 26)
+        cv.ellipse(x - 2, ly - d / 2, d, d, acc if done else t.bg, line=acc, line_w=1.5 if t.luxe else 4)
         if when:
-            cv.text(x, ly - 84, cw - 32, 34, when, role="semibold", size=24, color=acc, upper=t.upper_kicker,
-                    tracking=0.1, max_lines=1)
+            _kicker(cv, t, x, ly - 84, cw - 32, when, acc, size=24)
         cy = ly + 52
-        cy += cv.text(x, cy, cw - 40, ws * 1.15 * 3, what, role="semibold", size=ws, lh=1.15, max_lines=3) + 14
+        cy += cv.text(x, cy, cw - 40, ws * 1.15 * 3, what, role="medium" if t.luxe else "semibold", size=ws, lh=1.15,
+                      max_lines=3) + 14
         if detail:
             cv.text(x, cy, cw - 40, BOTTOM - cy, detail, role="body", size=ds, color=t.muted, lh=1.3)
     _footer(cv, ctx)
@@ -509,7 +617,11 @@ def s_cards(cv, ctx, title, cards, kicker=None, numbered=False):
     cw = (BW - gap * (cols - 1)) / cols
     ch = (BOTTOM - y0 - gap * (rows - 1)) / rows
     pad = 52 if cols <= 3 else 40
-    acc = _accent_on(t, t.surface)
+    if t.luxe:
+        gap, pad = 64, 0
+        cw = (BW - gap * (cols - 1)) / cols
+        ch = (BOTTOM - y0 - gap * (rows - 1)) / rows
+    acc = _accent_on(t, t.bg if t.luxe else t.surface)
     inner = cw - 2 * pad
     any_tag = any(tag for _, _, tag in cards)
     room = ch - 2 * pad - (150 if numbered else 60) - (44 if any_tag else 0)
@@ -531,19 +643,25 @@ def s_cards(cv, ctx, title, cards, kicker=None, numbered=False):
     for i, (head, body, tag) in enumerate(cards):
         r, c = divmod(i, cols)
         x, y = MX + c * (cw + gap), y0 + r * (ch + gap)
-        cv.rect(x, y, cw, ch, t.surface, radius=t.radius)
+        if t.luxe and rows == 1:
+            y += max(0, (BOTTOM - y0 - block - (190 if numbered else 120)) * 0.3)
+        _panel(cv, t, x, y, cw, ch, t.surface)
         cy = y + pad
         if numbered:
-            cv.text(x + pad, cy - 6, inner, 120, f"{i + 1:02d}", role="display", size=96 if rows == 1 else 64,
-                    color=acc, lh=1.0, max_lines=1)
-        else:
-            cv.rect(x + pad, cy, 56, 10, acc, radius=5 if t.radius else 0)
+            cv.text(x + pad, cy - 6 + (40 if t.luxe else 0), inner, 120, f"{i + 1:02d}", role="display",
+                    size=(72 if rows == 1 else 52) if t.luxe else (96 if rows == 1 else 64), color=acc, lh=1.0,
+                    max_lines=1)
+        elif not t.luxe:
+            _mark(cv, t, x + pad, cy, acc, h=10)
         if tag:
             cv.text(x + pad, cy + (130 if numbered and rows == 1 else 44), inner, 30, tag, role="semibold", size=20,
                     color=t.muted, upper=True, tracking=0.1, max_lines=1)
         top_free = y + pad + (150 if numbered else 60) + (44 if tag else 0)
         by = max(top_free, y + ch - pad - block)
-        by += cv.text(x + pad, by, inner, ch * 0.5, head, role="semibold", size=hs, lh=1.15, max_lines=3) + 16
+        if t.luxe:
+            by = y + (150 if numbered else 44) + (44 if tag else 0)
+        by += cv.text(x + pad, by, inner, ch * 0.5, head, role="medium" if t.luxe else "semibold", size=hs, lh=1.15,
+                      max_lines=3) + 16
         if body:
             cv.text(x + pad, by, inner, y + ch - pad - by + 2, body, role="body", size=bs, color=t.muted, lh=1.32)
     _footer(cv, ctx)
@@ -552,8 +670,11 @@ def s_cards(cv, ctx, title, cards, kicker=None, numbered=False):
 def s_quote(cv, ctx, text, who=None, role=None, kicker=None):
     t = ctx.t
     cv.background(t.surface)
-    cv.text(MX - 6, 40, 400, 360, "\u201C", role="display", size=360, color=_accent_on(t, t.surface), lh=1.0,
-            max_lines=1)
+    if t.luxe:
+        _mark(cv, t, MX, 260, _accent_on(t, t.surface))
+    else:
+        cv.text(MX - 6, 40, 400, 360, "\u201C", role="display", size=360, color=_accent_on(t, t.surface), lh=1.0,
+                max_lines=1)
     font = "italic" if t.fonts == "editorial" else "display_soft"
     cv.text(MX, 330, 1560, 480, text, role=font, size=84 if t.fonts == "editorial" else 74, min_size=36, lh=1.14, valign="top")
     if who:
@@ -602,9 +723,10 @@ def s_agenda(cv, ctx, items, title="Agenda", kicker=None):
     for i, (label, detail) in enumerate(items):
         c, r = divmod(i, per)
         x, y = MX + c * (cw + 80), y0 + r * rh
-        cv.line(x, y, x + cw, y, t.rule, 2)
+        cv.line(x, y, x + cw, y, t.rule, 1 if t.luxe else 2)
         cv.text(x, y + 26, 120, 64, f"{i + 1:02d}", role="display_soft", size=50, color=acc, max_lines=1)
-        cv.text(x + 140, y + 28, cw - 140, 56, label, role="semibold", size=42 if cols == 1 else 34, max_lines=1,
+        cv.text(x + 140, y + 28, cw - 140, 56, label, role="medium" if t.luxe else "semibold",
+                size=42 if cols == 1 else 34, max_lines=1,
                 min_size=24)
         if detail and rh > 110:
             cv.text(x + 140, y + 88, cw - 140, rh - 96, detail, role="body", size=27, color=t.muted, max_lines=1)
@@ -817,6 +939,16 @@ class Deck:
             title = str(s["args"].get("title") or "")
             if len(title) > 90:
                 issues.append(f"slide {i}: title is {len(title)} chars — headline it")
+            if self.theme.luxe:
+                # Premium reads as restraint: few items, short words, room around everything.
+                a = s["args"]
+                n = len(a.get("points") or a.get("items") or a.get("cards") or a.get("steps") or [])
+                if n > 4 and s["kind"] in ("bullets", "cards", "kpis", "timeline"):
+                    issues.append(f"slide {i}: {n} items — a premium deck shows at most 4; split or cut")
+                if len(title) > 60:
+                    issues.append(f"slide {i}: premium titles are short (≤60 chars, this is {len(title)})")
+        if self.theme.luxe and len(kinds) >= 5 and not {"statement", "quote", "image"} & set(kinds):
+            issues.append("premium decks need breathing room — add a statement, quote or full image slide")
         warnings = self.save()
         for n, ws in warnings.items():
             issues += [f"slide {n}: {w}" for w in ws]

@@ -10,6 +10,7 @@
  * `next.config.mjs` → `experimental.outputFileTracingIncludes` ships the
  * folder with the chat function.
  */
+import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Sandbox } from '@vercel/sandbox'
@@ -38,13 +39,28 @@ async function walk(dir: string, rel: string): Promise<KitFile[]> {
 }
 
 function loadKit(): Promise<KitFile[]> {
-  if (!kitFiles) {
+  // In dev the kit is edited while the server runs; re-read it each boot
+  // so a running dev server never ships a stale copy into new sandboxes.
+  if (!kitFiles || process.env.NODE_ENV !== 'production') {
     kitFiles = walk(KIT_SOURCE, 'clox_kit').catch(e => {
       kitFiles = null
       throw e
     })
   }
   return kitFiles
+}
+
+/** Content hash of the kit. The manager compares it with what a running
+ *  sandbox was given and re-installs when the kit changed. */
+export async function kitVersion(): Promise<string> {
+  try {
+    const files = await loadKit()
+    const h = createHash('sha1')
+    for (const f of files) h.update(f.path).update(f.content)
+    return h.digest('hex').slice(0, 12)
+  } catch {
+    return 'none'
+  }
 }
 
 /** Writes a .pth into whichever site-packages this interpreter can write
