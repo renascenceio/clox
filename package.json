@@ -13,6 +13,8 @@
     "@ai-sdk/anthropic": "^1.1.9",
     "@ai-sdk/openai": "^1.1.9",
     "@ai-sdk/react": "^1.1.11",
+    "@dicebear/core": "^10.7.0",
+    "@dicebear/styles": "^10.6.0",
     "@prisma/client": "^6.4.1",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.48.1",
