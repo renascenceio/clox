@@ -369,11 +369,16 @@ const CLOX_CAPABILITIES_PREAMBLE = [
   '"Make a PDF"), reply with a SHORT clarifying question (≤3 lines).',
   'Do not call tools, do not load skills, do not generate placeholders.',
   '',
-  'STRICT format-to-fence mapping:',
+  'SLIDE DECKS / .pptx: when the python tool is available, ALWAYS build',
+  'the deck with it using clox_kit (read the PPTX skill first) — it makes',
+  'a designed, editable PowerPoint plus a PDF preview. Never answer a deck',
+  'request with a ```pptx fence when python is available.',
+  '',
+  'Format-to-fence mapping (for everything else, and decks without python):',
   '  HTML page / chart / mermaid → ```html  (full doc or fragment)',
   '  PDF                          → ```pdf   (markdown OR html body)',
   '  Word document / .docx        → ```docx  (markdown body)',
-  '  Slide deck / .pptx           → ```pptx  (JSON outline)',
+  '  Slide deck (no python tool)  → ```pptx  (JSON outline)',
   '  Excel / multi-sheet          → ```csv   (one block per sheet,',
   '                                 each preceded by "### Sheet: <name>")',
   '  Single CSV                   → ```csv   (one block, no heading)',
@@ -907,6 +912,10 @@ export async function POST(req: Request) {
         // definitions outright; only attach tools to models that take them.
         const modelTakesTools = takesTools(gatewayModelId)
         const hasTools = modelTakesTools && Object.keys(enabledTools).length > 0
+        // The saved reply must include the files collected in onFinish, which
+        // runs after the stream itself has ended.
+        let turnFinished: () => void = () => {}
+        const filesCollected = new Promise<void>(resolve => { turnFinished = resolve })
         const result = streamText({
           // `resolved` is always a LanguageModelV1 instance now (gateway
           // strings were removed). The cast satisfies the streamText prop
@@ -1228,6 +1237,7 @@ export async function POST(req: Request) {
                 console.error('[v0] sandbox collect failed:', (e as Error).message)
               }
             }
+            turnFinished()
           },
         })
 
@@ -1238,7 +1248,7 @@ export async function POST(req: Request) {
         result.mergeIntoDataStream(dataStream)
         // Read the reply on the server too: the model keeps going and the
         // reply is saved even when the tab is reloaded or closed.
-        waitUntil(recordRun(result, run))
+        waitUntil(recordRun(result, run, filesCollected))
       },
     })
   } catch (error) {
@@ -1263,7 +1273,11 @@ function autoInputs(messages: unknown[]) {
   }
 }
 
-async function recordRun(result: { fullStream: AsyncIterable<unknown> }, run: RunRecorder | null) {
+async function recordRun(
+  result: { fullStream: AsyncIterable<unknown> },
+  run: RunRecorder | null,
+  filesCollected: Promise<void>,
+) {
   let failure: string | undefined
   try {
     for await (const part of result.fullStream) {
@@ -1274,6 +1288,7 @@ async function recordRun(result: { fullStream: AsyncIterable<unknown> }, run: Ru
   } catch (e) {
     failure = describeGatewayError(e).message
   }
+  if (!failure) await Promise.race([filesCollected, new Promise(resolve => setTimeout(resolve, 120_000))])
   await run?.finish(failure)
 }
 

@@ -24,7 +24,7 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { snippetProblem } from './tool-input'
+import { rawDeckProblem, snippetProblem } from './tool-input'
 import {
   getOrCreateSandboxForChat,
   waitForKit,
@@ -134,7 +134,7 @@ export function makeBashTool(chatId: string, onProgress?: SandboxProgressCallbac
         ),
     }),
     execute: async ({ command }) => {
-      const problem = snippetProblem(command, 'command')
+      const problem = snippetProblem(command, 'command') ?? rawDeckProblem(command)
       if (problem) return problem
       if (NODE_DOC_RE.test(command)) {
         return {

@@ -498,4 +498,8 @@ body {
 
 /* Loading shimmer for thumbnails and skeleton cards. */
 @keyframes cloxPulse { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }
+@keyframes cloxGhost { 0%, 100% { opacity: .55 } 50% { opacity: 1 } }
+@media (prefers-reduced-motion: reduce) {
+  [style*="cloxGhost"] { animation: none !important; }
+}
 @media (prefers-reduced-motion: reduce) { [style*="cloxPulse"] { animation: none !important } }

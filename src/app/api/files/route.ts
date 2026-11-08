@@ -5,18 +5,22 @@ import { fileUrl } from '@/lib/storage/file-url'
 
 /**
  * GET    /api/files            — every file the caller created, newest first
+ *        ?chatId=…             — only one chat's files
  * DELETE /api/files {path}     — remove one of them
  */
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const { supabase } = await requireUser()
-    const { data, error } = await supabase
+    const chatId = new URL(req.url).searchParams.get('chatId')
+    let query = supabase
       .from('chat_files')
       .select('path, chat_id, filename, mime, size, created_at, updated_at')
+    if (chatId) query = query.eq('chat_id', chatId)
+    const { data, error } = await query
       .order('updated_at', { ascending: false })
-      .limit(1000)
+      .limit(chatId ? 200 : 1000)
     if (error) throw error
     return NextResponse.json({
       files: (data ?? []).map(f => ({

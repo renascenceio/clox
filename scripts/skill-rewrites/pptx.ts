@@ -23,6 +23,8 @@ Slide types (every one takes kicker= — a small label above the title — and n
   d.agenda(["Where we are", "What changed", "What we ask"])
   d.section("What changed", "Two shifts in Q3", number=2)
   d.statement("We grew 38% while cutting burn in half.", kicker="The headline", bg="hero"|"surface")
+  d.stat("AED 761B", "Transactions in 2025", context="Up 36% on 2024 …", source=, bg="hero")   # ONE huge figure
+  d.feature(title, [("Dubai Hills", "Family villas"), …], kicker=, statement="One line under the title")  # colour panel + points
   d.kpis(title, [("$4.2M", "Revenue", "+38%"), ("1,240", "Customers", "+212"), ("96%", "Retention", "-1pt")], highlight=0, note="Source …")
   d.chart(title, kind, categories, {"2025": [...], "2026": [...]}, fmt="money", takeaway="September beat Q1.",
           points=["Optional", "bullets beside the chart"], source="Finance, Oct 2026", labels=True)
@@ -43,9 +45,13 @@ Read an existing deck: from pptx import Presentation; walk p.slides → shapes �
 Restyle an uploaded deck: extract its content, then rebuild it with Deck (much better than patching shapes).`
 
 const SHAPE = `DECK SHAPE (adapt to the brief; a 10-slide default):
-  1 cover · 2 agenda or statement · 3-8 content (kpis, chart, cards/compare/timeline, table, quote) with a section
+  1 cover �� 2 agenda or statement · 3-8 content (kpis, chart, cards/compare/timeline, table, quote) with a section
   divider before each part of a longer deck · last: closing with a clear ask or next step.
-  At least one chart or kpis slide in any deck. Speaker notes (2-4 sentences) on every content slide.`
+  RHYTHM: never more than 4 white content slides in a row — break them with stat, feature, section or
+  statement(bg="hero"). The single most impressive number in the brief gets its own d.stat slide.
+  At least one chart or kpis slide in any deck. Speaker notes (2-4 sentences) on every content slide.
+  "Dark background, gold accents, premium" = theme="noir" (or theme="navy" for light + navy + gold) — no raw
+  python-pptx needed. Fonts/colours are one argument: fonts=("Playfair Display", "Inter"), brand="#C9A84C".`
 
 export const PPTX_PROMPT = `<!-- charter-version: ${CHARTER_VERSION} -->
 You build presentations at the level of a top design studio, using clox_kit — a design library already installed in the python sandbox. It renders native, fully editable PowerPoint (real text, native charts, embedded speaker notes) with professional themes, type and layout. Do not hand-write python-pptx shapes for new decks.

@@ -24,7 +24,7 @@ import tempfile
 from dataclasses import asdict
 
 from .canvas import H, W, PdfCanvas, PptxCanvas
-from .theme import Theme, contrast, mix, on, theme as _theme
+from .theme import Theme, contrast, luminance, mix, on, theme as _theme
 
 OUT_DIR = os.environ.get("CLOX_OUT", "/mnt/user-data/outputs")
 _HEX = re.compile(r"^\s*#?[0-9a-fA-F]{6}\s*$|^\s*#[0-9a-fA-F]{3}\s*$")
@@ -102,9 +102,16 @@ class Ctx:
 # ─── shared pieces ─────────────────────────────────────────────────
 
 def _accent_on(t: Theme, bg: str) -> str:
-    for c in (t.accent, t.accent2):
+    if contrast(t.accent, bg) >= 2.6:
+        return t.accent
+    # Keep the hue: gold on white becomes bronze rather than switching to the second colour.
+    toward = "#000000" if luminance(bg) > 0.35 else "#FFFFFF"
+    for k in (0.18, 0.32, 0.46):
+        c = mix(t.accent, toward, k)
         if contrast(c, bg) >= 2.6:
             return c
+    if contrast(t.accent2, bg) >= 2.6:
+        return t.accent2
     return on(bg)
 
 
@@ -173,7 +180,8 @@ def _orbs(cv, t: Theme, side="right"):
         cv.ellipse(-120, -260, 520, 520, o2)
 
 
-def _points(cv, t, x, y, w, max_h, items, head=40, body=28, numbered=True, color=None, bg=None, spread=True):
+def _points(cv, t, x, y, w, max_h, items, head=40, body=28, numbered=True, color=None, bg=None, spread=True,
+            center=False):
     """Stacked list of (head, body). Shrinks until it fits. Returns height used."""
     bg = bg or t.bg
     ink = color or (t.ink if bg == t.bg else on(bg))
@@ -195,7 +203,11 @@ def _points(cv, t, x, y, w, max_h, items, head=40, body=28, numbered=True, color
     else:
         cv.warnings.append("too much text in this list — cut points or split the slide")
     if spread and len(items) > 1 and total < max_h:
-        gap = min(gap + (max_h - total) / (len(items) - 1) * 0.5, 96)
+        extra = min((max_h - total) / (len(items) - 1) * 0.5, 96 - gap) if gap < 96 else 0
+        gap += max(0, extra)
+        total += max(0, extra) * (len(items) - 1)
+    if center and total < max_h:
+        y += (max_h - total) * 0.45
     cy = y
     for i, (h_, b_) in enumerate(items):
         if numbered:
@@ -412,20 +424,21 @@ def _kpis_luxe(cv, t, items, y0, cols, cw, gap, note, highlight):
     cw = (BW - gap * (cols - 1)) / cols
     rows = math.ceil(len(items) / cols)
     room = BOTTOM - y0 - (70 if note else 0)
-    ch = min(380, (room - 56 * (rows - 1)) / rows)
-    y_start = y0 + max(0, (room - rows * ch - 56 * (rows - 1)) * 0.35)
+    ch = min(470, (room - 56 * (rows - 1)) / rows)
+    y_start = y0 + max(0, (room - rows * ch - 56 * (rows - 1)) * 0.5)
     for i, (value, label, delta) in enumerate(items):
         r, c = divmod(i, cols)
         x, y = MX + c * (cw + gap), y_start + r * (ch + 56)
         hi = highlight == i
         acc = _accent_on(t, t.bg)
         cv.line(x, y, x + cw, y, acc if hi else t.rule, 1.5)
-        vh = min(130, ch * 0.42)
-        cy = y + 40
-        cy += cv.text(x, cy, cw, vh * 1.05, value, role="display", size=vh, min_size=40, lh=1.0,
-                      color=acc if hi else t.ink, max_lines=1) + 20
+        vh = min(190 if rows == 1 and cols <= 3 else 140, ch * 0.46)
+        cy = y + 48
+        cy += cv.text(x, cy, cw, vh * 1.05, value, role="display", size=vh, min_size=48, lh=1.0,
+                      color=acc if hi else t.ink, max_lines=1) + 24
         if label:
-            cy += cv.text(x, cy, cw - 24, ch - (cy - y) - 40, label, role="body", size=26, color=t.muted, lh=1.3) + 16
+            cy += cv.text(x, cy, cw - 24, ch - (cy - y) - 40, label, role="body", size=30 if rows == 1 else 26,
+                          color=t.muted, lh=1.3) + 18
         if delta:
             ds = str(delta).strip()
             neg = ds.startswith(("-", "−", "▼", "↓"))
@@ -578,12 +591,12 @@ def s_timeline(cv, ctx, title, steps, kicker=None, current=None):
     steps = [_pair(s, 3) for s in steps]
     n = len(steps)
     cw = BW / n
-    ly = y0 + max(130, (BOTTOM - y0) * 0.4)
+    ly = y0 + max(120, (BOTTOM - y0) * 0.3)
     lw = 1.5 if t.luxe else 4
     cv.line(MX, ly, MX + BW, ly, t.rule, lw)
     acc = _accent_on(t, t.bg)
     room = BOTTOM - (ly + 52)
-    for ws, ds in ((40, 30), (36, 28), (34, 26), (32, 24), (30, 22), (26, 20)):
+    for ws, ds in ((46, 30), (42, 29), (38, 28), (34, 26), (32, 24), (30, 22), (26, 20)):
         tallest = max(cv.measure(what, "semibold", ws, cw - 40, 1.15) + 14 +
                       (cv.measure(detail, "body", ds, cw - 40, 1.3) if detail else 0) for _, what, detail in steps)
         if tallest <= room * 0.85 and max(cv.measure(what, "semibold", ws, cw - 40, 1.15) for _, what, _ in steps) <= ws * 1.15 * 2:
@@ -632,19 +645,21 @@ def s_cards(cv, ctx, title, cards, kicker=None, numbered=False):
                    for h_, b_, _ in cards)
 
     # Largest type that still fits the card — small text in a big empty card reads as unfinished.
-    for hs, bs in ((44, 30), (40, 28), (36, 27), (34, 25), (32, 24), (30, 23), (28, 22)):
+    for hs, bs in ((52, 32), (48, 31), (44, 30), (40, 28), (36, 27), (34, 25), (32, 24), (30, 23), (28, 22)):
         if cols > 3 and hs > 36:
+            continue
+        if rows > 1 and hs > 44:
             continue
         block = block_at(hs, bs)
         if block <= room * (0.62 if rows == 1 else 0.9):
             break
     if rows == 1:
-        ch = min(ch, max(block + 2 * pad + (190 if numbered else 120), (BOTTOM - y0) * 0.7))
+        ch = min(ch, max(block + 2 * pad + (190 if numbered else 120), (BOTTOM - y0) * 0.92))
     for i, (head, body, tag) in enumerate(cards):
         r, c = divmod(i, cols)
         x, y = MX + c * (cw + gap), y0 + r * (ch + gap)
         if t.luxe and rows == 1:
-            y += max(0, (BOTTOM - y0 - block - (190 if numbered else 120)) * 0.3)
+            y += max(0, (BOTTOM - y0 - block - (190 if numbered else 120)) * 0.45)
         _panel(cv, t, x, y, cw, ch, t.surface)
         cy = y + pad
         if numbered:
@@ -748,13 +763,78 @@ def s_text(cv, ctx, title, body, kicker=None, columns=1):
     _footer(cv, ctx)
 
 
+def s_stat(cv, ctx, value, label, context=None, kicker=None, source=None, bg="hero"):
+    """One figure, as large as the slide allows, with what it means beside it."""
+    t = ctx.t
+    bgc = {"hero": t.hero, "surface": t.surface, "bg": t.bg, None: t.hero}.get(bg, bg)
+    cv.background(bgc)
+    ink = t.ink if bgc in (t.bg, t.surface) else on(bgc)
+    mut = mix(ink, bgc, 0.38)
+    acc = _accent_on(t, bgc)
+    if t.luxe and bgc == t.hero:
+        _frame(cv, t)
+    if kicker:
+        _kicker(cv, t, MX, 112, BW, kicker, acc)
+    lw = 1060 if context else BW
+    label_h = cv.measure(label, "display_soft", 52, lw, 1.14) if label else 0
+    vbot = 860 - (min(label_h, 130) + 40 if label else 0)
+    cv.text(MX - 8, 190, lw + 8, vbot - 190, value, role="display", size=380 if not t.luxe else 320, min_size=120,
+            lh=0.92, color=acc, valign="bottom", max_lines=1)
+    if label:
+        cv.text(MX, vbot + 40, lw, 140, label, role="display_soft", size=52, min_size=30, lh=1.14, color=ink,
+                max_lines=2)
+    if context:
+        x = MX + lw + 100
+        w = MX + BW - x
+        if t.luxe:
+            cv.line(x - 52, 260, x - 52, 880, mix(ink, bgc, 0.75), 1.2)
+        else:
+            _mark(cv, t, x, 300, acc)
+        cv.text(x, 350, w, 520, context, role="body", size=34, min_size=22, lh=1.38, color=mut)
+    if source:
+        cv.text(MX, 948, BW, 30, source, role="body", size=18, color=mut, max_lines=1)
+    _footer(cv, ctx, bg=bgc)
+
+
+def s_feature(cv, ctx, title, points, kicker=None, statement=None):
+    """Colour panel on the left with the headline, the argument on the right."""
+    t = ctx.t
+    cv.background(t.bg)
+    pw = 860
+    panel = t.hero if t.hero.lower() != t.bg.lower() else t.surface
+    cv.rect(0, 0, pw, H, panel)
+    pink = on(panel) if panel == t.hero else t.ink
+    pmut = mix(pink, panel, 0.38)
+    acc = _accent_on(t, panel)
+    tw_ = pw - MX - 90
+    y = 112
+    if kicker:
+        _kicker(cv, t, MX, y, tw_, kicker, acc)
+        y += 64
+    _mark(cv, t, MX, y, acc)
+    st_h = cv.measure(statement, "body", 30, tw_, 1.36) if statement else 0
+    cv.text(MX, y + 48, tw_, 900 - y - 48 - (st_h + 40 if statement else 0), title,
+            role="display" if t.serif or not t.luxe else "display_soft", size=104 if not t.luxe else 92,
+            min_size=44, lh=1.04, color=pink, max_lines=6)
+    if statement:
+        cv.text(MX, 940 - st_h, tw_, st_h + 4, statement, role="body", size=30, color=pmut, lh=1.36)
+    x = pw + 110
+    w = W - x - MX
+    items = [(p, None) if isinstance(p, str) else p for p in points]
+    _points(cv, t, x, 120, w, BOTTOM - 120, items, head=46, body=31, numbered=True, spread=True, center=True)
+    col = mix(t.ink, t.bg, 0.45)
+    lux = dict(upper=True, tracking=0.26, size=14) if t.luxe else dict(size=18)
+    cv.text(MX + BW - 200, 1000, 200, 30, f"{ctx.page:02d}", role="medium", color=col, align="right",
+            max_lines=1, **lux)
+
+
 KINDS = {
     "cover": s_cover, "closing": s_closing, "section": s_section, "statement": s_statement,
     "bullets": s_bullets, "kpis": s_kpis, "chart": s_chart, "compare": s_compare, "table": s_table,
     "timeline": s_timeline, "cards": s_cards, "quote": s_quote, "image": s_image, "agenda": s_agenda,
-    "text": s_text,
+    "text": s_text, "stat": s_stat, "feature": s_feature,
 }
-VISUAL = {"chart", "kpis", "table", "timeline", "cards", "image", "compare"}
+VISUAL = {"chart", "kpis", "table", "timeline", "cards", "image", "compare", "stat", "feature"}
 
 
 class Deck:
@@ -924,8 +1004,15 @@ class Deck:
             return
         if kinds[0] != "cover":
             issues.append("start with d.cover(...)")
-        if len(kinds) >= 6 and "section" not in kinds and "statement" not in kinds:
-            issues.append("add a section or statement slide to pace a longer deck")
+        if len(kinds) >= 6 and not {"section", "statement", "stat", "feature"} & set(kinds):
+            issues.append("add a section, statement, stat or feature slide to pace a longer deck")
+        plain = 0
+        for k in kinds[1:-1]:
+            plain = 0 if k in ("section", "stat", "feature", "statement", "quote", "image") else plain + 1
+            if plain == 5:
+                issues.append("five plain content slides in a row — break the run with d.stat(...), "
+                              "d.feature(...) or d.section(...)")
+                break
         if not VISUAL & set(kinds):
             issues.append("no chart / kpis / table / cards — add at least one visual slide")
         run = 1
@@ -1019,6 +1106,17 @@ class Deck:
 
     def quote(self, text, who=None, role=None, *, kicker=None, notes=None):
         return self._add("quote", text=text, who=who, role=role, kicker=kicker, notes=notes)
+
+    def stat(self, value, label, *, context=None, kicker=None, source=None, bg="hero", notes=None):
+        """One huge figure ("AED 1.2T", "71%") + what it is + a sentence on why it matters.
+        bg: 'hero' (default) | 'bg' | 'surface' | '#hex'."""
+        return self._add("stat", value=value, label=label, context=context, kicker=kicker, source=source, bg=bg,
+                         notes=notes)
+
+    def feature(self, title, points=None, *, items=None, kicker=None, statement=None, notes=None):
+        """Headline on a colour panel (left) + 2-4 points (right). Breaks up runs of white slides."""
+        points = points if points is not None else items
+        return self._add("feature", title=title, points=points, kicker=kicker, statement=statement, notes=notes)
 
     def image(self, image, title, *, caption=None, points=None, kicker=None, layout="split", notes=None):
         """layout 'split' (photo right, text left) or 'full' (full-bleed with caption)."""

@@ -21,9 +21,10 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import ChatWorkspace, { type ChatWorkspaceProps } from './ChatWorkspace'
 import { startChatCloud } from '@/lib/chat-cloud'
+import { PREFETCH_PATHS, beginNav, endNav, useNavPending } from './nav-pending'
 
 type Register = (owner: object, props: ChatWorkspaceProps | null) => void
 
@@ -32,6 +33,34 @@ const HostContext = createContext<Register | null>(null)
 export function WorkspaceHost({ children }: { children: ReactNode }) {
   const [entry, setEntry] = useState<{ owner: object; props: ChatWorkspaceProps } | null>(null)
   const pathname = usePathname()
+  const router = useRouter()
+  const navPending = useNavPending()
+
+  // Every page navigates with router.push (about forty call sites). The
+  // router object is shared, so wrapping its push once here lets the shell
+  // show the next page's ghost the moment any of them fires.
+  useEffect(() => {
+    const r = router as typeof router & { __cloxNav?: boolean }
+    if (r.__cloxNav) return
+    const push = r.push.bind(r)
+    r.push = (href, options) => {
+      beginNav(String(href))
+      return push(href, options)
+    }
+    r.__cloxNav = true
+  }, [router])
+
+  useEffect(() => { endNav() }, [pathname])
+
+  // Fetch the code of the main pages while the browser is idle, so moving
+  // between them doesn't wait on the network.
+  useEffect(() => {
+    if (!APP_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`))) return
+    const idle = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
+    const run = () => PREFETCH_PATHS.forEach(p => { if (p !== pathname) router.prefetch(p) })
+    if (idle) idle(run)
+    else setTimeout(run, 1200)
+  }, [pathname, router])
 
   const register = useCallback<Register>((owner, props) => {
     setEntry(current => {
@@ -47,7 +76,7 @@ export function WorkspaceHost({ children }: { children: ReactNode }) {
       <HostReady />
       {entry && (
         <div className="fixed inset-0 isolate">
-          <ChatWorkspace {...entry.props} pageKey={pathname} />
+          <ChatWorkspace {...entry.props} pageKey={pathname} navPending={navPending} />
         </div>
       )}
       {children}
