@@ -10,7 +10,10 @@ type PdfJs = typeof import('pdfjs-dist')
 let pdfjsPromise: Promise<PdfJs> | null = null
 function loadPdfJs() {
   pdfjsPromise ??= import('pdfjs-dist').then(mod => {
-    mod.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+    // Served as a static file (copied from the package by `prebuild`).
+    // Referencing it through `new URL(…, import.meta.url)` made webpack
+    // bundle and re-minify the 1 MB worker, which broke the production build.
+    mod.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs?v=${mod.version}`
     return mod
   })
   return pdfjsPromise

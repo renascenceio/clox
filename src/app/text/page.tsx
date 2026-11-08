@@ -63,7 +63,6 @@ import {
   type Chat,
 } from '@/lib/chat-store'
 import type { AppLanguage } from '@/shared/ui/chat/ChatWorkspace'
-import { formatCredits, planFor } from '@/lib/plans'
 import { SIGNED_OUT_USER, cachedIdentity, watchIdentity } from '@/shared/ui/chat/chrome-identity'
 import { saveTranscript } from '@/lib/transcript-store'
 import { restoreTranscript } from '@/lib/chat-cloud'
