@@ -17,17 +17,19 @@ import AdminShell, {
   AdminIconBtn,
   AdminPanel,
 } from '@/shared/ui/admin/AdminShell'
+import { PLANS, planFor } from '@/lib/plans'
 
 interface User {
   id: string
   email: string
   name: string
   role: string | null
+  plan: string
   company: string | null
   country: string | null
   city: string | null
   created_at: string
-  balance_usd: number
+  balance_credits: number
   usage_30d: { spend: number; tokens: number; calls: number }
 }
 
@@ -65,7 +67,7 @@ export default function UsersPage() {
   }, [role, query, refreshTick])
 
   const totalSpend = useMemo(() => users.reduce((s, u) => s + u.usage_30d.spend, 0), [users])
-  const totalBalance = useMemo(() => users.reduce((s, u) => s + u.balance_usd, 0), [users])
+  const totalBalance = useMemo(() => users.reduce((s, u) => s + u.balance_credits, 0), [users])
   const selected = users.find(u => u.id === selectedId) ?? null
 
   return (
@@ -106,7 +108,7 @@ export default function UsersPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 border border-hairline rounded-card bg-surface mb-[18px]">
         <KpiCell label="Accounts (filtered)" value={users.length.toLocaleString()} />
         <KpiCell label="Spend (30d, filtered)" value={`$${totalSpend.toFixed(2)}`} />
-        <KpiCell label="Outstanding balance" value={`$${totalBalance.toFixed(2)}`} accent />
+        <KpiCell label="Outstanding credits" value={Math.floor(totalBalance).toLocaleString('en-US')} accent />
         <KpiCell label="Active in 30d" value={users.filter(u => u.usage_30d.calls > 0).length.toLocaleString()} />
       </div>
 
@@ -186,7 +188,7 @@ export default function UsersPage() {
                         ${u.usage_30d.spend.toFixed(2)}
                       </td>
                       <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right font-mono text-[12px]">
-                        ${u.balance_usd.toFixed(2)}
+                        {Math.floor(u.balance_credits).toLocaleString('en-US')}
                       </td>
                       <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right">
                         <span className="font-mono text-[10.5px] text-ink-muted">{isSelected ? '—' : '+'}</span>
@@ -219,9 +221,14 @@ export default function UsersPage() {
               </div>
               <div className="border-t border-hairline-soft pt-4">
                 <div className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted mb-2">credits</div>
-                <div className="font-serif italic text-[28px] leading-none">${selected.balance_usd.toFixed(2)}</div>
+                <div className="font-serif italic text-[28px] leading-none">{Math.floor(selected.balance_credits).toLocaleString('en-US')}</div>
                 <div className="font-mono text-[10.5px] text-ink-muted mt-1">current balance</div>
               </div>
+              <PlanControls
+                key={selected.id}
+                user={selected}
+                onChange={patch => setUsers(list => list.map(u => (u.id === selected.id ? { ...u, ...patch } : u)))}
+              />
               <div className="pt-2">
                 <AdminBtn onClick={() => router.push(`/admin/billing?user=${selected.id}`)}>view invoices</AdminBtn>
               </div>
@@ -259,6 +266,66 @@ function Detail({ label, value }: { label: string; value: string }) {
     <div>
       <div className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted">{label}</div>
       <div className="text-[13px] mt-1">{value}</div>
+    </div>
+  )
+}
+
+function PlanControls({ user, onChange }: { user: User; onChange: (patch: Partial<User>) => void }) {
+  const [busy, setBusy] = useState(false)
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState<string | null>(null)
+
+  const send = async (body: { plan?: string; addCredits?: number }) => {
+    setBusy(true)
+    setNote(null)
+    const res = await fetch(`/api/admin/users/${user.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch(() => null)
+    const json = res ? await res.json().catch(() => ({})) : {}
+    setBusy(false)
+    if (!res?.ok) { setNote(json.error ?? 'Could not save.'); return }
+    onChange({ balance_credits: json.balance_credits, ...(body.plan ? { plan: body.plan } : {}) })
+    setNote(body.plan ? `Plan set to ${planFor(body.plan).name}. Their monthly credits started today.` : 'Credits added.')
+    setAmount('')
+  }
+
+  return (
+    <div className="border-t border-hairline-soft pt-4 space-y-3">
+      <div className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted">plan</div>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Plan">
+        {Object.values(PLANS).map(p => (
+          <button
+            key={p.id}
+            type="button"
+            disabled={busy || user.plan === p.id}
+            onClick={() => void send({ plan: p.id })}
+            aria-pressed={user.plan === p.id}
+            className={`font-mono text-[11px] px-2.5 py-1 border rounded-sharp transition-colors ${
+              user.plan === p.id ? 'bg-ink text-bg border-ink' : 'border-hairline text-ink-soft hover:border-ink hover:text-ink'
+            } disabled:cursor-default`}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+      <form
+        className="flex items-center gap-2"
+        onSubmit={e => { e.preventDefault(); const n = Number(amount); if (n > 0 && !busy) void send({ addCredits: n }) }}
+      >
+        <label htmlFor="add-credits" className="sr-only">Credits to add</label>
+        <input
+          id="add-credits"
+          inputMode="numeric"
+          value={amount}
+          onChange={e => setAmount(e.target.value.replace(/[^\d]/g, ''))}
+          placeholder="Credits to add"
+          className="flex-1 min-w-0 bg-transparent border border-hairline rounded-sharp px-2.5 py-1.5 text-[12.5px] outline-none focus:border-ink"
+        />
+        <AdminBtn type="submit">add</AdminBtn>
+      </form>
+      {note && <p className="font-mono text-[10.5px] text-ink-muted" role="status">{note}</p>}
     </div>
   )
 }

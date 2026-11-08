@@ -156,9 +156,21 @@ export function takesTools(id: string): boolean {
   return !tags || tags.includes('tool-use')
 }
 
-export const TEXT_MODELS: ModelEntry[] = sorted
-  .filter(e => e.type === 'language' && !isImageLanguageModel(e) && !TEXT_EXCLUDED.has(e.id))
-  .map(toEntry)
+/** Picks a Claude model per message — see lib/auto-model. */
+export const AUTO_MODEL_ENTRY: ModelEntry = {
+  id: 'clox/auto',
+  name: 'Auto',
+  version: 'Auto',
+  provider: 'anthropic',
+  brandName: 'Claude',
+}
+
+export const TEXT_MODELS: ModelEntry[] = [
+  AUTO_MODEL_ENTRY,
+  ...sorted
+    .filter(e => e.type === 'language' && !isImageLanguageModel(e) && !TEXT_EXCLUDED.has(e.id))
+    .map(toEntry),
+]
 
 /** Image models that need an input image to do anything (upscalers,
  *  inpainting with a mask). Fill needs a mask we can't author, so it's
@@ -285,7 +297,7 @@ const LEGACY_IDS: Record<string, string> = {
 }
 
 const DEFAULTS: Record<Modality, string> = {
-  text: 'anthropic/claude-sonnet-4.6',
+  text: 'clox/auto',
   image: 'google/gemini-3.1-flash-image',
   video: 'google/veo-3.1-fast-generate-001',
   audio: 'elevenlabs/eleven-multilingual-v2',

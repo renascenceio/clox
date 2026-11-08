@@ -99,7 +99,7 @@ export default function BillingPage() {
         <KpiCell label="Paid" value={`$${(data?.totals.paid ?? 0).toFixed(2)}`} tone="green" />
         <KpiCell label="Open / pending" value={`$${(data?.totals.open ?? 0).toFixed(2)}`} tone="amber" />
         <KpiCell label="Failed" value={`$${(data?.totals.failed ?? 0).toFixed(2)}`} tone="red" />
-        <KpiCell label="Outstanding credit" value={`$${(data?.credit_total ?? 0).toFixed(2)}`} accent />
+        <KpiCell label="Outstanding credits" value={Math.floor(data?.credit_total ?? 0).toLocaleString("en-US")} accent />
       </div>
 
       <AdminPanel

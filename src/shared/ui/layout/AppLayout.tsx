@@ -174,7 +174,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     const email = user.email || ''
     const [profileRes, creditsRes] = await Promise.all([
       supabase.from('profiles').select('first_name, last_name, role, avatar_seed').eq('id', user.id).single(),
-      supabase.from('credits').select('balance_usd').eq('user_id', user.id).single(),
+      supabase.from('credits').select('balance_credits').eq('user_id', user.id).single(),
     ])
 
     const firstName = profileRes.data?.first_name || email.split('@')[0]
@@ -183,9 +183,9 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
       email,
       firstName: lastName ? `${firstName} ${lastName}` : firstName,
       role: profileRes.data?.role || 'user',
-      balance: creditsRes.data?.balance_usd != null
-        ? parseFloat(creditsRes.data.balance_usd).toFixed(2)
-        : '0.00',
+      balance: creditsRes.data?.balance_credits != null
+        ? Math.floor(Number(creditsRes.data.balance_credits)).toLocaleString('en-US')
+        : '0',
       avatarSeed: profileRes.data?.avatar_seed || '',
     }
     writeCachedProfile(next)
@@ -419,7 +419,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
                     {' · '}
                     {isFreeDomain
                       ? 'pro'
-                      : <span className="text-ink-soft">${profile.balance}</span>}
+                      : <span className="text-ink-soft">{profile.balance} credits</span>}
                   </>
                 ) : '\u00a0'}
               </div>

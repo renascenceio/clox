@@ -24,6 +24,7 @@ import {
 } from './palettes'
 import type { AppLanguage, RailNavItem } from './ChatWorkspace'
 import { createClient } from '@/lib/supabase/client'
+import { formatCredits, planFor } from '@/lib/plans'
 
 export type ActiveRail =
   | 'projects' | 'chats' | 'history' | 'gallery'
@@ -106,7 +107,7 @@ export function useChatChrome(active: ActiveRail) {
             .single(),
           supabase
             .from('credits')
-            .select('balance_usd')
+            .select('balance_credits')
             .eq('user_id', authUser.id)
             .single(),
         ])
@@ -125,16 +126,10 @@ export function useChatChrome(active: ActiveRail) {
         // Plan label is intentionally compact (matches "pro · 4 seats" cadence
         // used in the design reference). Falls back to the credit balance so
         // even a free account shows something meaningful in the rail footer.
-        const planRaw = (profile.data?.plan as string | null | undefined)?.toLowerCase()
-        let plan: string
-        if (planRaw && planRaw !== 'free') {
-          plan = planRaw
-        } else if (credits.data?.balance_usd != null) {
-          const balance = parseFloat(String(credits.data.balance_usd))
-          plan = `free · $${balance.toFixed(2)}`
-        } else {
-          plan = 'free'
-        }
+        const planName = planFor(profile.data?.plan as string | null | undefined).name.toLowerCase()
+        const plan = credits.data?.balance_credits != null
+          ? `${planName} · ${formatCredits(Number(credits.data.balance_credits))} credits`
+          : planName
 
         setUser({
           initial,

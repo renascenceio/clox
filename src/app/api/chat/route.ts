@@ -15,6 +15,9 @@ import { makePythonTool } from '@/lib/tools/sandbox-python'
 import { mountAttachments, collectOutputs, collectState, prewarmSandbox, setSandboxOwner, type AttachmentToMount } from '@/lib/sandbox/manager'
 import { uploadChatOutput, saveWorkspaceFile } from '@/lib/storage/chat-outputs'
 import { makeBrowserTool } from '@/lib/tools/browser'
+import { waitUntil } from '@vercel/functions'
+import { startRun, type RunRecorder } from '@/lib/chat-runs'
+import { AUTO_MODEL_ID, pickAutoModel } from '@/lib/auto-model'
 
 // Streaming chat responses can legitimately run for several minutes
 // when the python sandbox is in play: cold microVM boot (~5-10s), pip
@@ -23,10 +26,11 @@ import { makeBrowserTool } from '@/lib/tools/browser'
 // rendering charts via pillow, etc., can take another 30-60s. Keeping
 // this at the previous 60s cap caused the function to be killed mid-
 // stream, so the user saw "stuck" with no progress and no error.
-// 300 seconds is the maximum allowed on Vercel Pro for streaming
-// functions; anything below that is a footgun for the document-
-// handling skills.
-export const maxDuration = 300
+// Long document builds (many sandbox calls) need more than 5 minutes;
+// 800s is the Fluid compute ceiling on Pro. The reply keeps generating
+// even if the browser disconnects (see chat-runs), so the whole budget
+// goes to the work.
+export const maxDuration = 800
 
 interface IncomingAttachment {
   name?: string
@@ -449,7 +453,7 @@ export async function POST(req: Request) {
   }
 
   // Sign-in + personal credit gate, then the project budget gate.
-  const gate = await checkCredit()
+  const gate = await checkCredit({ model })
   if (gate.blocked) return gate.blocked
   if (projectId) {
     try {
@@ -468,7 +472,10 @@ export async function POST(req: Request) {
 
   try {
     // Every model is served by the Vercel AI Gateway (see lib/gateway).
-    const { model: resolved, modelId: gatewayModelId } = await resolveLanguageModel(model)
+    const autoPick = model === AUTO_MODEL_ID
+      ? pickAutoModel({ ...autoInputs(Array.isArray(messages) ? messages : []), lowCostOnly: gate.plan.lowCostOnly })
+      : null
+    const { model: resolved, modelId: gatewayModelId } = await resolveLanguageModel(autoPick ?? model)
     const modelInfo = catalogEntry(gatewayModelId)
     const sampling = buildSamplingOptions(gatewayModelId, modelInfo, { temperature, maxTokens, params })
     const isClaude = gatewayModelId.startsWith('anthropic/')
@@ -789,6 +796,9 @@ export async function POST(req: Request) {
     // `onFinish`. The annotations carry the list of files the sandbox
     // produced, so `<DownloadStrip>` can render chips below the
     // assistant's reply.
+    const run = caller && chatId
+      ? await startRun({ userId: caller.userId, chatId, model: gatewayModelId })
+      : null
     return createDataStreamResponse({
       // Mirror the previous error-forwarding behaviour. By default the
       // SDK masks every server-side error with "An error occurred."
@@ -800,6 +810,16 @@ export async function POST(req: Request) {
         return describeGatewayError(error).message
       },
       execute: dataStream => {
+        if (run) {
+          const annotate = dataStream.writeMessageAnnotation.bind(dataStream)
+          dataStream.writeMessageAnnotation = annotation => {
+            run.annotation(annotation)
+            annotate(annotation)
+          }
+        }
+        if (autoPick) {
+          dataStream.writeMessageAnnotation({ type: 'auto-model', model: autoPick, name: modelInfo?.name ?? autoPick })
+        }
         // Tell the UI we auto-compacted older turns. Surfaced as a
         // small badge above the assistant's response so the user
         // knows context was condensed and can hit "Compact chat
@@ -1047,11 +1067,6 @@ export async function POST(req: Request) {
             const totalInputTokens = claudeUsage
               ? claudeUsage.inputTokens + claudeUsage.cacheReadTokens + claudeUsage.cacheWriteTokens
               : usage?.promptTokens ?? 0
-            // Cache reads bill at 10% of the input price and cache writes at
-            // 125%, so charge Claude by the equivalent token count.
-            const billableInputTokens = claudeUsage
-              ? Math.round(claudeUsage.inputTokens + claudeUsage.cacheReadTokens * 0.1 + claudeUsage.cacheWriteTokens * 1.25)
-              : totalInputTokens
             // Hit ratio is informational; only meaningful when
             // promptTokens > 0 and the provider reports cache reads.
             const cacheHitRatio =
@@ -1143,7 +1158,9 @@ export async function POST(req: Request) {
                   costUsd: computeCostUsd({
                     modality: 'text',
                     model: gatewayModelId,
-                    promptTokens: billableInputTokens,
+                    promptTokens: claudeUsage ? claudeUsage.inputTokens : totalInputTokens,
+                    cacheReadTokens: claudeUsage?.cacheReadTokens ?? 0,
+                    cacheWriteTokens: claudeUsage?.cacheWriteTokens ?? 0,
                     completionTokens: usage?.completionTokens,
                   }),
                   projectId: projectId ?? null,
@@ -1205,6 +1222,9 @@ export async function POST(req: Request) {
         // and tool result; our annotations from `onFinish` arrive
         // alongside in the same data envelope.
         result.mergeIntoDataStream(dataStream)
+        // Read the reply on the server too: the model keeps going and the
+        // reply is saved even when the tab is reloaded or closed.
+        waitUntil(recordRun(result, run))
       },
     })
   } catch (error) {
@@ -1213,6 +1233,34 @@ export async function POST(req: Request) {
     // Return a structured error the client can show inline.
     return Response.json({ error: message }, { status })
   }
+}
+
+/** What Auto looks at: the newest user message, files, tool use, history size. */
+function autoInputs(messages: unknown[]) {
+  const list = messages as Array<{ role?: string; content?: unknown; experimental_attachments?: unknown[]; toolInvocations?: unknown[] }>
+  const text = (m: (typeof list)[number] | undefined) =>
+    typeof m?.content === 'string' ? m.content : Array.isArray(m?.content) ? JSON.stringify(m?.content) : ''
+  const lastUser = [...list].reverse().find(m => m?.role === 'user')
+  return {
+    text: text(lastUser),
+    hasFiles: Boolean(lastUser?.experimental_attachments?.length),
+    usedTools: list.slice(-6).some(m => m?.role === 'assistant' && (m.toolInvocations?.length ?? 0) > 0),
+    historyChars: list.reduce((s, m) => s + text(m).length, 0),
+  }
+}
+
+async function recordRun(result: { fullStream: AsyncIterable<unknown> }, run: RunRecorder | null) {
+  let failure: string | undefined
+  try {
+    for await (const part of result.fullStream) {
+      const p = part as { type?: string; error?: unknown }
+      if (p.type === 'error') failure = describeGatewayError(p.error).message
+      run?.part(p)
+    }
+  } catch (e) {
+    failure = describeGatewayError(e).message
+  }
+  await run?.finish(failure)
 }
 
 /**

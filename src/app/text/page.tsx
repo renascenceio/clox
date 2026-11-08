@@ -59,6 +59,7 @@ import {
   type Chat,
 } from '@/lib/chat-store'
 import type { AppLanguage } from '@/shared/ui/chat/ChatWorkspace'
+import { formatCredits, planFor } from '@/lib/plans'
 
 /* =====================================================================
    Modes — text route is "chat / research / code"; image, voice and video
@@ -525,7 +526,57 @@ export default function TextPage() {
   // in a non-clean state.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { messages = [], input = '', handleInputChange, handleSubmit, isLoading = false, status, setMessages, error: chatError, reload: chatReload } = chat as any
-  const isStreaming = Boolean(isLoading) || status === 'submitted' || status === 'streaming'
+  const liveStreaming = Boolean(isLoading) || status === 'submitted' || status === 'streaming'
+  const liveStreamingRef = useRef(liveStreaming)
+  liveStreamingRef.current = liveStreaming
+
+  // The server keeps generating when this tab reloads or closes, and saves
+  // the reply as it grows. On opening a chat we pick that reply up and
+  // follow it until it finishes.
+  const [resumingRun, setResumingRun] = useState(false)
+  // A dropped connection (sleep, network change) ends the live stream with
+  // an error while the server carries on — look for the saved reply then too.
+  const [resumeTick, setResumeTick] = useState(0)
+  useEffect(() => { if (chatError) setResumeTick(t => t + 1) }, [chatError])
+  useEffect(() => {
+    if (!activeChatId || !setMessages) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    type RunMsg = { id: string; content?: string; toolInvocations?: unknown[]; annotations?: unknown[] }
+    const size = (m: RunMsg | undefined) =>
+      m ? (m.content?.length ?? 0) + (m.toolInvocations?.length ?? 0) * 1000 + (m.annotations?.length ?? 0) : -1
+    const check = async (first: boolean) => {
+      if (cancelled) return
+      if (liveStreamingRef.current) { setResumingRun(false); return }
+      const res = await fetch(`/api/chat/runs?chatId=${encodeURIComponent(activeChatId)}`, { cache: 'no-store' }).catch(() => null)
+      const run = res?.ok ? (await res.json().catch(() => null))?.run : null
+      if (cancelled || liveStreamingRef.current) return
+      const msg = run?.message as RunMsg | undefined
+      if (!msg?.id) { setResumingRun(false); return }
+      setMessages((prev: Array<RunMsg & Record<string, unknown>>) => {
+        const at = prev.findIndex(m => m.id === msg.id)
+        if (at >= 0) {
+          if (run.status !== 'running' && size(prev[at]) >= size(msg)) return prev
+          const next = [...prev]
+          next[at] = { ...msg, clox_model: prev[at].clox_model, ...(prev[at].createdAt ? { createdAt: prev[at].createdAt } : {}) }
+          return next
+        }
+        if (prev[prev.length - 1]?.role !== 'user') return prev
+        if (!first && run.status !== 'running') return prev
+        return [...prev, msg]
+      })
+      if (run.status === 'running') {
+        setResumingRun(true)
+        timer = setTimeout(() => void check(false), 2000)
+      } else {
+        setResumingRun(false)
+      }
+    }
+    timer = setTimeout(() => void check(true), 400)
+    return () => { cancelled = true; if (timer) clearTimeout(timer); setResumingRun(false) }
+  }, [activeChatId, setMessages, resumeTick])
+
+  const isStreaming = liveStreaming || resumingRun
   const setInput = (v: string) => {
     handleInputChange?.({ target: { value: v } } as unknown as React.ChangeEvent<HTMLTextAreaElement>)
   }
@@ -1175,7 +1226,12 @@ export default function TextPage() {
       // message was generated. We only fall back to the live picker
       // for an in-flight assistant response that hasn't reached
       // `onFinish` yet (i.e. it never got `clox_model` stamped).
-      const stampedModel = typeof m.clox_model === 'string' ? m.clox_model : undefined
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const autoPicked = ((m as any).annotations as Array<{ type?: string; name?: string }> | undefined)
+        ?.find(a => a?.type === 'auto-model')?.name
+      const stampedModel = autoPicked
+        ? `Auto · ${autoPicked.replace(/^Claude\s+/, '')}`
+        : typeof m.clox_model === 'string' ? m.clox_model : undefined
 
       // ── Tool-invocation strip ──────────────────────────────────────
       // useChat surfaces tool calls on the assistant message under
@@ -1346,10 +1402,19 @@ export default function TextPage() {
       //       state (server cut off mid-execution).
       //   (c) Stream finished with no body and no successful tools
       //       (something silently failed upstream).
-      const timedOutTool = toolInvocations.find(
+      // Only when the timeout is what the reply ended on — a model that
+      // recovered from a slow step and carried on needs no button.
+      const lastInvocation = toolInvocations[toolInvocations.length - 1]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msgParts: Array<{ type?: string; text?: string }> = Array.isArray((m as any).parts) ? (m as any).parts : []
+      const lastToolPart = msgParts.map(p => p.type).lastIndexOf('tool-invocation')
+      const wroteAfterTool = lastToolPart >= 0 &&
+        msgParts.slice(lastToolPart + 1).some(p => p.type === 'text' && String(p.text ?? '').trim().length > 0)
+      const timedOutTool = isLastMessage && !isStreaming && !wroteAfterTool &&
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        inv => (inv.result as any)?.kind === 'timeout',
-      )
+        (lastInvocation?.result as any)?.kind === 'timeout'
+        ? lastInvocation
+        : undefined
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const timeoutSuggestion: string | null = timedOutTool
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2292,7 +2357,7 @@ export default function TextPage() {
             .select('first_name, last_name, plan, avatar_seed, role')
             .eq('id', authUser.id)
             .single(),
-          supabase.from('credits').select('balance_usd').eq('user_id', authUser.id).single(),
+          supabase.from('credits').select('balance_credits').eq('user_id', authUser.id).single(),
         ])
         if (cancelled) return
         setIsSuperAdmin(profile.data?.role === 'super_admin')
@@ -2303,12 +2368,10 @@ export default function TextPage() {
         const fullName = [first, last].filter(Boolean).join(' ').trim() || fallback
         const initial = (first || fallback).slice(0, 1).toLowerCase() || '·'
 
-        const planRaw = (profile.data?.plan as string | null | undefined)?.toLowerCase()
-        let plan: string
-        if (planRaw && planRaw !== 'free') plan = planRaw
-        else if (credits.data?.balance_usd != null) {
-          plan = `free · $${parseFloat(String(credits.data.balance_usd)).toFixed(2)}`
-        } else plan = 'free'
+        const planName = planFor(profile.data?.plan as string | null | undefined).name.toLowerCase()
+        const plan = credits.data?.balance_credits != null
+          ? `${planName} · ${formatCredits(Number(credits.data.balance_credits))} credits`
+          : planName
 
         setUser({
           initial,

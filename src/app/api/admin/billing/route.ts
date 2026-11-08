@@ -60,8 +60,8 @@ export async function GET() {
   }
 
   // Outstanding credit balances across all users (signed; negative means owed).
-  const { data: creditRows } = await sb.from('credits').select('balance_usd')
-  const credit_total = (creditRows ?? []).reduce((s, c) => s + Number(c.balance_usd ?? 0), 0)
+  const { data: creditRows } = await sb.from('credits').select('balance_credits')
+  const credit_total = (creditRows ?? []).reduce((s, c) => s + Number(c.balance_credits ?? 0), 0)
 
   return NextResponse.json({ invoices, totals, credit_total })
 }

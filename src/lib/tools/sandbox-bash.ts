@@ -41,6 +41,8 @@ import {
  *  180s gives comfortable headroom for the worst single-package case. */
 const COMMAND_TIMEOUT_MS = 180_000
 
+const NODE_INSTALL_RE = /\b(npm|pnpm|yarn|bun)\s+(i|install|add|ci)\b|\bnpx\s+(-y\s+)?[a-z@]/i
+
 /** Cap on the size of stdout/stderr we forward back to the model.
  *  Excessive output costs tokens AND distracts from the actual signal.
  *  16KB ≈ 4000 tokens, plenty for the kind of summaries our skills
@@ -114,7 +116,9 @@ export function makeBashTool(chatId: string, onProgress?: SandboxProgressCallbac
       '/mnt/user-data/outputs/ — files there are surfaced as downloads',
       'in the chat. Bundled Anthropic skill assets live at /mnt/skills/',
       '<skill-name>/ when the snapshot is enabled.',
-      'No network access except PyPI, GitHub, and the AI Gateway.',
+      'No network access except PyPI, GitHub, and the AI Gateway — npm is',
+      'NOT reachable, so never use Node packages (pptxgenjs, docx, exceljs):',
+      'build decks/reports in Python with `from clox_kit import Deck, Report, Book`.',
       'Hard timeout per command: 180 seconds.',
     ].join(' '),
     parameters: z.object({
@@ -129,6 +133,21 @@ export function makeBashTool(chatId: string, onProgress?: SandboxProgressCallbac
     }),
     execute: async ({ command }) => {
       const preview = previewBashCommand(command)
+      // The npm registry is outside the network allow-list, so an npm
+      // install never fails — it hangs until the 180s cap. Say so at once.
+      if (NODE_INSTALL_RE.test(command)) {
+        return {
+          ok: false,
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Node packages cannot be installed here: the npm registry is not reachable from the sandbox.',
+          kind: 'blocked',
+          suggestion:
+            'Build documents in Python. For decks, reports and books use the preinstalled design library: ' +
+            '`from clox_kit import Deck, Report, Book` (read the matching skill first); python-pptx, ' +
+            'python-docx, openpyxl and reportlab are installed too.',
+        }
+      }
       try {
         const sandbox = await getOrCreateSandboxForChat(chatId, onProgress)
         await waitForKit(chatId)
