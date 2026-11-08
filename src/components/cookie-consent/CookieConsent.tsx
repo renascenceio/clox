@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
+  DEFAULT_STATE,
   acceptAll,
   detectRegion,
   getConsentRecord,
@@ -12,412 +13,462 @@ import {
   rejectAll,
   saveConsent,
 } from '@/lib/consent/store'
-import type {
-  ConsentCategory,
-  ConsentRegion,
-  ConsentState,
-} from '@/lib/consent/types'
+import { entriesFor } from '@/lib/consent/registry'
+import { CATEGORIES, CATEGORY_COPY, type ConsentCategory, type ConsentRegion, type ConsentState } from '@/lib/consent/types'
 
 /**
- * Compliance posture, by jurisdiction, in one component:
+ * One consent UI for every page, region and screen size.
  *
- *   EEA / UK / CH ─ no pre-checked boxes, equal weight to "Reject all" and
- *                   "Accept all" (EDPB Guidelines 03/2022), withdrawal of
- *                   consent must be as easy as giving it (footer link does
- *                   that), granular per-category controls in the sheet.
- *
- *   US (CA + others) ─ banner doubles as a "Do Not Sell or Share My Personal
- *                       Information" notice. GPC signal auto-applies and is
- *                       acknowledged in the copy.
- *
- *   BR / QC / Global ─ same granular controls; copy nuanced per region.
- *
- * We keep the same UI in every region — only the headline + one helper line
- * change — so users in jurisdictions without a strict mandate still get the
- * same level of control. That is the safest forward-compatible posture as
- * regulation tightens (e.g. Texas TDPSA, Florida FDBR, India DPDP Act, etc.).
+ *  - First visit: a non-blocking banner. "Reject all" and "Accept all" look
+ *    exactly the same (EDPB 03/2022: refusing must be as easy as accepting),
+ *    there is no pre-ticked box and no "X" that would count as consent.
+ *  - GPC / Do Not Track: we record "necessary only" and never show the banner.
+ *  - "Customize" / "Cookie settings" (footer, user menu, /settings, /cookies):
+ *    a modal dialog — bottom sheet on phones, centred on desktop — listing
+ *    every cookie and tracker per category from the registry.
  */
 
-type Mode = 'banner' | 'preferences'
+type Copy = {
+  headline: string
+  body: string
+  reject: string
+  accept: string
+  customize: string
+  save: string
+  title: string
+}
 
-const COPY: Record<ConsentRegion, { headline: string; body: string; rejectLabel: string }> = {
+const EN = { accept: 'Accept all', customize: 'Customize', save: 'Save choices', title: 'Cookie preferences' }
+
+const COPY: Record<ConsentRegion, Copy> = {
   eea: {
+    ...EN,
     headline: 'Cookies & tracking',
-    body: 'We use strictly-necessary cookies to run this site. With your consent, we also use functional, analytics, and marketing cookies. You can accept, reject, or pick categories below — and change your mind anytime via the Cookie settings link in the footer.',
-    rejectLabel: 'Reject all',
+    body: 'We use necessary storage to run Clox. With your consent we also measure page views and speed. Nothing optional runs until you choose, and you can change your mind any time.',
+    reject: 'Reject all',
   },
   uk: {
+    ...EN,
     headline: 'Cookies & tracking',
-    body: 'We use strictly-necessary cookies to run this site. With your consent, we also set functional, analytics, and marketing cookies under PECR and the UK GDPR. You can accept, reject, or pick categories below — and change your mind anytime.',
-    rejectLabel: 'Reject all',
+    body: 'We use necessary storage to run Clox. With your consent (PECR and UK GDPR) we also measure page views and speed. Nothing optional runs until you choose.',
+    reject: 'Reject all',
   },
   ch: {
+    ...EN,
     headline: 'Cookies & tracking',
-    body: 'We use strictly-necessary cookies to run this site. With your consent — required under the revised Swiss FADP — we also set functional, analytics, and marketing cookies. Pick categories below or change your mind anytime.',
-    rejectLabel: 'Reject all',
+    body: 'We use necessary storage to run Clox. With your consent under the revised FADP we also measure page views and speed. Nothing optional runs until you choose.',
+    reject: 'Reject all',
   },
   'us-ca': {
+    ...EN,
     headline: 'Your privacy choices',
-    body: 'We use cookies and similar technologies. Under the CCPA / CPRA you can opt out of the sale or sharing of personal information for cross-context behavioural advertising. We also honour the Global Privacy Control browser signal automatically.',
-    rejectLabel: 'Opt out of sale / sharing',
+    body: 'We use necessary storage to run Clox and, if you agree, anonymous analytics. We do not sell or share personal information, and we honour Global Privacy Control automatically.',
+    reject: 'Do not sell or share',
   },
   us: {
+    ...EN,
     headline: 'Your privacy choices',
-    body: 'We use cookies and similar technologies, including for analytics and advertising. You can limit non-essential tracking below or change your mind anytime via the Cookie settings link in the footer.',
-    rejectLabel: 'Opt out of non-essential',
+    body: 'We use necessary storage to run Clox and, if you agree, anonymous analytics. Optional tracking stays off until you choose, and Global Privacy Control is honoured.',
+    reject: 'Reject optional',
   },
   br: {
     headline: 'Cookies e privacidade',
-    body: 'Usamos cookies estritamente necessários para operar o site. Com o seu consentimento, sob a LGPD, também usamos cookies funcionais, analíticos e de marketing. Aceite, recuse ou escolha categorias abaixo.',
-    rejectLabel: 'Recusar todos',
+    body: 'Usamos armazenamento necessário para o Clox funcionar. Com o seu consentimento (LGPD), também medimos visitas e desempenho. Nada opcional é ativado até você escolher.',
+    reject: 'Recusar todos',
+    accept: 'Aceitar todos',
+    customize: 'Personalizar',
+    save: 'Salvar escolhas',
+    title: 'Preferências de cookies',
   },
   'ca-qc': {
-    headline: 'Cookies & vie privée',
-    body: 'Sous la Loi 25, nous obtenons votre consentement explicite avant tout traceur non essentiel. Acceptez, refusez ou choisissez ci-dessous — vous pouvez changer d’avis à tout moment.',
-    rejectLabel: 'Tout refuser',
+    headline: 'Témoins et vie privée',
+    body: 'Nous utilisons le stockage nécessaire au fonctionnement de Clox. Avec votre consentement (Loi 25), nous mesurons aussi les visites et la performance. Rien d’optionnel n’est activé avant votre choix.',
+    reject: 'Tout refuser',
+    accept: 'Tout accepter',
+    customize: 'Personnaliser',
+    save: 'Enregistrer',
+    title: 'Préférences de témoins',
   },
   global: {
+    ...EN,
     headline: 'Cookies & tracking',
-    body: 'We use strictly-necessary cookies to run this site. With your consent, we also use functional, analytics, and marketing cookies. Accept, reject, or pick categories below — and change your mind anytime via the footer.',
-    rejectLabel: 'Reject all',
+    body: 'We use necessary storage to run Clox. With your consent we also measure page views and speed. Nothing optional runs until you choose, and you can change your mind any time.',
+    reject: 'Reject all',
   },
 }
 
-const CATEGORIES: {
-  key: ConsentCategory
-  label: string
-  description: string
-  always?: boolean
-}[] = [
-  {
-    key: 'necessary',
-    label: 'Strictly necessary',
-    description:
-      'Authentication, session integrity, CSRF protection, security signals. Always on — the site does not work without these.',
-    always: true,
-  },
-  {
-    key: 'functional',
-    label: 'Functional',
-    description:
-      'Remember your preferences (theme, sidebar collapse state, language). Off by default; turn on for a smoother experience across visits.',
-  },
-  {
-    key: 'analytics',
-    label: 'Analytics',
-    description:
-      'Aggregated, pseudonymised usage statistics so we can see which features get used and where things break. We do not sell or share this data.',
-  },
-  {
-    key: 'marketing',
-    label: 'Marketing',
-    description:
-      'Measure the effectiveness of our campaigns and, where applicable, show relevant ads on third-party sites. Off by default.',
-  },
-]
-
-const FALLBACK: ConsentState = { necessary: true, functional: false, analytics: false, marketing: false }
+type View = 'closed' | 'banner' | 'preferences'
 
 export default function CookieConsent() {
-  const [mounted, setMounted] = useState(false)
-  const [open, setOpen] = useState(false)
-  const [mode, setMode] = useState<Mode>('banner')
+  const [view, setView] = useState<View>('closed')
   const [region, setRegion] = useState<ConsentRegion>('global')
-  const [draft, setDraft] = useState<ConsentState>(FALLBACK)
-  const [signals, setSignals] = useState<{ gpc: boolean; dnt: boolean }>({ gpc: false, dnt: false })
+  const [draft, setDraft] = useState<ConsentState>(DEFAULT_STATE)
+  const [gpc, setGpc] = useState(false)
+  const [toast, setToast] = useState('')
+  const returnFocus = useRef<HTMLElement | null>(null)
 
-  // Decide whether to show the banner at mount time.
   useEffect(() => {
-    setMounted(true)
-    const r = detectRegion()
-    setRegion(r)
-    const automated = readAutomatedSignals()
-    setSignals(automated)
-
-    if (!hasDecided()) {
-      // If GPC or DNT is set, auto-apply a "reject non-essential" decision
-      // and skip the banner entirely. This is the cleanest way to honour
-      // the signal without nagging the user.
-      if (automated.gpc) {
-        saveConsent({ ...FALLBACK }, 'gpc')
-        return
-      }
-      if (automated.dnt) {
-        saveConsent({ ...FALLBACK }, 'dnt')
-        return
-      }
-      setDraft(FALLBACK)
-      setOpen(true)
-      setMode('banner')
-    } else {
-      // If the user has already decided, prime the draft from the saved
-      // record so opening the customize sheet shows their actual state.
-      const rec = getConsentRecord()
-      if (rec) setDraft(rec.state)
+    setRegion(detectRegion())
+    const signals = readAutomatedSignals()
+    setGpc(signals.gpc)
+    if (hasDecided()) return
+    if (signals.gpc || signals.dnt) {
+      saveConsent({ ...DEFAULT_STATE }, signals.gpc ? 'gpc' : 'dnt')
+      return
     }
+    setView('banner')
   }, [])
 
-  // Footer link / programmatic opens.
+  useEffect(
+    () =>
+      onOpenPreferences(() => {
+        returnFocus.current = document.activeElement as HTMLElement | null
+        setRegion(detectRegion())
+        setDraft(getConsentRecord()?.state ?? DEFAULT_STATE)
+        setView('preferences')
+      }),
+    [],
+  )
+
   useEffect(() => {
-    const off = onOpenPreferences(() => {
-      const rec = getConsentRecord()
-      setDraft(rec?.state ?? FALLBACK)
-      setOpen(true)
-      setMode('preferences')
-    })
-    return off
+    if (!toast) return
+    const t = window.setTimeout(() => setToast(''), 2600)
+    return () => window.clearTimeout(t)
+  }, [toast])
+
+  const finish = useCallback((message: string) => {
+    setView('closed')
+    setToast(message)
+    window.setTimeout(() => returnFocus.current?.focus?.(), 0)
   }, [])
 
-  // Close on Escape when the customize sheet is open. The first-visit banner
-  // is intentionally non-dismissible without a decision (regulators view a
-  // bare "X" close button as implied consent — that's not OK in EEA).
-  useEffect(() => {
-    if (!open || mode !== 'preferences') return
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, mode])
-
-  const copy = useMemo(() => COPY[region] ?? COPY.global, [region])
-
-  const acceptAndClose = useCallback(() => {
-    acceptAll()
-    setOpen(false)
-  }, [])
-  const rejectAndClose = useCallback(() => {
-    rejectAll()
-    setOpen(false)
-  }, [])
-  const saveAndClose = useCallback(() => {
-    saveConsent(draft, 'custom')
-    setOpen(false)
-  }, [draft])
-
-  if (!mounted || !open) return null
+  const copy = COPY[region] ?? COPY.global
 
   return (
-    <div
-      className="fixed inset-x-0 bottom-0 z-[1000] pointer-events-none px-4 sm:px-6 md:px-8 pb-4 sm:pb-6 md:pb-8"
-      role="region"
-      aria-label="Cookie consent"
-    >
-      {mode === 'banner' ? (
-        <BannerCard
+    <>
+      {view === 'banner' ? (
+        <Banner
           copy={copy}
-          signals={signals}
-          onAccept={acceptAndClose}
-          onReject={rejectAndClose}
-          onCustomize={() => setMode('preferences')}
+          onAccept={() => (acceptAll(), finish('Cookie choices saved: all accepted.'))}
+          onReject={() => (rejectAll(), finish('Cookie choices saved: only necessary.'))}
+          onCustomize={() => {
+            returnFocus.current = document.activeElement as HTMLElement | null
+            setDraft(DEFAULT_STATE)
+            setView('preferences')
+          }}
         />
-      ) : (
-        <PreferencesSheet
+      ) : null}
+
+      {view === 'preferences' ? (
+        <Preferences
           copy={copy}
           draft={draft}
+          gpc={gpc}
+          dismissible={hasDecided()}
           onChange={(c, v) => setDraft((d) => ({ ...d, [c]: v }))}
-          onAccept={acceptAndClose}
-          onReject={rejectAndClose}
-          onSave={saveAndClose}
-          onClose={() => setOpen(false)}
+          onAccept={() => (acceptAll(), finish('Cookie choices saved: all accepted.'))}
+          onReject={() => (rejectAll(), finish('Cookie choices saved: only necessary.'))}
+          onSave={() => (saveConsent({ ...draft, marketing: gpc ? false : draft.marketing }, 'custom'), finish('Cookie choices saved.'))}
+          onClose={() => setView(hasDecided() ? 'closed' : 'banner')}
         />
-      )}
-    </div>
+      ) : null}
+
+      <div aria-live="polite" role="status" className="sr-only">
+        {toast}
+      </div>
+      {toast ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1001] flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] print:hidden">
+          <div className="border border-hairline bg-surface px-4 py-2.5 font-mono text-[11px] tracking-[0.04em] text-ink shadow-[0_18px_40px_-24px_rgba(0,0,0,0.45)]">
+            {toast}
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
 
-// ─── Banner ─────────────────────────────────────────────────────────────────
+// ─── Banner ─────────────────────────────────────────────────────────────
 
-function BannerCard({
+const BTN =
+  'inline-flex min-h-11 items-center justify-center px-4 text-center font-mono text-[11.5px] uppercase tracking-[0.06em] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink'
+const BTN_SOLID = `${BTN} bg-ink text-surface hover:bg-ink/90`
+const BTN_LINE = `${BTN} border border-hairline text-ink-soft hover:bg-rail-soft hover:text-ink`
+
+function Banner({
   copy,
-  signals,
   onAccept,
   onReject,
   onCustomize,
 }: {
-  copy: (typeof COPY)[ConsentRegion]
-  signals: { gpc: boolean; dnt: boolean }
+  copy: Copy
   onAccept: () => void
   onReject: () => void
   onCustomize: () => void
 }) {
+  const titleId = useId()
+  const bodyId = useId()
   return (
-    <div className="pointer-events-auto mx-auto max-w-[1180px] bg-surface border border-hairline shadow-[0_24px_60px_-30px_rgba(0,0,0,0.35)] flex flex-col md:flex-row md:items-center gap-5 md:gap-8 p-5 md:p-6">
-      <div className="flex-1 min-w-0">
-        <div className="font-mono text-[10px] tracking-[0.12em] uppercase text-ink-muted mb-2">
-          {copy.headline}
+    <section
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={titleId}
+      aria-describedby={bodyId}
+      className="fixed inset-x-0 bottom-0 z-[1000] print:hidden sm:px-6 sm:pb-6"
+    >
+      <div className="mx-auto flex max-h-[70dvh] max-w-[1120px] flex-col gap-4 overflow-y-auto border-t border-hairline bg-surface px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-12px_40px_-24px_rgba(0,0,0,0.45)] sm:border sm:p-5 md:flex-row md:items-center md:gap-8 md:p-6">
+        <div className="min-w-0 flex-1">
+          <h2 id={titleId} className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink-muted">
+            {copy.headline}
+          </h2>
+          <p id={bodyId} className="mt-1.5 max-w-[68ch] text-pretty text-[13.5px] leading-relaxed text-ink-soft">
+            {copy.body}
+          </p>
+          <nav aria-label="Privacy documents" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10.5px] tracking-[0.04em] text-ink-muted">
+            <Link href="/privacy" className="py-1 underline-offset-2 hover:text-ink hover:underline">
+              Privacy policy
+            </Link>
+            <Link href="/cookies" className="py-1 underline-offset-2 hover:text-ink hover:underline">
+              Cookie policy
+            </Link>
+          </nav>
         </div>
-        <p className="text-[13px] leading-relaxed text-ink-soft text-pretty max-w-[68ch]">{copy.body}</p>
-        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 font-mono text-[10px] tracking-[0.06em] text-ink-muted">
-          <Link href="/privacy" className="hover:text-ink underline-offset-2 hover:underline">
-            Privacy policy
-          </Link>
-          <Link href="/cookies" className="hover:text-ink underline-offset-2 hover:underline">
-            Cookie policy
-          </Link>
-          <Link href="/terms" className="hover:text-ink underline-offset-2 hover:underline">
-            Terms
-          </Link>
-          {signals.gpc ? <span className="text-ink-muted/80">GPC detected</span> : null}
-          {!signals.gpc && signals.dnt ? <span className="text-ink-muted/80">DNT detected</span> : null}
-        </div>
-      </div>
 
-      <div className="flex flex-col sm:flex-row md:flex-col lg:flex-row items-stretch sm:items-center gap-2 sm:gap-3 md:min-w-[280px] lg:min-w-[360px]">
-        <button
-          type="button"
-          onClick={onReject}
-          className="flex-1 px-4 py-2.5 border border-hairline text-[12px] font-mono tracking-[0.06em] uppercase text-ink-soft hover:bg-rail-soft hover:text-ink transition-colors"
-        >
-          {copy.rejectLabel}
-        </button>
-        <button
-          type="button"
-          onClick={onCustomize}
-          className="flex-1 px-4 py-2.5 border border-hairline text-[12px] font-mono tracking-[0.06em] uppercase text-ink-soft hover:bg-rail-soft hover:text-ink transition-colors"
-        >
-          Customize
-        </button>
-        <button
-          type="button"
-          onClick={onAccept}
-          className="flex-1 px-4 py-2.5 bg-ink text-surface text-[12px] font-mono tracking-[0.06em] uppercase hover:bg-ink/90 transition-colors"
-        >
-          Accept all
-        </button>
+        <div className="grid shrink-0 grid-cols-2 gap-2 md:w-[400px] md:grid-cols-3">
+          <button type="button" onClick={onReject} className={BTN_SOLID}>
+            {copy.reject}
+          </button>
+          <button type="button" onClick={onAccept} className={BTN_SOLID}>
+            {copy.accept}
+          </button>
+          <button type="button" onClick={onCustomize} className={`${BTN_LINE} col-span-2 md:order-first md:col-span-1`}>
+            {copy.customize}
+          </button>
+        </div>
       </div>
-    </div>
+    </section>
   )
 }
 
-// ─── Preferences sheet ──────────────────────────────────────────────────────
+// ─── Preferences dialog ─────────────────────────────────────────────────
 
-function PreferencesSheet({
+function Preferences({
   copy,
   draft,
+  gpc,
+  dismissible,
   onChange,
   onAccept,
   onReject,
   onSave,
   onClose,
 }: {
-  copy: (typeof COPY)[ConsentRegion]
+  copy: Copy
   draft: ConsentState
+  gpc: boolean
+  dismissible: boolean
   onChange: (c: ConsentCategory, v: boolean) => void
   onAccept: () => void
   onReject: () => void
   onSave: () => void
   onClose: () => void
 }) {
+  const titleId = useId()
+  const panel = useRef<HTMLDivElement>(null)
+  const record = getConsentRecord()
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+
+  useEffect(() => {
+    const html = document.documentElement
+    const prev = html.style.overflow
+    html.style.overflow = 'hidden'
+    panel.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus()
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeRef.current()
+        return
+      }
+      if (e.key !== 'Tab' || !panel.current) return
+      const items = Array.from(
+        panel.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => el.offsetParent !== null)
+      if (!items.length) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      html.style.overflow = prev
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [])
+
   return (
-    <div className="pointer-events-auto mx-auto max-w-[760px] bg-surface border border-hairline shadow-[0_24px_60px_-30px_rgba(0,0,0,0.35)] flex flex-col max-h-[80vh]">
-      <header className="flex items-center justify-between px-5 md:px-6 py-4 border-b border-hairline">
-        <div>
-          <div className="font-mono text-[10px] tracking-[0.12em] uppercase text-ink-muted">{copy.headline}</div>
-          <h2 className="text-[16px] text-ink mt-0.5">Manage your cookie preferences</h2>
-        </div>
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={onClose}
-          className="p-1.5 text-ink-muted hover:text-ink transition-colors"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25">
-            <path d="M3 3l10 10M13 3L3 13" strokeLinecap="round" />
-          </svg>
-        </button>
-      </header>
+    <div className="fixed inset-0 z-[1000] flex items-end justify-center print:hidden sm:items-center sm:p-6">
+      <div aria-hidden className="absolute inset-0 bg-ink/45" onClick={onClose} />
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative flex max-h-[92dvh] w-full flex-col border-t border-hairline bg-surface shadow-[0_24px_60px_-30px_rgba(0,0,0,0.5)] sm:max-h-[min(86dvh,780px)] sm:max-w-[640px] sm:border"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-hairline px-5 py-4 md:px-6">
+          <div className="min-w-0">
+            <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink-muted">{copy.headline}</p>
+            <h2 id={titleId} className="mt-0.5 text-[17px] leading-snug text-ink">
+              {copy.title}
+            </h2>
+          </div>
+          <button
+            type="button"
+            data-autofocus
+            aria-label={dismissible ? 'Close' : 'Back'}
+            onClick={onClose}
+            className="-m-2 inline-flex h-11 w-11 shrink-0 items-center justify-center text-ink-muted hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden>
+              <path d="M3 3l10 10M13 3L3 13" strokeLinecap="round" />
+            </svg>
+          </button>
+        </header>
 
-      <div className="overflow-y-auto px-5 md:px-6 py-5 space-y-4">
-        <p className="text-[13px] leading-relaxed text-ink-soft text-pretty">{copy.body}</p>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 md:px-6">
+          <p className="text-pretty text-[13.5px] leading-relaxed text-ink-soft">{copy.body}</p>
 
-        <div className="border-t border-hairline-soft">
-          {CATEGORIES.map((c) => (
-            <CategoryRow
-              key={c.key}
-              label={c.label}
-              description={c.description}
-              checked={draft[c.key]}
-              disabled={c.always}
-              onChange={(v) => onChange(c.key, v)}
-            />
-          ))}
+          {gpc ? (
+            <p className="mt-3 border-l-2 border-ink/40 pl-3 text-[12.5px] leading-relaxed text-ink-soft">
+              Your browser sends Global Privacy Control, so marketing stays off as an opt-out of sale or sharing.
+            </p>
+          ) : null}
+
+          <ul className="mt-3 divide-y divide-hairline-soft border-y border-hairline-soft">
+            {CATEGORIES.map((c) => (
+              <CategoryRow
+                key={c}
+                category={c}
+                checked={c === 'marketing' && gpc ? false : draft[c]}
+                locked={c === 'necessary' || (c === 'marketing' && gpc)}
+                onChange={(v) => onChange(c, v)}
+              />
+            ))}
+          </ul>
+
+          <p className="mt-4 text-[12px] leading-relaxed text-ink-muted">
+            Change or withdraw consent any time from <strong className="font-medium text-ink-soft">Cookie settings</strong> in the
+            footer, your account menu or Settings. See the{' '}
+            <Link href="/cookies" className="text-ink-soft underline underline-offset-2">
+              cookie policy
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="text-ink-soft underline underline-offset-2">
+              privacy policy
+            </Link>
+            .
+          </p>
+          {record ? (
+            <p className="mt-2 font-mono text-[10.5px] tracking-[0.04em] text-ink-muted">
+              Consent ID {record.id} · saved {new Date(record.decidedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+            </p>
+          ) : null}
         </div>
 
-        <div className="font-mono text-[10px] tracking-[0.06em] text-ink-muted leading-relaxed">
-          You can withdraw or change your consent at any time via the{' '}
-          <strong className="text-ink-soft">Cookie settings</strong> link in the footer. Read our{' '}
-          <Link href="/privacy" className="text-ink-soft underline-offset-2 hover:underline">
-            privacy policy
-          </Link>{' '}
-          and{' '}
-          <Link href="/cookies" className="text-ink-soft underline-offset-2 hover:underline">
-            cookie policy
-          </Link>{' '}
-          for details on retention and the legal bases for each category.
-        </div>
+        <footer className="grid grid-cols-2 gap-2 border-t border-hairline px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:grid-cols-3 sm:pb-4 md:px-6">
+          <button type="button" onClick={onReject} className={BTN_LINE}>
+            {copy.reject}
+          </button>
+          <button type="button" onClick={onAccept} className={BTN_LINE}>
+            {copy.accept}
+          </button>
+          <button type="button" onClick={onSave} className={`${BTN_SOLID} col-span-2 sm:col-span-1`}>
+            {copy.save}
+          </button>
+        </footer>
       </div>
-
-      <footer className="flex flex-col sm:flex-row gap-2 sm:gap-3 px-5 md:px-6 py-4 border-t border-hairline">
-        <button
-          type="button"
-          onClick={onReject}
-          className="flex-1 px-4 py-2.5 border border-hairline text-[12px] font-mono tracking-[0.06em] uppercase text-ink-soft hover:bg-rail-soft hover:text-ink transition-colors"
-        >
-          {copy.rejectLabel}
-        </button>
-        <button
-          type="button"
-          onClick={onAccept}
-          className="flex-1 px-4 py-2.5 border border-hairline text-[12px] font-mono tracking-[0.06em] uppercase text-ink-soft hover:bg-rail-soft hover:text-ink transition-colors"
-        >
-          Accept all
-        </button>
-        <button
-          type="button"
-          onClick={onSave}
-          className="flex-1 px-4 py-2.5 bg-ink text-surface text-[12px] font-mono tracking-[0.06em] uppercase hover:bg-ink/90 transition-colors"
-        >
-          Save preferences
-        </button>
-      </footer>
     </div>
   )
 }
 
 function CategoryRow({
-  label,
-  description,
+  category,
   checked,
-  disabled,
+  locked,
   onChange,
 }: {
-  label: string
-  description: string
+  category: ConsentCategory
   checked: boolean
-  disabled?: boolean
+  locked: boolean
   onChange: (v: boolean) => void
 }) {
+  const labelId = useId()
+  const descId = useId()
+  const copy = CATEGORY_COPY[category]
+  const entries = entriesFor(category)
   return (
-    <label className="flex items-start gap-4 py-3.5 border-b border-hairline-soft last:border-b-0 cursor-pointer">
-      <span className="flex-1 min-w-0">
-        <span className="block text-[13px] text-ink">{label}</span>
-        <span className="block text-[12px] text-ink-muted leading-relaxed mt-0.5 text-pretty">{description}</span>
-      </span>
-      <span className="shrink-0 mt-0.5">
-        <Toggle checked={checked} disabled={disabled} onChange={onChange} />
-      </span>
-    </label>
+    <li className="py-3.5">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p id={labelId} className="text-[14px] text-ink">
+            {copy.label}
+            {category === 'necessary' ? (
+              <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-muted">Always on</span>
+            ) : null}
+          </p>
+          <p id={descId} className="mt-0.5 text-pretty text-[12.5px] leading-relaxed text-ink-muted">
+            {copy.description}
+          </p>
+        </div>
+        <Switch checked={checked} disabled={locked} labelledBy={labelId} describedBy={descId} onChange={onChange} />
+      </div>
+      <details className="group mt-2">
+        <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft hover:text-ink [&::-webkit-details-marker]:hidden">
+          <svg className="h-2.5 w-2.5 transition-transform group-open:rotate-90" viewBox="0 0 10 10" aria-hidden>
+            <path d="M3 1.5 6.5 5 3 8.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          {entries.length ? `What this covers (${entries.length})` : 'What this covers'}
+        </summary>
+        {entries.length ? (
+          <ul className="mt-1.5 space-y-2 border-l border-hairline-soft pl-3">
+            {entries.map((e) => (
+              <li key={e.match} className="text-[12px] leading-relaxed">
+                <span className="break-all font-mono text-[11px] text-ink">{e.match}</span>
+                <span className="ml-1.5 font-mono text-[10px] uppercase tracking-[0.06em] text-ink-muted">
+                  {e.kind === 'script' ? 'script' : e.kind} · {e.provider}
+                </span>
+                <span className="block text-ink-muted">
+                  {e.purpose} <span className="text-ink-soft">{e.duration}.</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1.5 border-l border-hairline-soft pl-3 text-[12px] text-ink-muted">Nothing in this category is in use right now.</p>
+        )}
+      </details>
+    </li>
   )
 }
 
-function Toggle({
+function Switch({
   checked,
   disabled,
+  labelledBy,
+  describedBy,
   onChange,
 }: {
   checked: boolean
-  disabled?: boolean
+  disabled: boolean
+  labelledBy: string
+  describedBy: string
   onChange: (v: boolean) => void
 }) {
   return (
@@ -425,22 +476,26 @@ function Toggle({
       type="button"
       role="switch"
       aria-checked={checked}
-      aria-disabled={disabled}
+      aria-disabled={disabled || undefined}
+      aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
       onClick={() => !disabled && onChange(!checked)}
-      className={`relative inline-flex h-[18px] w-8 items-center border transition-colors ${
-        disabled
-          ? 'border-hairline bg-rail-soft cursor-not-allowed'
-          : checked
-            ? 'border-ink bg-ink'
-            : 'border-hairline bg-surface hover:border-ink/60'
+      className={`-my-2 -mr-2 inline-flex h-11 w-14 shrink-0 items-center justify-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink ${
+        disabled ? 'cursor-not-allowed' : 'cursor-pointer'
       }`}
     >
       <span
-        className={`inline-block h-[12px] w-[12px] transition-transform ${
-          checked ? 'translate-x-[16px] bg-surface' : 'translate-x-[2px] bg-ink-soft'
-        }`}
         aria-hidden
-      />
+        className={`relative inline-flex h-[22px] w-10 items-center border transition-colors ${
+          disabled ? 'border-hairline bg-rail-soft opacity-70' : checked ? 'border-ink bg-ink' : 'border-hairline bg-surface'
+        }`}
+      >
+        <span
+          className={`inline-block h-[14px] w-[14px] transition-transform motion-reduce:transition-none ${
+            checked ? 'translate-x-[21px]' : 'translate-x-[3px]'
+          } ${checked && !disabled ? 'bg-surface' : 'bg-ink-soft'}`}
+        />
+      </span>
     </button>
   )
 }

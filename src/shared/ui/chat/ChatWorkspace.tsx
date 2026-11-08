@@ -22,6 +22,7 @@ import {
   type ReactNode,
 } from 'react'
 import { I } from './icons'
+import { openPreferences } from '@/lib/consent/store'
 // Profile avatar (Dicebear-backed). Renders the same SVG the /settings
 // "Regenerate avatar" button persists into `profiles.avatar_seed`, so the
 // rail footer chip stays in sync with whatever the user saved last.
@@ -1013,6 +1014,11 @@ function UserMenu({
             }}
           >{isDark ? I.sun : I.moon}</button>
         }
+      />
+
+      <UserMenuRow
+        p={p} icon={I.check} label="Cookie settings"
+        onClick={() => { onClose(); openPreferences() }}
       />
 
       <div style={{ height: 1, background: p.hairlineSoft, margin: '6px 12px' }} />

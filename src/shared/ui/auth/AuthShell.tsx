@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import type { ReactNode, InputHTMLAttributes } from 'react'
+import CookieSettingsLink from '@/components/cookie-consent/CookieSettingsLink'
 
 /**
  * Shared frame for every account screen (sign in, create account, reset,
@@ -41,6 +42,18 @@ export function AuthShell({
           {footer ? <div className="mt-8 border-t border-hairline-soft pt-6 text-[13.5px] text-ink-soft">{footer}</div> : null}
         </div>
       </main>
+
+      <footer className="border-t border-hairline-soft">
+        <nav
+          aria-label="Legal"
+          className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-5 gap-y-1 px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink-muted md:px-8"
+        >
+          <Link href="/privacy" className="py-2 hover:text-ink">Privacy</Link>
+          <Link href="/cookies" className="py-2 hover:text-ink">Cookies</Link>
+          <Link href="/terms" className="py-2 hover:text-ink">Terms</Link>
+          <CookieSettingsLink className="py-2 uppercase tracking-[0.12em] hover:text-ink">Cookie settings</CookieSettingsLink>
+        </nav>
+      </footer>
     </div>
   )
 }
