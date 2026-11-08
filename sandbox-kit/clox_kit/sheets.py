@@ -6,7 +6,7 @@
     b.table(df, sheet="Data", fmt={"Revenue": "money", "Margin": "pct"}, totals=["Revenue"], bars=["Revenue"])
     by = data.summarize(df, by="Region", values="Revenue")
     b.table(by, sheet="By region", fmt={"Revenue": "money"}, chart=("bar", "Region", ["Revenue"]))
-    b.summary([("Total revenue", "=SUM(Data!E:E)", "money"), ("Orders", len(df), "int")])
+    b.summary([("Total revenue", f"=SUM({b.col('Data', 'Revenue')})", "money"), ("Orders", len(df), "int")])
 """
 from __future__ import annotations
 

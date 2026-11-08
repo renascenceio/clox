@@ -2,7 +2,11 @@
 
     from clox_kit import Deck, Report, Book, charts, data, theme, THEMES
 """
-from . import charts, data
+from ._deps import install_hook
+
+install_hook()
+
+from . import charts, data  # noqa: E402
 from .report import Report
 from .sheets import Book
 from .slides import Deck

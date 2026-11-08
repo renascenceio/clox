@@ -168,7 +168,10 @@ def by_period(df, date_col, values, freq="M", agg="sum"):
     if freq == "Q":
         out["period"] = out[date_col].dt.year.astype(str) + " Q" + out[date_col].dt.quarter.astype(str)
     else:
-        out["period"] = out[date_col].dt.strftime(fmts.get(freq, "%Y-%m-%d"))
+        f = fmts.get(freq, "%Y-%m-%d")
+        if freq == "M" and out[date_col].dt.year.nunique() == 1:
+            f = "%b"
+        out["period"] = out[date_col].dt.strftime(f)
     return out[["period"] + vals]
 
 

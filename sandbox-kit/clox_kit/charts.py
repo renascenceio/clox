@@ -225,8 +225,10 @@ _MPL_READY = False
 
 def _mpl(t: Theme):
     global _MPL_READY
+    import logging
     import matplotlib
     matplotlib.use("Agg")
+    logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
     from .text import FONT_DIR
@@ -249,6 +251,24 @@ def _mpl(t: Theme):
     return plt
 
 
+def _short_cats(cats):
+    """'Jan 2026'…'Dec 2026' → 'Jan'…'Dec' when every label shares the year."""
+    import re
+    m = [re.fullmatch(r"([A-Z][a-z]{2}) (\d{4})", c) for c in cats]
+    if cats and all(m) and len({x.group(2) for x in m}) == 1:
+        return [x.group(1) for x in m]
+    return cats
+
+
+def _tick_step(cats, w):
+    """Show every k-th category label so labels never overlap (~7.5 px per character at 1600 px)."""
+    if not cats:
+        return 1
+    label_px = max(len(c) for c in cats) * 7.5 * (w / 1600) + 14
+    per_cat = w * 0.86 / len(cats)
+    return max(1, -(-int(label_px) // max(1, int(per_cat))))
+
+
 def png(kind, categories, series, path, theme=None, *, w=1600, h=900, fmt=None, title=None, labels=None,
         legend=None, transparent=False, dpi=300, highlight=None):
     """Render a themed chart to PNG and return its path. `w`/`h` are canvas px
@@ -263,7 +283,7 @@ def png(kind, categories, series, path, theme=None, *, w=1600, h=900, fmt=None, 
     if not transparent:
         fig.patch.set_facecolor(t.bg)
         fig.patch.set_alpha(1)
-    cats = [str(c) for c in (categories or [])]
+    cats = _short_cats([str(c) for c in (categories or [])])
     n = len(cats)
     import numpy as np
     idx = np.arange(n)
@@ -326,7 +346,8 @@ def png(kind, categories, series, path, theme=None, *, w=1600, h=900, fmt=None, 
                 bars = ax.bar(idx + off, v, bw, color=c, label=name)
                 if (labels if labels is not None else (not multi and n <= 12)):
                     ax.bar_label(bars, labels=[fmt_value(x, fmt) for x in v], padding=3, fontsize=9.5, color=t.ink, fontweight="semibold")
-        ax.set_xticks(idx, cats, color=t.ink if not multi else t.muted)
+        step = _tick_step(cats, w)
+        ax.set_xticks(idx[::step], cats[::step], color=t.ink if not multi else t.muted)
         ax.yaxis.set_major_formatter(vf if kind != "stacked100" else FuncFormatter(lambda v, _: f"{v * 100:.0f}%"))
         if n > 8:
             plt.setp(ax.get_xticklabels(), rotation=0, fontsize=8.5)
@@ -341,7 +362,7 @@ def png(kind, categories, series, path, theme=None, *, w=1600, h=900, fmt=None, 
             if not multi and n <= 12 and labels is not False and v and v[-1] is not None:
                 ax.annotate(fmt_value(v[-1], fmt), (idx[-1], v[-1]), textcoords="offset points", xytext=(6, 6),
                             fontsize=9.5, color=t.ink, fontweight="semibold")
-        step = max(1, n // 10)
+        step = _tick_step(cats, w)
         ax.set_xticks(idx[::step], cats[::step])
         ax.yaxis.set_major_formatter(vf)
         ax.margins(x=0.02)

@@ -28,6 +28,7 @@
  */
 
 import { Sandbox } from '@vercel/sandbox'
+import { installKit } from './kit'
 
 /** Progress events the manager can emit while booting a sandbox or
  *  installing the canonical Python package set. The route subscribes
@@ -78,6 +79,8 @@ interface SandboxRecord {
    *  a single install pass. Snapshot-backed sandboxes resolve to
    *  `null` immediately because packages are already baked in. */
   packagesReady: Promise<void>
+  /** Resolved once clox_kit is copied in and importable. */
+  kitReady: Promise<void>
 }
 
 /** In-process map. Module scope means it survives across requests
@@ -159,30 +162,46 @@ const PIP_INSTALL_TIMEOUT_MS = 4 * 60 * 1000
  *    - `/mnt/user-data/outputs/`  exists  (Python writes deliverables here)
  *    - When a snapshot is set, `/mnt/skills/` already contains the
  *      cloned Anthropic skills repo. */
-async function createSandbox(): Promise<Sandbox> {
+/** Flipped when the configured snapshot can't be restored (deleted,
+ *  expired, other project), so later boots go straight to a blank
+ *  sandbox instead of failing the user's request. */
+let snapshotUnavailable = false
+
+async function createSandbox(): Promise<{ sandbox: Sandbox; fromSnapshot: boolean }> {
   // The SDK splits `CreateSandboxParams` into two variants: one with
   // `runtime` (no `source`, or `source: git | tarball`) and one with
   // `source: { type: 'snapshot', snapshotId }` (which OMITS `runtime`
   // because the runtime is baked into the snapshot). We can't share
   // a single options object between the two — pick the right shape.
-  const sandbox = SKILLS_SNAPSHOT_ID
-    ? await Sandbox.create({
+  let sandbox: Sandbox | null = null
+  if (SKILLS_SNAPSHOT_ID && !snapshotUnavailable) {
+    try {
+      sandbox = await Sandbox.create({
         timeout: INITIAL_TIMEOUT_MS,
         networkPolicy: NETWORK_POLICY,
         source: { type: 'snapshot' as const, snapshotId: SKILLS_SNAPSHOT_ID },
       })
-    : await Sandbox.create({
-        runtime: 'python3.13',
-        timeout: INITIAL_TIMEOUT_MS,
-        networkPolicy: NETWORK_POLICY,
-      })
+    } catch (e) {
+      const message = (e as Error).message ?? String(e)
+      const text = (e as { text?: string }).text ?? ''
+      if (!/not.?found|404/i.test(message + text)) throw e
+      snapshotUnavailable = true
+      console.error(`[v0] sandbox: snapshot ${SKILLS_SNAPSHOT_ID} not found — booting blank sandboxes. Rebuild with scripts/build-skills-snapshot.ts`)
+    }
+  }
+  const fromSnapshot = sandbox !== null
+  sandbox ??= await Sandbox.create({
+    runtime: 'python3.13',
+    timeout: INITIAL_TIMEOUT_MS,
+    networkPolicy: NETWORK_POLICY,
+  })
 
   // Make sure the conventional folders exist even if the snapshot is
   // out of date. `mkdir -p` is idempotent so we can run it on every
   // boot without checking first.
   await sandbox.runCommand('mkdir', ['-p', '/mnt/user-data/uploads', '/mnt/user-data/outputs'])
 
-  return sandbox
+  return { sandbox, fromSnapshot }
 }
 
 /** Install the fallback Python package set in a freshly-created blank
@@ -202,9 +221,10 @@ async function createSandbox(): Promise<Sandbox> {
  *  sandbox boot. */
 async function installFallbackPackages(
   sandbox: Sandbox,
+  fromSnapshot: boolean,
   onProgress?: SandboxProgressCallback,
 ): Promise<void> {
-  if (SKILLS_SNAPSHOT_ID) return // Snapshot already has them baked in.
+  if (fromSnapshot) return // Snapshot already has them baked in.
   const startedAt = Date.now()
   console.log('[v0] sandbox: installing python deps (cold start, expect ~30-40s)…')
   onProgress?.({ phase: 'deps-installing' })
@@ -279,8 +299,9 @@ export async function getOrCreateSandboxForChat(
   onProgress?.({ phase: 'sandbox-booting' })
   const bootStartedAt = Date.now()
   let sandbox: Sandbox
+  let fromSnapshot: boolean
   try {
-    sandbox = await createSandbox()
+    ;({ sandbox, fromSnapshot } = await createSandbox())
   } catch (e) {
     onProgress?.({ phase: 'sandbox-failed', error: (e as Error).message ?? String(e) })
     throw e
@@ -292,12 +313,14 @@ export async function getOrCreateSandboxForChat(
   // reasons (e.g. mounting attachments early in the request) don't
   // block on a 30-40s install they may never need. The python tool
   // gates on this Promise via `waitForPackages` before each snippet.
+  const kitReady = installKit(sandbox).then(() => undefined)
   const record: SandboxRecord = {
     sandbox,
     lastUsedAt: Date.now(),
     mountedKeys: new Set(),
     collectedKeys: new Set(),
-    packagesReady: installFallbackPackages(sandbox, onProgress),
+    kitReady,
+    packagesReady: Promise.all([installFallbackPackages(sandbox, fromSnapshot, onProgress), kitReady]).then(() => undefined),
   }
   REGISTRY.set(chatId, record)
   return sandbox
@@ -316,6 +339,15 @@ export async function waitForPackages(chatId: string): Promise<void> {
   const record = REGISTRY.get(chatId)
   if (!record) return
   await record.packagesReady
+}
+
+/** Block until clox_kit is copied in (~1s). The bash tool waits on this
+ *  only, so `python3 build.py` from bash can import the kit without
+ *  stalling plain `ls` calls behind a cold pip install. */
+export async function waitForKit(chatId: string): Promise<void> {
+  const record = REGISTRY.get(chatId)
+  if (!record) return
+  await record.kitReady
 }
 
 /** Pre-warm the sandbox + start the package install for a chat

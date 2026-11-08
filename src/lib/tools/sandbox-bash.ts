@@ -26,6 +26,7 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import {
   getOrCreateSandboxForChat,
+  waitForKit,
   type SandboxProgressCallback,
 } from '@/lib/sandbox/manager'
 
@@ -130,6 +131,7 @@ export function makeBashTool(chatId: string, onProgress?: SandboxProgressCallbac
       const preview = previewBashCommand(command)
       try {
         const sandbox = await getOrCreateSandboxForChat(chatId, onProgress)
+        await waitForKit(chatId)
         const startedAt = Date.now()
         onProgress?.({ phase: 'snippet-running', tool: 'bash', preview })
         const result = await sandbox.runCommand({

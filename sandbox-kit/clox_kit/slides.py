@@ -19,6 +19,7 @@ import json
 import math
 import os
 import re
+import sys
 import tempfile
 from dataclasses import asdict
 
@@ -63,12 +64,9 @@ def _theme_from_json(d: dict) -> Theme:
 
 def jsonable(v):
     """pandas / numpy / dates → plain JSON values, so slides can be saved and re-rendered."""
-    try:
-        import pandas as pd
-        if isinstance(v, pd.DataFrame):
-            return [jsonable(r) for r in v.values.tolist()]
-    except ImportError:
-        pass
+    pd = sys.modules.get("pandas")  # never import pandas just to check
+    if pd is not None and isinstance(v, pd.DataFrame):
+        return [jsonable(r) for r in v.values.tolist()]
     if hasattr(v, "tolist") and not isinstance(v, (str, bytes)):
         v = v.tolist()
     if isinstance(v, dict):

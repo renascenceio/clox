@@ -131,6 +131,10 @@ const PHRASE_TO_TAG: Array<{ patterns: RegExp[]; tag: string }> = [
   // Excel-specific verbs.
   { patterns: [/\b(pivot\s*table|sum(?:mari[sz]e)?\s*(?:this|the)\s*(?:sheet|workbook)|aggregate\s+(?:by|across))\b/i], tag: 'excel' },
 
+  // Data analysis — crunching uploaded CSV / Excel data.
+  { patterns: [/\b(analy[sz]e|crunch|clean\s*up|explore|summari[sz]e)\s+(?:this|the|my|our|attached)\s+(?:data|dataset|csv|numbers|sales|figures|export)\b/i], tag: 'analysis' },
+  { patterns: [/\b(data\s*analysis|data\s*crunching|trends?\s+in\s+(?:the|this|my)\s+data|\.csv)\b/i], tag: 'analysis' },
+
   // PowerPoint-specific verbs.
   { patterns: [/\b(rebuild|update|edit|tweak)\s+(?:this|the|my)\s+(?:deck|presentation|slides?)\b/i], tag: 'powerpoint' },
 
