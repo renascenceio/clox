@@ -19,6 +19,8 @@
  */
 
 import React from 'react'
+import { downloadUrl, stableFileUrl } from '@/lib/storage/file-url'
+import PdfThumb from './PdfThumb'
 
 export interface DownloadStripFile {
   filename: string
@@ -116,7 +118,7 @@ function Preview({ file, kind, onClose }: { file: DownloadStripFile; kind: Previ
 }
 
 export function DownloadStrip({ files, defaultPreview = false }: { files: DownloadStripFile[]; defaultPreview?: boolean }) {
-  const list = Array.isArray(files) ? files : []
+  const list = (Array.isArray(files) ? files : []).map(f => ({ ...f, url: stableFileUrl(f.url) }))
   // Open the first previewable deliverable on the newest turn, so a deck can be
   // checked and amended in the chat without downloading it each time.
   const firstPreviewable = list.findIndex(f => previewTarget(f, list))
@@ -133,10 +135,33 @@ export function DownloadStrip({ files, defaultPreview = false }: { files: Downlo
       }}
     >
       {list.map((f, i) => {
-        const canPreview = previewTarget(f, list) !== null
+        const target = previewTarget(f, list)
+        const canPreview = target !== null
+        const visual = target && (target.kind === 'pdf' || target.kind === 'image') ? target : null
         return (
         <div key={`${f.filename}-${i}`} style={{ display: 'inline-flex', alignItems: 'stretch', gap: 0 }}>
-        {canPreview && (
+        {visual && (
+          <button
+            type="button"
+            onClick={() => setOpenIndex(openIndex === i ? null : i)}
+            aria-pressed={openIndex === i}
+            aria-label={`${openIndex === i ? 'Hide' : 'Show'} preview of ${f.filename}`}
+            style={{
+              width: 84, padding: 0, border: '1px solid currentColor', borderRight: 0,
+              borderRadius: '2px 0 0 2px', background: 'rgb(127 127 127 / 0.08)',
+              cursor: 'pointer', overflow: 'hidden', position: 'relative',
+              outline: openIndex === i ? '2px solid currentColor' : 'none', outlineOffset: -3,
+            }}
+          >
+            {visual.kind === 'pdf' ? (
+              <PdfThumb url={visual.file.url} alt="" fallback={<span style={{ fontSize: 10 }}>Preview</span>} />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={visual.file.url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            )}
+          </button>
+        )}
+        {canPreview && !visual && (
           <button
             type="button"
             onClick={() => setOpenIndex(openIndex === i ? null : i)}
@@ -155,7 +180,7 @@ export function DownloadStrip({ files, defaultPreview = false }: { files: Downlo
           </button>
         )}
         <a
-          href={f.url}
+          href={downloadUrl(f.url)}
           download={f.filename}
           target="_blank"
           rel="noreferrer"

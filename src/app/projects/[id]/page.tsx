@@ -7,7 +7,8 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 // /projects (index). Using `ChatWorkspace` here keeps the topstrip nav
 // (Projects · Chats · History · Gallery) consistent with sibling pages
 // and makes the left rail's vertical rhythm match too.
-import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
+import WorkspaceSlot from '@/shared/ui/chat/workspace-host'
+import { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
 import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
 import { listChats } from '@/lib/chat-store'
 
@@ -179,8 +180,7 @@ export default function ProjectWorkspacePage({
   }
 
   return (
-    <div className="fixed inset-0 isolate">
-      <ChatWorkspace
+    <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
         brandName="Clox"
@@ -224,7 +224,6 @@ export default function ProjectWorkspacePage({
         onInputChange={() => undefined}
         onSend={() => undefined}
         bodySlot={body}
-      />
-    </div>
+    />
   )
 }

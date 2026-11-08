@@ -37,6 +37,7 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
+import { snippetProblem } from './tool-input'
 import vm from 'node:vm'
 
 export const runJavaScriptTool = tool({
@@ -71,13 +72,13 @@ export const runJavaScriptTool = tool({
   parameters: z.object({
     code: z
       .string()
-      .min(1)
-      .max(8_000)
       .describe(
         'A complete JS snippet. The last expression is returned as `result`.',
       ),
   }),
   execute: async ({ code }) => {
+    const problem = snippetProblem(code, 'snippet')
+    if (problem) return problem
     // stdout buffer — the snippet drops strings here via `print(...)`.
     // We cap at 16KB so the model can't accidentally explode the
     // response with a `for (;;) print(' ')` loop.

@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
+import WorkspaceSlot from '@/shared/ui/chat/workspace-host'
+import { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
 import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
 import { PALETTES } from '@/shared/ui/chat/palettes'
 import {
@@ -179,8 +180,7 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="fixed inset-0 isolate">
-      <ChatWorkspace
+    <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
         brandName="Clox"
@@ -444,7 +444,6 @@ export default function HistoryPage() {
             ))}
           </div>
         }
-      />
-    </div>
+    />
   )
 }

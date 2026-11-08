@@ -19,31 +19,23 @@ import { useRouter } from 'next/navigation'
 import { I } from './icons'
 import {
   getStoredPalette,
+  initialPalette,
+  markPaletteSeen,
   setStoredPalette,
   type PaletteKey,
 } from './palettes'
 import type { AppLanguage, RailNavItem } from './ChatWorkspace'
 import { createClient } from '@/lib/supabase/client'
-import { formatCredits, planFor } from '@/lib/plans'
+import { SIGNED_OUT_USER, cachedIdentity, watchIdentity, type ChromeUser } from './chrome-identity'
 
 export type ActiveRail =
-  | 'projects' | 'chats' | 'history' | 'gallery'
+  | 'projects' | 'chats' | 'history' | 'files' | 'gallery'
   // Surfaces opened from the avatar dropdown (no rail-nav highlight).
   | 'skills' | 'settings' | 'admin'
 
-export interface ChromeUser {
-  initial: string
-  name: string
-  plan: string
-  email?: string
-  avatarSeed?: string
-}
+export type { ChromeUser }
 
-const DEFAULT_USER: ChromeUser = {
-  initial: '·',
-  name: 'Signed out',
-  plan: 'guest',
-}
+const DEFAULT_USER: ChromeUser = SIGNED_OUT_USER
 
 export function useChatChrome(active: ActiveRail) {
   const router = useRouter()
@@ -56,10 +48,10 @@ export function useChatChrome(active: ActiveRail) {
      .dark class, localStorage), so we never end up with the React state,
      CSS variables, and inline palette out of sync.
   */
-  const [theme, setTheme] = useState<PaletteKey>('pearl')
+  const [theme, setTheme] = useState<PaletteKey>(() => initialPalette('pearl'))
   useEffect(() => {
-    const stored = getStoredPalette('pearl')
-    setTheme(stored)
+    setTheme(getStoredPalette('pearl'))
+    markPaletteSeen()
   }, [])
   function handleThemeChange(next: PaletteKey) {
     setTheme(next)
@@ -88,84 +80,14 @@ export function useChatChrome(active: ActiveRail) {
    * shows the new values. A `clox.profile.tick` localStorage
    * sentinel on cross-tab `storage` events keeps multiple open
    * tabs in lockstep too. */
-  const [user, setUser] = useState<ChromeUser>(DEFAULT_USER)
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
-  useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      try {
-        const supabase = createClient()
-        const { data: { user: authUser } } = await supabase.auth.getUser()
-        if (!authUser || cancelled) return
-
-        const [profile, credits] = await Promise.all([
-          supabase
-            .from('profiles')
-            .select('first_name, last_name, plan, avatar_seed, role')
-            .eq('id', authUser.id)
-            .single(),
-          supabase
-            .from('credits')
-            .select('balance_credits')
-            .eq('user_id', authUser.id)
-            .single(),
-        ])
-
-        if (cancelled) return
-        setIsSuperAdmin(profile.data?.role === 'super_admin')
-
-        const first = (profile.data?.first_name ?? '').trim()
-        const last  = (profile.data?.last_name  ?? '').trim()
-        const fullName = [first, last].filter(Boolean).join(' ').trim()
-        const fallbackName = authUser.email?.split('@')[0] ?? 'Clox user'
-        const name = fullName || fallbackName
-
-        const initial = (first || fallbackName).slice(0, 1).toLowerCase() || '·'
-
-        // Plan label is intentionally compact (matches "pro · 4 seats" cadence
-        // used in the design reference). Falls back to the credit balance so
-        // even a free account shows something meaningful in the rail footer.
-        const planName = planFor(profile.data?.plan as string | null | undefined).name.toLowerCase()
-        const plan = credits.data?.balance_credits != null
-          ? `${planName} · ${formatCredits(Number(credits.data.balance_credits))} credits`
-          : planName
-
-        setUser({
-          initial,
-          name,
-          plan,
-          email: authUser.email ?? undefined,
-          avatarSeed: profile.data?.avatar_seed ?? authUser.email ?? undefined,
-        })
-      } catch (e) {
-        console.error('[v0] useChatChrome profile load failed', e)
-      }
-    }
-
-    load()
-    // Same-tab refresh: /settings dispatches `clox-profile-changed`
-    // after every successful save or avatar regenerate. Cross-tab
-    // refresh: /settings also bumps `clox.profile.tick` in
-    // localStorage, which fires a `storage` event in every other
-    // open tab. Both call the same `load()` so the rail avatar and
-    // user-menu identity update without a hard reload.
-    const onProfileChanged = () => { load() }
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === 'clox.profile.tick') load()
-    }
-    if (typeof window !== 'undefined') {
-      window.addEventListener('clox-profile-changed', onProfileChanged)
-      window.addEventListener('storage', onStorage)
-    }
-    return () => {
-      cancelled = true
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('clox-profile-changed', onProfileChanged)
-        window.removeEventListener('storage', onStorage)
-      }
-    }
-  }, [])
+  // Starts from the identity the previous page already loaded, so the rail
+  // footer doesn't flash "Signed out" on every click.
+  const [user, setUser] = useState<ChromeUser>(() => cachedIdentity()?.user ?? DEFAULT_USER)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(() => cachedIdentity()?.isSuperAdmin ?? false)
+  useEffect(() => watchIdentity(identity => {
+    setUser(identity.user)
+    setIsSuperAdmin(identity.isSuperAdmin)
+  }), [])
 
   /* ---------- account actions (avatar dropdown) ---------- */
   async function handleSignOut() {
@@ -197,6 +119,7 @@ export function useChatChrome(active: ActiveRail) {
     { id: 'projects', label: 'Projects', icon: I.proj,  onClick: () => router.push('/projects'), active: active === 'projects' },
     { id: 'chats',    label: 'Chats',    icon: I.chats, onClick: () => router.push('/text'),     active: active === 'chats' },
     { id: 'history',  label: 'History',  icon: I.hist,  onClick: () => router.push('/history'),  active: active === 'history' },
+    { id: 'files',    label: 'Files',    icon: I.files, onClick: () => router.push('/files'),    active: active === 'files' },
     { id: 'gallery',  label: 'Gallery',  icon: I.gal,   onClick: () => router.push('/gallery'),  active: active === 'gallery' },
   ]
 

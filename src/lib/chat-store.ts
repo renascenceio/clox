@@ -16,6 +16,8 @@
  *   audio-history-<chatId>            — audio generations (per chat)
  */
 
+import { parseStored } from './storage/file-url'
+
 export type Modality = 'text' | 'image' | 'video' | 'audio'
 
 export interface Chat {
@@ -121,9 +123,48 @@ export function listChats(): Chat[] {
   }
 }
 
+// ————————————————————————————————————————————————————————————————————————————
+// Change feed — `chat-cloud` listens and saves changes on the server, so
+// chats survive a new device or a cleared browser. Kept as a callback (not an
+// import) so this module stays free of network code.
+// ————————————————————————————————————————————————————————————————————————————
+
+export type ChatChange =
+  | { kind: 'record'; chatId: string }
+  | { kind: 'removed'; chatId: string }
+  | { kind: 'purged'; chatId: string }
+  | { kind: 'history'; chatId: string; modality: Modality; items: unknown[] }
+
+let changeListener: ((c: ChatChange) => void) | null = null
+let quiet = 0
+
+export function onChatChange(fn: ((c: ChatChange) => void) | null) {
+  changeListener = fn
+}
+
+/** Apply changes that came from the server without echoing them back. */
+export function withoutChangeFeed<T>(fn: () => T): T {
+  quiet++
+  try { return fn() } finally { quiet-- }
+}
+
+export function emitChatChange(c: ChatChange) {
+  if (!quiet) changeListener?.(c)
+}
+
 export function saveChats(chats: Chat[]): void {
   if (typeof window === 'undefined') return
+  const before = changeListener && !quiet ? listChats() : null
   localStorage.setItem(CHATS_KEY, JSON.stringify(chats))
+  if (before) {
+    const norm = (c: Chat) => JSON.stringify({ ...c, modality: c.modality ?? 'text' })
+    const prev = new Map(before.map(c => [c.id, norm(c)]))
+    for (const c of chats) {
+      if (prev.get(c.id) !== norm(c)) emitChatChange({ kind: 'record', chatId: c.id })
+      prev.delete(c.id)
+    }
+    prev.forEach((_, id) => emitChatChange({ kind: 'removed', chatId: id }))
+  }
   window.dispatchEvent(new CustomEvent('clox-chats-changed'))
 }
 
@@ -206,7 +247,7 @@ export function loadHistory<T>(modality: Modality, chatId: string | null | undef
   if (!chatId || typeof window === 'undefined') return []
   try {
     const raw = localStorage.getItem(historyKey(modality, chatId))
-    return raw ? (JSON.parse(raw) as T[]) : []
+    return raw ? parseStored<T[]>(raw) : []
   } catch {
     return []
   }
@@ -214,7 +255,13 @@ export function loadHistory<T>(modality: Modality, chatId: string | null | undef
 
 export function saveHistory<T>(modality: Modality, chatId: string, items: T[]): void {
   if (typeof window === 'undefined') return
-  localStorage.setItem(historyKey(modality, chatId), JSON.stringify(items))
+  try {
+    localStorage.setItem(historyKey(modality, chatId), JSON.stringify(items))
+  } catch (e) {
+    // Full browser storage must not break the page; the server copy stays.
+    console.warn('[clox] could not keep history in this browser:', (e as Error).message)
+  }
+  emitChatChange({ kind: 'history', chatId, modality, items })
 }
 
 export function deleteHistory(modality: Modality, chatId: string): void {
@@ -262,7 +309,8 @@ export function listArchivedChats(): Chat[] {
 export function permanentlyDeleteChat(id: string): void {
   const chat = getChatById(id)
   if (chat) deleteHistory(chat.modality ?? 'text', chat.id)
-  saveChats(listChats().filter(c => c.id !== id))
+  withoutChangeFeed(() => saveChats(listChats().filter(c => c.id !== id)))
+  emitChatChange({ kind: 'purged', chatId: id })
 }
 
 // ————————————————————————————————————————————————————————————————————————————

@@ -495,3 +495,7 @@ body {
 .legal-prose strong { font-weight: 600; color: rgb(var(--ink-rgb)); }
 .legal-prose a { color: rgb(var(--ink-rgb)); }
 .legal-prose table { border-collapse: collapse; width: 100%; }
+
+/* Loading shimmer for thumbnails and skeleton cards. */
+@keyframes cloxPulse { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }
+@media (prefers-reduced-motion: reduce) { [style*="cloxPulse"] { animation: none !important } }

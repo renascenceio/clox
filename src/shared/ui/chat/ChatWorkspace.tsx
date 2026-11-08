@@ -268,6 +268,9 @@ export interface ChatWorkspaceProps {
   initialConfigOpen?: boolean
   initialPaletteOpen?: boolean
   initialCmdkOpen?: boolean
+  /** Set by WorkspaceHost: the main column is rebuilt when it changes,
+   *  the rail stays mounted. */
+  pageKey?: string
 }
 
 /* =====================================================================
@@ -336,6 +339,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     initialConfigOpen = false,
     initialPaletteOpen = false,
     initialCmdkOpen = false,
+    pageKey,
   } = props
 
   const p = PALETTES[theme]
@@ -353,6 +357,15 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
   const [openMenu, setOpenMenu] = useState<'mode' | 'model' | 'skills' | 'tools' | null>(null)
   const [configOpen, setConfigOpen] = useState(initialConfigOpen)
   const [cmdkOpen, setCmdkOpen] = useState(initialCmdkOpen)
+
+  // The shell outlives page changes; menus and panels belong to the page.
+  const [shownPage, setShownPage] = useState(pageKey)
+  if (shownPage !== pageKey) {
+    setShownPage(pageKey)
+    setOpenMenu(null)
+    setConfigOpen(initialConfigOpen)
+    setCmdkOpen(false)
+  }
 
   // Page-level drag-and-drop. Files dropped anywhere on the chat
   // surface (header, transcript, composer) flow into the same
@@ -430,6 +443,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
       />
 
       <main
+        key={pageKey}
         // `position: relative` anchors the drop overlay below to the
         // main column rather than the whole viewport — the overlay
         // covers exactly the chat surface and respects the config

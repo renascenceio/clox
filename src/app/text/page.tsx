@@ -9,7 +9,8 @@ import { CodeArtifact } from '@/shared/ui/components/CodeArtifact'
 import { DownloadStrip, type DownloadStripFile } from '@/shared/ui/components/DownloadStrip'
 import { BrowserPanel, type BrowserInvocation, type BrowserProgressEvent } from '@/shared/ui/components/BrowserPanel'
 
-import ChatWorkspace, {
+import WorkspaceSlot from '@/shared/ui/chat/workspace-host'
+import {
   type Attachment,
   type ModeOption,
   type ModelOption,
@@ -19,6 +20,8 @@ import ChatWorkspace, {
 import { I } from '@/shared/ui/chat/icons'
 import {
   getStoredPalette,
+  initialPalette,
+  markPaletteSeen,
   setStoredPalette,
   type PaletteKey,
 } from '@/shared/ui/chat/palettes'
@@ -53,6 +56,7 @@ import {
   createChat,
   ensureActiveChat,
   getActiveChatId,
+  getChatById,
   listChats,
   setActiveChatId as persistActiveChatId,
   touchChat,
@@ -60,6 +64,11 @@ import {
 } from '@/lib/chat-store'
 import type { AppLanguage } from '@/shared/ui/chat/ChatWorkspace'
 import { formatCredits, planFor } from '@/lib/plans'
+import { SIGNED_OUT_USER, cachedIdentity, watchIdentity } from '@/shared/ui/chat/chrome-identity'
+import { saveTranscript } from '@/lib/transcript-store'
+import { restoreTranscript } from '@/lib/chat-cloud'
+import { fitAttachments } from '@/lib/request-fit'
+import { parseStored } from '@/lib/storage/file-url'
 
 /* =====================================================================
    Modes — text route is "chat / research / code"; image, voice and video
@@ -105,10 +114,10 @@ export default function TextPage() {
   // regions (which read this `theme` variable) match what's already on
   // the html element. We deliberately do NOT touch the DOM attributes
   // here — those are owned by `setStoredPalette` to avoid double writes.
-  const [theme, setTheme] = useState<PaletteKey>('pearl')
+  const [theme, setTheme] = useState<PaletteKey>(() => initialPalette('pearl'))
   useEffect(() => {
-    const stored = getStoredPalette('pearl')
-    setTheme(stored)
+    setTheme(getStoredPalette('pearl'))
+    markPaletteSeen()
   }, [])
 
   /* ----- modality + model + active chat ----------------------------
@@ -468,10 +477,11 @@ export default function TextPage() {
     return ids
   }, [toolsState])
 
+  const chatRequestBodyRef = useRef<Record<string, unknown>>({})
   const chat = useChat({
     id: activeChatId,
     api: '/api/chat',
-    body: {
+    body: chatRequestBodyRef.current = {
       model: selectedTextModel.id,
       provider: selectedTextModel.provider,
       systemPrompt: composedSystemPrompt,
@@ -501,6 +511,18 @@ export default function TextPage() {
       // python-pptx (stateful, incremental) instead.
       chatId: activeChatId,
     },
+    // useChat resends the whole conversation every turn, attachments
+    // included. A couple of earlier images pushed the request past the
+    // 4.5 MB body limit of the hosting platform and every later message
+    // failed. Older attachment bodies are dropped (newest kept) until the
+    // request fits; the text of the conversation always goes.
+    experimental_prepareRequestBody: ({ id, messages, requestData, requestBody }) => ({
+      id,
+      messages: fitAttachments(messages),
+      data: requestData,
+      ...chatRequestBodyRef.current,
+      ...(requestBody as object | undefined),
+    }),
     onError: error => console.error('[v0] chat api error:', error),
     onFinish: (message: { id?: string }) => {
       // The label was pushed in handleSend right before handleSubmit, so
@@ -701,19 +723,48 @@ export default function TextPage() {
   }, [modality, input, dbSkills.skills, dbSkills.activeIds, dismissedAutoIds])
 
   // Persist & rehydrate chat history per active chat id.
+  //
+  // Writing the whole transcript on every streamed chunk serialised
+  // megabytes (tool scripts, results, attached files) many times a second
+  // and froze the page. While a reply streams we save once it goes quiet;
+  // the server keeps the reply anyway (chat_runs), so nothing is lost.
+  const pendingSave = useRef<{ id: string; messages: unknown[]; timer: number } | null>(null)
   useEffect(() => {
-    if (chat.messages && chat.messages.length > 0) {
-      localStorage.setItem(`chat-history-${activeChatId}`, JSON.stringify(chat.messages))
+    if (!activeChatId || !chat.messages || chat.messages.length === 0) return
+    const busy = status === 'streaming' || status === 'submitted'
+    const previous = pendingSave.current
+    if (previous) {
+      window.clearTimeout(previous.timer)
+      if (previous.id !== activeChatId) saveTranscript(previous.id, previous.messages)
     }
-  }, [chat.messages, activeChatId])
+    const entry = { id: activeChatId, messages: chat.messages as unknown[], timer: 0 }
+    entry.timer = window.setTimeout(() => {
+      saveTranscript(entry.id, entry.messages)
+      if (pendingSave.current === entry) pendingSave.current = null
+    }, busy ? 2000 : 150)
+    pendingSave.current = entry
+  }, [chat.messages, activeChatId, status])
+  useEffect(() => () => {
+    const last = pendingSave.current
+    if (last) { window.clearTimeout(last.timer); saveTranscript(last.id, last.messages) }
+  }, [])
 
   useEffect(() => {
+    if (!setMessages) return
     const saved = localStorage.getItem(`chat-history-${activeChatId}`)
-    if (saved && setMessages) {
-      try { setMessages(JSON.parse(saved)) } catch { setMessages([]) }
-    } else if (setMessages) {
-      setMessages([])
+    if (saved) {
+      try { setMessages(parseStored(saved)) } catch { setMessages([]) }
+      return
     }
+    setMessages([])
+    // Not in this browser (another device, cleared storage, or evicted to
+    // make room): load the server copy.
+    if (!activeChatId || !getChatById(activeChatId)) return
+    let cancelled = false
+    restoreTranscript(activeChatId).then(history => {
+      if (!cancelled && history?.length) setMessages(history as Parameters<typeof setMessages>[0])
+    })
+    return () => { cancelled = true }
   }, [activeChatId, setMessages])
 
   /* ----- attachments ------------------------------------------------- */
@@ -722,15 +773,16 @@ export default function TextPage() {
   // be passed straight to useChat's `experimental_attachments`.
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
-  // Hard cap so a stray drag of a 50 MB PSD doesn't kill the request body.
-  const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024 // 8 MB per file
+  // Files travel inside the request as base64 (+33%), and the hosting
+  // platform refuses bodies over 4.5 MB — an 8 MB cap let people attach
+  // files that could never be sent.
+  const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024 // 3 MB per file
 
   async function handleAttach(files: FileList) {
     const next: Attachment[] = []
     for (const file of Array.from(files)) {
       if (file.size > MAX_ATTACHMENT_BYTES) {
-        console.warn('[v0] attachment too large, skipping:', file.name, file.size)
-        window.alert(`"${file.name}" is too large (max 8 MB).`)
+        window.alert(`"${file.name}" is too large to attach (max 3 MB).`)
         continue
       }
       try {
@@ -2166,6 +2218,7 @@ export default function TextPage() {
     { id: 'projects', label: 'Projects', icon: I.proj, onClick: () => router.push('/projects') },
     { id: 'chats', label: 'Chats', icon: I.chats, count: recentChats.length, active: true },
     { id: 'history', label: 'History', icon: I.hist, onClick: () => router.push('/history') },
+    { id: 'files', label: 'Files', icon: I.files, onClick: () => router.push('/files') },
     { id: 'gallery', label: 'Gallery', icon: I.gal, onClick: () => router.push('/gallery') },
   ]
 
@@ -2339,64 +2392,16 @@ export default function TextPage() {
     plan: string
     email?: string
     avatarSeed?: string
-  }>({ initial: '·', name: 'Signed out', plan: 'guest' })
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  }>(() => cachedIdentity()?.user ?? SIGNED_OUT_USER)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(() => cachedIdentity()?.isSuperAdmin ?? false)
 
   useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      try {
-        const supabase = createClient()
-        const { data: { user: authUser } } = await supabase.auth.getUser()
-        if (!authUser || cancelled) return
-
-        const [profile, credits] = await Promise.all([
-          supabase
-            .from('profiles')
-            .select('first_name, last_name, plan, avatar_seed, role')
-            .eq('id', authUser.id)
-            .single(),
-          supabase.from('credits').select('balance_credits').eq('user_id', authUser.id).single(),
-        ])
-        if (cancelled) return
-        setIsSuperAdmin(profile.data?.role === 'super_admin')
-
-        const first = (profile.data?.first_name ?? '').trim()
-        const last  = (profile.data?.last_name  ?? '').trim()
-        const fallback = authUser.email?.split('@')[0] ?? 'Clox user'
-        const fullName = [first, last].filter(Boolean).join(' ').trim() || fallback
-        const initial = (first || fallback).slice(0, 1).toLowerCase() || '·'
-
-        const planName = planFor(profile.data?.plan as string | null | undefined).name.toLowerCase()
-        const plan = credits.data?.balance_credits != null
-          ? `${planName} · ${formatCredits(Number(credits.data.balance_credits))} credits`
-          : planName
-
-        setUser({
-          initial,
-          name: fullName,
-          plan,
-          email: authUser.email ?? undefined,
-          avatarSeed: profile.data?.avatar_seed ?? authUser.email ?? undefined,
-        })
-      } catch (e) {
-        console.error('[v0] /text profile load failed', e)
-      }
-    }
-
-    load()
-
-    const onProfileChanged = () => { if (!cancelled) void load() }
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === 'clox.profile.tick' && !cancelled) void load()
-    }
-    window.addEventListener('clox-profile-changed', onProfileChanged)
-    window.addEventListener('storage', onStorage)
+    const stop = watchIdentity(identity => {
+      setUser(identity.user)
+      setIsSuperAdmin(identity.isSuperAdmin)
+    })
     return () => {
-      cancelled = true
-      window.removeEventListener('clox-profile-changed', onProfileChanged)
-      window.removeEventListener('storage', onStorage)
+      stop()
     }
   }, [])
 
@@ -2466,8 +2471,7 @@ export default function TextPage() {
   }, [systemPrompt, messages, input, selectedTextModel.id])
 
   return (
-    <div className="fixed inset-0 isolate">
-      <ChatWorkspace
+    <WorkspaceSlot
         theme={theme}
         variant="chip"
         brandName="Clox"
@@ -2549,8 +2553,7 @@ export default function TextPage() {
         topP={0.95}
         maxTokens={maxTokens}
         onChangeMaxTokens={setMaxTokens}
-      />
-    </div>
+    />
   )
 }
 

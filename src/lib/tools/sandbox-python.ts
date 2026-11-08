@@ -22,6 +22,7 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
+import { snippetProblem } from './tool-input'
 import {
   getOrCreateSandboxForChat,
   waitForPackages,
@@ -130,8 +131,6 @@ export function makePythonTool(chatId: string, onProgress?: SandboxProgressCallb
     parameters: z.object({
       code: z
         .string()
-        .min(1)
-        .max(40_000)
         .describe(
           'A complete Python snippet. Will be written to a temp file ' +
             'and executed with `python3 <file>`. Use `print(...)` for ' +
@@ -139,6 +138,8 @@ export function makePythonTool(chatId: string, onProgress?: SandboxProgressCallb
         ),
     }),
     execute: async ({ code }) => {
+      const problem = snippetProblem(code, 'script')
+      if (problem) return problem
       // Pull a one-line preview of what we're about to run so the
       // client can render "Running Python: <preview>" in the progress
       // strip. We strip leading comments and blank lines to get to

@@ -1,4 +1,5 @@
 import { streamText, createDataStreamResponse, type JSONValue } from 'ai'
+import { BROKEN_CALL, SNIPPET_FIELD, brokenCallReason } from '@/lib/tools/tool-input'
 import { resolveLanguageModel, AIProvider } from '@/domains/text-generation/services/model-router'
 import { catalogEntry, takesTools } from '@/lib/gateway/catalog'
 import { CLAUDE_EFFORT_HEADER, CLAUDE_USAGE_HEADER, describeGatewayError, takeClaudeUsage } from '@/lib/gateway/server'
@@ -1030,6 +1031,19 @@ export async function POST(req: Request) {
                 // genuinely complex flows where the old cap actively
                 // hurt.
                 maxSteps: sandboxBound ? 50 : 4,
+                // A malformed call (cut-off JSON, wrong shape) used to throw
+                // out of the stream and end the reply with "Invalid arguments
+                // for tool bash". Turn it into a call the tool answers with a
+                // readable error so the model can fix it and carry on.
+                experimental_repairToolCall: async ({ toolCall, error }) => {
+                  const field = SNIPPET_FIELD[toolCall.toolName]
+                  if (!field || !(toolCall.toolName in enabledTools)) return null
+                  console.warn('[chat] repaired broken tool call', toolCall.toolName, String(error).slice(0, 200))
+                  return {
+                    ...toolCall,
+                    args: JSON.stringify({ [field]: BROKEN_CALL + brokenCallReason(error, toolCall.args) }),
+                  }
+                },
               }
             : {}),
           onFinish: async ({ usage, finishReason, providerMetadata, steps }) => {
@@ -1196,7 +1210,7 @@ export async function POST(req: Request) {
                     dataStream.writeMessageAnnotation({
                       type: 'output-file',
                       filename: uploaded.filename,
-                      url: uploaded.signedUrl,
+                      url: uploaded.url,
                       mime: uploaded.mime,
                       size: uploaded.size,
                     })

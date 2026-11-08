@@ -24,6 +24,7 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
+import { snippetProblem } from './tool-input'
 import {
   getOrCreateSandboxForChat,
   waitForKit,
@@ -42,6 +43,8 @@ import {
 const COMMAND_TIMEOUT_MS = 180_000
 
 const NODE_INSTALL_RE = /\b(npm|pnpm|yarn|bun)\s+(i|install|add|ci)\b|\bnpx\s+(-y\s+)?[a-z@]/i
+/** Node document libraries the model reaches for out of habit; none exist here. */
+const NODE_DOC_RE = /require\(\s*['"](pptxgenjs|docx|exceljs)['"]\s*\)|from\s+['"](pptxgenjs|docx|exceljs)['"]/
 
 /** Cap on the size of stdout/stderr we forward back to the model.
  *  Excessive output costs tokens AND distracts from the actual signal.
@@ -124,14 +127,27 @@ export function makeBashTool(chatId: string, onProgress?: SandboxProgressCallbac
     parameters: z.object({
       command: z
         .string()
-        .min(1)
-        .max(8_000)
         .describe(
           'A shell snippet executed under `sh -lc`. You can chain ' +
-            'commands with `&&` / `;` / pipes as needed.',
+            'commands with `&&` / `;` / pipes as needed. Keep it short; ' +
+            'write long scripts to a file in parts.',
         ),
     }),
     execute: async ({ command }) => {
+      const problem = snippetProblem(command, 'command')
+      if (problem) return problem
+      if (NODE_DOC_RE.test(command)) {
+        return {
+          ok: false,
+          exitCode: 1,
+          stdout: '',
+          stderr: 'pptxgenjs, docx and exceljs are not installed and cannot be: the npm registry is not reachable. Nothing was run.',
+          kind: 'blocked',
+          suggestion:
+            'Build the document in Python with the python tool: `from clox_kit import Deck, Report, Book` ' +
+            '(read the matching skill first). To change an existing file, open it with python-pptx / python-docx / openpyxl.',
+        }
+      }
       const preview = previewBashCommand(command)
       // The npm registry is outside the network allow-list, so an npm
       // install never fails — it hangs until the 180s cap. Say so at once.

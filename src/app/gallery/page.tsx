@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-import ChatWorkspace from '@/shared/ui/chat/ChatWorkspace'
+import WorkspaceSlot from '@/shared/ui/chat/workspace-host'
 import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
 import { PALETTES, type Palette } from '@/shared/ui/chat/palettes'
 import {
@@ -184,8 +184,7 @@ export default function GalleryPage() {
     }))
 
   return (
-    <div className="fixed inset-0 isolate">
-      <ChatWorkspace
+    <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
         brandName="Clox"
@@ -290,8 +289,7 @@ export default function GalleryPage() {
             )}
           </div>
         }
-      />
-    </div>
+    />
   )
 }
 
