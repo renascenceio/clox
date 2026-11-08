@@ -115,14 +115,59 @@ export function isImageLanguageModel(e: GatewayCatalogEntry): boolean {
 
 const sorted = [...GATEWAY_CATALOG].sort(byProviderThenNewest)
 
+/**
+ * Text models the gateway lists but that failed a live streaming test
+ * (unknown to the upstream provider, or streaming not supported). Re-run
+ * the sweep after `scripts/sync-gateway-models.mjs` and trim as they recover.
+ */
+const TEXT_EXCLUDED = new Set([
+  'alibaba/qwen-3-235b',
+  'alibaba/qwen3-next-80b-a3b-thinking',
+  'alibaba/qwen3-max-thinking',
+  'alibaba/qwen3-coder',
+  'scaledown/scaledown-summarize-1',
+  'scaledown/scaledown-extract-1',
+  'mistral/mistral-large-4',
+])
+
+/**
+ * Models that answer fine but reject function tools while streaming. The
+ * chat route sends them no tools (web search, skills, documents are off).
+ */
+const NO_STREAMING_TOOLS = new Set([
+  'deepseek/deepseek-r1',
+  'elorian/glimpse',
+  'inference-net/schematron-v2-small',
+  'inference-net/schematron-v2-turbo',
+  'meta/llama-3.3-70b',
+  'meta/llama-3.1-70b',
+  'meta/llama-3.1-8b',
+  'meta/llama-4-maverick',
+  'google/gemini-omni-flash-preview',
+  'spacexai/grok-4.20-multi-agent-beta',
+  'spacexai/grok-4.20-multi-agent',
+  'tencent/hy-mt2-lite',
+  'tencent/hy-mt2-plus',
+])
+
+export function takesTools(id: string): boolean {
+  if (NO_STREAMING_TOOLS.has(id)) return false
+  const tags = BY_ID.get(id)?.tags
+  return !tags || tags.includes('tool-use')
+}
+
 export const TEXT_MODELS: ModelEntry[] = sorted
-  .filter(e => e.type === 'language' && !isImageLanguageModel(e))
+  .filter(e => e.type === 'language' && !isImageLanguageModel(e) && !TEXT_EXCLUDED.has(e.id))
   .map(toEntry)
 
 /** Image models that need an input image to do anything (upscalers,
  *  inpainting with a mask). Fill needs a mask we can't author, so it's
  *  left out entirely; Topaz upscalers are kept and require a reference. */
-const IMAGE_EXCLUDED = new Set(['bfl/flux-pro-1.0-fill'])
+const IMAGE_EXCLUDED = new Set([
+  'bfl/flux-pro-1.0-fill',
+  // Listed by the gateway but retired upstream ("Job type is no longer available").
+  'prodia/flux-fast-schnell',
+])
 
 export const IMAGE_MODELS: ModelEntry[] = sorted
   .filter(e => (e.type === 'image' && !IMAGE_EXCLUDED.has(e.id)) || isImageLanguageModel(e))

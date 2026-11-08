@@ -6,6 +6,7 @@
 import { assertBudget } from '@/lib/projects/server'
 import { recordUsage, getCallerForLogging } from '@/lib/projects/usage'
 import { uploadChatOutput } from '@/lib/storage/chat-outputs'
+import { getCapability, type ModalityKind } from '@/lib/ai-capabilities'
 import { describeGatewayError } from './server'
 
 export interface MediaFile {
@@ -130,6 +131,45 @@ export async function deliver(
   )
 }
 
+const MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024
+
+/**
+ * Fetches a finished video from the provider's URL. The SDK's default
+ * downloader (an SSRF-guarded node fetch) can't resolve its own module path
+ * once Next bundles it, so the route supplies this plain HTTPS fetch.
+ */
+export async function downloadMedia({ url, abortSignal }: { url: URL; abortSignal?: AbortSignal }) {
+  if (url.protocol !== 'https:') throw new Error(`Refusing to download ${url.protocol} media`)
+  const res = await fetch(url, { signal: abortSignal })
+  if (!res.ok) throw new Error(`Could not download the result (${res.status})`)
+  const size = Number(res.headers.get('content-length') ?? 0)
+  if (size > MAX_DOWNLOAD_BYTES) throw new Error('The result is too large to download')
+  const data = new Uint8Array(await res.arrayBuffer())
+  if (data.byteLength > MAX_DOWNLOAD_BYTES) throw new Error('The result is too large to download')
+  return { data, mediaType: res.headers.get('content-type')?.split(';')[0] ?? undefined }
+}
+
+/** Stores input images and returns signed URLs a provider can fetch. */
+export async function hostInputs(
+  images: Array<{ bytes: Uint8Array; mediaType: string }>,
+  ctx: { caller: NonNullable<Awaited<ReturnType<typeof getCallerForLogging>>>; chatId: string | null },
+): Promise<string[]> {
+  const stamp = Date.now()
+  return Promise.all(
+    images.map(async (img, i) => {
+      const ext = EXT[img.mediaType] ?? 'png'
+      const uploaded = await uploadChatOutput({
+        userId: ctx.caller.userId,
+        chatId: ctx.chatId ?? 'media',
+        filename: `input-${stamp}-${i + 1}.${ext}`,
+        content: Buffer.from(img.bytes),
+        contentType: img.mediaType,
+      })
+      return uploaded.signedUrl
+    }),
+  )
+}
+
 /** SDK warnings → short human strings ("seed is not supported", …). */
 export function warningText(warnings: unknown): string[] {
   if (!Array.isArray(warnings)) return []
@@ -148,6 +188,26 @@ export function errorResponse(error: unknown, label: string) {
   const { message, status } = describeGatewayError(error)
   console.error(`[v0] ${label} error:`, message)
   return Response.json({ success: false, error: message }, { status })
+}
+
+/**
+ * The config pane shows each field's default but only sends what the user
+ * changed. Fill in the defaults the pane displayed and drop keys the model
+ * doesn't have, so the request matches what's on screen.
+ */
+export function withDefaults(
+  params: Record<string, unknown>,
+  modelId: string,
+  kind: ModalityKind,
+): Record<string, unknown> {
+  const fields = getCapability(modelId, kind)?.fields
+  if (!fields) return params
+  const out: Record<string, unknown> = {}
+  for (const [key, field] of Object.entries(fields)) {
+    const value = params[key] !== undefined ? params[key] : (field as { default?: unknown }).default
+    if (value !== undefined) out[key] = value
+  }
+  return out
 }
 
 export function seedFrom(v: unknown): number | undefined {

@@ -14,38 +14,28 @@ import {
   checkBudget,
   decodeDataUrl,
   deliver,
+  downloadMedia,
   errorResponse,
+  hostInputs,
   logUsage,
   readMediaRequest,
   seedFrom,
   warningText,
+  withDefaults,
 } from '@/lib/gateway/media'
 
 export const maxDuration = 300
 
-const LINES: Record<string, number> = { '480p': 480, '720p': 720, '768p': 768, '1080p': 1080, '2k': 1440, '4k': 2160 }
-
-/** "720p" + "9:16" → "720x1280". */
-function resolutionFor(res: string | undefined, aspect: string | undefined): `${number}x${number}` | undefined {
-  const lines = res ? LINES[res.toLowerCase()] : undefined
-  if (!lines) return undefined
-  const [a, b] = (aspect ?? '16:9').split(':').map(Number)
-  if (!a || !b) return undefined
-  const even = (n: number) => Math.round(n / 2) * 2
-  return a >= b
-    ? `${even((lines * a) / b)}x${lines}`
-    : `${lines}x${even((lines * b) / a)}`
-}
-
 export async function POST(request: Request) {
   const req = await readMediaRequest(request)
   if (req instanceof Response) return req
-  const { prompt, params, files, projectId, chatId } = req
+  const { prompt, files, projectId, chatId } = req
 
   const { caller, blocked } = await checkBudget(projectId)
   if (blocked) return blocked
 
   const modelId = resolveModelId(req.model, 'video')
+  const params = withDefaults(req.params, modelId, 'video')
   const entry = catalogEntry(modelId)
   const caps = entry?.video ?? {}
   if (!entry) return Response.json({ success: false, error: `Unknown video model ${req.model}` }, { status: 400 })
@@ -78,38 +68,56 @@ export async function POST(request: Request) {
   const duration = durations.length
     ? (durations.includes(wanted) ? wanted : durations.includes(5) ? 5 : durations[0])
     : Number.isFinite(wanted) && wanted > 0 ? wanted : undefined
-  const resolution = resolutionFor(str('resolution') ?? (caps.supported_resolutions?.includes('720p') ? '720p' : caps.supported_resolutions?.[0]), aspectRatio)
+  // The gateway takes the resolution labels it advertises ("720p"), even
+  // though the SDK types the option as "WIDTHxHEIGHT".
+  const resolution = str('resolution') && caps.supported_resolutions?.includes(str('resolution')!)
+    ? str('resolution')
+    : caps.supported_resolutions?.includes('720p') ? '720p' : caps.supported_resolutions?.[0]
   const n = Math.max(1, Math.min(caps.max_sample_count ?? 1, Math.floor(Number(params.count) || 1)))
 
   try {
+    // Many video models only fetch input images by URL. Store the
+    // attachments and hand the model short-lived signed links; models that
+    // accept inline images get the bytes directly.
+    const sources = (caps.input_limits?.image as { supported_sources?: string[] } | undefined)?.supported_sources
+    const needsUrls = images.length > 0 && sources !== undefined && !sources.includes('base64')
+    let inputs: Array<Uint8Array | string> = images.map(i => i.bytes)
+    if (needsUrls) {
+      if (!caller) {
+        return Response.json({ success: false, error: 'Sign in to animate images with this model.' }, { status: 401 })
+      }
+      inputs = await hostInputs(images, { caller, chatId })
+    }
+
     const gateway = await mediaGateway()
     const result = await generateVideo({
       model: gateway.videoModel(modelId),
-      prompt: mode === 'image-to-video' && images[0]
-        ? { image: images[0].bytes, text: prompt }
+      prompt: mode === 'image-to-video' && inputs[0]
+        ? { image: inputs[0], text: prompt }
         : prompt,
       n,
       maxRetries: 0,
+      download: downloadMedia,
       ...(aspectRatio ? { aspectRatio: aspectRatio as `${number}:${number}` } : {}),
-      ...(resolution ? { resolution } : {}),
+      ...(resolution ? { resolution: resolution as `${number}x${number}` } : {}),
       ...(duration ? { duration } : {}),
       ...(seedFrom(params.seed) !== undefined ? { seed: seedFrom(params.seed) } : {}),
       ...(caps.generate_audio && params.generateAudio !== undefined ? { generateAudio: Boolean(params.generateAudio) } : {}),
       ...(mode === 'first-last-frame'
         ? {
             frameImages: [
-              { image: images[0].bytes, frameType: 'first_frame' as const },
-              ...(images[1] ? [{ image: images[1].bytes, frameType: 'last_frame' as const }] : []),
+              { image: inputs[0], frameType: 'first_frame' as const },
+              ...(inputs[1] ? [{ image: inputs[1], frameType: 'last_frame' as const }] : []),
             ],
           }
         : {}),
       ...(mode === 'reference-to-video'
-        ? { inputReferences: images.map(img => ({ data: img.bytes, mediaType: img.mediaType })) }
+        ? { inputReferences: inputs.map((data, i) => ({ data, mediaType: images[i].mediaType })) }
         : {}),
-      // Text-only jobs run as a gateway background job, so no single
-      // network request has to stay open for minutes. Jobs carrying
-      // inline images use the direct flow (the job store caps request size).
-      ...(images.length === 0 ? { poll: { intervalMs: 5000, timeoutMs: 280_000 } } : {}),
+      // Jobs without inline bytes run as a gateway background job, so no
+      // single network request has to stay open for minutes. Inline images
+      // use the direct flow (the job store caps request size).
+      ...(images.length === 0 || needsUrls ? { poll: { intervalMs: 5000, timeoutMs: 280_000 } } : {}),
     })
 
     const outputs = result.videos.map(v => ({ bytes: v.uint8Array, mediaType: v.mediaType ?? 'video/mp4' }))

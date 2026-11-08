@@ -363,8 +363,11 @@ function videoCapability(e: GatewayCatalogEntry): Capability {
   const ops = (v.supported_operations ?? ['text-to-video']).filter(o => OPERATION_LABEL[o])
   if (ops.length > 1) {
     fields.mode = {
-      type: 'select', label: 'Mode', default: ops[0],
-      options: ops.map(o => ({ value: o, label: OPERATION_LABEL[o] })),
+      type: 'select', label: 'Mode', default: 'auto',
+      options: [
+        { value: 'auto', label: 'Automatic (from attachments)' },
+        ...ops.map(o => ({ value: o, label: OPERATION_LABEL[o] })),
+      ],
       hint: 'How attached images are used',
     }
   }

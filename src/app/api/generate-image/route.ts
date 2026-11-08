@@ -22,6 +22,7 @@ import {
   readMediaRequest,
   seedFrom,
   warningText,
+  withDefaults,
 } from '@/lib/gateway/media'
 
 export const maxDuration = 300
@@ -31,12 +32,13 @@ type Out = { bytes: Uint8Array; mediaType: string }
 export async function POST(request: Request) {
   const req = await readMediaRequest(request)
   if (req instanceof Response) return req
-  const { prompt, params, files, projectId, chatId } = req
+  const { prompt, files, projectId, chatId } = req
 
   const { caller, blocked } = await checkBudget(projectId)
   if (blocked) return blocked
 
   const modelId = resolveModelId(req.model, 'image')
+  const params = withDefaults(req.params, modelId, 'image')
   const entry = catalogEntry(modelId)
   if (!entry) return Response.json({ success: false, error: `Unknown image model ${req.model}` }, { status: 400 })
 

@@ -14,6 +14,7 @@ import {
   readMediaRequest,
   seedFrom,
   warningText,
+  withDefaults,
 } from '@/lib/gateway/media'
 
 export const maxDuration = 120
@@ -28,13 +29,14 @@ function estimateSeconds(bytes: number, mediaType: string, text: string) {
 export async function POST(request: Request) {
   const req = await readMediaRequest(request)
   if (req instanceof Response) return req
-  const { prompt, params, projectId, chatId } = req
+  const { prompt, projectId, chatId } = req
 
   const { caller, blocked } = await checkBudget(projectId)
   if (blocked) return blocked
   if (!prompt) return Response.json({ success: false, error: 'Prompt is required' }, { status: 400 })
 
   const modelId = resolveModelId(req.model, 'audio')
+  const params = withDefaults(req.params, modelId, 'audio')
   const entry = catalogEntry(modelId)
   if (!entry) return Response.json({ success: false, error: `Unknown audio model ${req.model}` }, { status: 400 })
 

@@ -1,6 +1,6 @@
 import { streamText, createDataStreamResponse, type JSONValue } from 'ai'
 import { resolveLanguageModel, AIProvider } from '@/domains/text-generation/services/model-router'
-import { catalogEntry } from '@/lib/gateway/catalog'
+import { catalogEntry, takesTools } from '@/lib/gateway/catalog'
 import { CLAUDE_EFFORT_HEADER, describeGatewayError } from '@/lib/gateway/server'
 import { assertBudget } from '@/lib/projects/server'
 import { loadSkillCatalog, buildSkillIndex } from '@/lib/skills-index'
@@ -817,7 +817,7 @@ export async function POST(req: Request) {
         // — the conditional spread below still depends on this flag.
         // Some gateway models (Llama, image-output models, …) reject tool
         // definitions outright; only attach tools to models that take them.
-        const modelTakesTools = !modelInfo?.tags || modelInfo.tags.includes('tool-use')
+        const modelTakesTools = takesTools(gatewayModelId)
         const hasTools = modelTakesTools && Object.keys(enabledTools).length > 0
         const result = streamText({
           // `resolved` is always a LanguageModelV1 instance now (gateway
