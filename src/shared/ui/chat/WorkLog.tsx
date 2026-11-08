@@ -32,6 +32,7 @@ export function firstLine(text: unknown): string | null {
     line = line
       .replace(/^(#+|\/\/+|--|;+|\/\*+|\*+)\s*/, '')
       .replace(/\*\/\s*$/, '')
+      .replace(/^[\u2713\u2714\u2717\u2715\u2192>!]+\s*/, '')
       .replace(/[\u2500-\u259F]+|[=~_*#\-]{3,}/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -97,16 +98,21 @@ function Glyph({ state }: { state: 'running' | 'done' | 'failed' }) {
       />
     )
   }
+  // Drawn rather than typed: not every mono font has ✓ / ✕.
   return (
-    <span
+    <svg
       aria-hidden
+      viewBox="0 0 12 12"
+      width={10}
+      height={10}
       style={{
-        width: 12, flex: '0 0 12px', fontSize: 11, lineHeight: '18px', textAlign: 'center',
+        flex: '0 0 10px', marginTop: 4, fill: 'none', stroke: 'currentColor', strokeWidth: 1.6,
+        strokeLinecap: 'round', strokeLinejoin: 'round',
         color: state === 'failed' ? 'var(--accent, #b00020)' : 'inherit', opacity: state === 'failed' ? 1 : 0.5,
       }}
     >
-      {state === 'failed' ? '✕' : '✓'}
-    </span>
+      {state === 'failed' ? <path d="M3 3l6 6M9 3l-6 6" /> : <path d="M2.5 6.5l2.3 2.3L9.5 3.5" />}
+    </svg>
   )
 }
 
