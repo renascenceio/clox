@@ -27,6 +27,7 @@ from .canvas import H, W, PdfCanvas, PptxCanvas
 from .theme import Theme, contrast, mix, on, theme as _theme
 
 OUT_DIR = os.environ.get("CLOX_OUT", "/mnt/user-data/outputs")
+_HEX = re.compile(r"^\s*#?[0-9a-fA-F]{6}\s*$|^\s*#[0-9a-fA-F]{3}\s*$")
 MX, BW = 120, 1680          # side margin, body width
 BOTTOM = 944                # body content must end above this (footer below)
 
@@ -115,7 +116,7 @@ def _header(cv, ctx, kicker, title, width=BW, x=MX, bg=None):
         cv.text(x, y, width, 34, kicker, role="semibold", size=22, color=_accent_on(t, bg),
                 upper=t.upper_kicker, tracking=0.12, max_lines=1, min_size=16)
         y += 48
-    big = 1.2 if t.fonts == "editorial" else 1.0
+    big = 1.2 if t.fonts == "editorial" else 1.0   # Instrument Serif is condensed; other faces aren't
     used = cv.text(x, y, width, 210 * big, title, role="display", size=74 * big, min_size=44, lh=1.04,
                    color=t.ink if bg in (t.bg, t.surface) else on(bg), max_lines=2)
     return max(300, y + used + 64)
@@ -125,7 +126,7 @@ def _footer(cv, ctx, bg=None, right_x=MX + BW, color=None):
     t = ctx.t
     bg = bg or t.bg
     col = color or mix(t.ink if bg in (t.bg, t.surface) else on(bg), bg, 0.45)
-    label = ctx.deck.brand or ctx.deck.title or ""
+    label = ctx.deck.footer_label
     if label:
         cv.text(MX, 1000, 900, 30, label, role="medium", size=18, color=col, max_lines=1)
     cv.text(right_x - 200, 1000, 200, 30, f"{ctx.page:02d}", role="medium", size=18, color=col,
@@ -201,11 +202,11 @@ def s_cover(cv, ctx, title, subtitle=None, kicker=None, meta=None, image=None):
     if meta:
         cv.text(MX, 960, tw, 34, meta, role="medium", size=22, color=mut, max_lines=1)
     sub_h = cv.measure(subtitle, "body", 34, tw, 1.3) if subtitle else 0
-    bottom = 900 - (sub_h + 36 if subtitle else 0)
-    cv.text(MX, 300, tw, bottom - 300, title, role="display", size=140, min_size=64, lh=1.0, color=ink,
+    bottom = 900 - (sub_h + 52 if subtitle else 0)
+    cv.text(MX, 240, tw, bottom - 240, title, role="display", size=140, min_size=64, lh=1.0, color=ink,
             valign="bottom", max_lines=4)
     if subtitle:
-        cv.text(MX, bottom + 36, tw, sub_h + 4, subtitle, role="body", size=34, color=mut, lh=1.3)
+        cv.text(MX, bottom + 52, tw, sub_h + 4, subtitle, role="body", size=34, color=mut, lh=1.3)
 
 
 def s_closing(cv, ctx, title="Thank you", subtitle=None, contact=None):
@@ -341,6 +342,13 @@ def s_chart(cv, ctx, title, kind, categories, series, kicker=None, takeaway=None
     side = bool(takeaway or points)
     cw = 1100 if side else BW
     bottom = BOTTOM - (40 if source else 0)
+    if kind not in ("pie", "donut", "scatter") and isinstance(series, dict) and len(series) > 1:
+        peaks = {k: max((abs(float(v)) for v in vals if v is not None), default=0) for k, vals in series.items()}
+        hi, lo = max(peaks.values()), min(peaks.values())
+        if lo > 0 and hi / lo > 8:
+            small = min(peaks, key=peaks.get)
+            cv.warnings.append(f'"{small}" is on a much smaller scale than the other series and will draw as a '
+                               f"flat line — give it its own chart or a kpis/cards slide")
     cv.chart(kind, categories, series, MX - 16, y0 - 8, cw + 16, bottom - y0 + 8, fmt=fmt, labels=labels,
              legend=legend)
     if side:
@@ -466,6 +474,12 @@ def s_timeline(cv, ctx, title, steps, kicker=None, current=None):
     ly = y0 + max(130, (BOTTOM - y0) * 0.4)
     cv.line(MX, ly, MX + BW, ly, t.rule, 4)
     acc = _accent_on(t, t.bg)
+    room = BOTTOM - (ly + 52)
+    for ws, ds in ((40, 30), (36, 28), (34, 26), (32, 24), (30, 22), (26, 20)):
+        tallest = max(cv.measure(what, "semibold", ws, cw - 40, 1.15) + 14 +
+                      (cv.measure(detail, "body", ds, cw - 40, 1.3) if detail else 0) for _, what, detail in steps)
+        if tallest <= room * 0.85 and max(cv.measure(what, "semibold", ws, cw - 40, 1.15) for _, what, _ in steps) <= ws * 1.15 * 2:
+            break
     for i, (when, what, detail) in enumerate(steps):
         x = MX + i * cw
         done = current is None or i <= current
@@ -477,9 +491,9 @@ def s_timeline(cv, ctx, title, steps, kicker=None, current=None):
             cv.text(x, ly - 84, cw - 32, 34, when, role="semibold", size=24, color=acc, upper=t.upper_kicker,
                     tracking=0.1, max_lines=1)
         cy = ly + 52
-        cy += cv.text(x, cy, cw - 40, 150, what, role="semibold", size=36 if n <= 4 else 30, lh=1.15, max_lines=3) + 14
+        cy += cv.text(x, cy, cw - 40, ws * 1.15 * 3, what, role="semibold", size=ws, lh=1.15, max_lines=3) + 14
         if detail:
-            cv.text(x, cy, cw - 40, BOTTOM - cy, detail, role="body", size=26 if n <= 4 else 22, color=t.muted, lh=1.3)
+            cv.text(x, cy, cw - 40, BOTTOM - cy, detail, role="body", size=ds, color=t.muted, lh=1.3)
     _footer(cv, ctx)
 
 
@@ -496,12 +510,22 @@ def s_cards(cv, ctx, title, cards, kicker=None, numbered=False):
     ch = (BOTTOM - y0 - gap * (rows - 1)) / rows
     pad = 52 if cols <= 3 else 40
     acc = _accent_on(t, t.surface)
-    hs = 40 if cols <= 3 and rows == 1 else 32
-    bs = 27 if rows == 1 else 23
     inner = cw - 2 * pad
-    # Same text block height on every card so titles line up across the row.
-    block = max(cv.measure(h_, "semibold", hs, inner, 1.15) + (16 + cv.measure(b_, "body", bs, inner, 1.32) if b_ else 0)
-                for h_, b_, _ in cards)
+    any_tag = any(tag for _, _, tag in cards)
+    room = ch - 2 * pad - (150 if numbered else 60) - (44 if any_tag else 0)
+
+    def block_at(hs, bs):
+        # Same text block height on every card so titles line up across the row.
+        return max(cv.measure(h_, "semibold", hs, inner, 1.15) + (16 + cv.measure(b_, "body", bs, inner, 1.32) if b_ else 0)
+                   for h_, b_, _ in cards)
+
+    # Largest type that still fits the card — small text in a big empty card reads as unfinished.
+    for hs, bs in ((44, 30), (40, 28), (36, 27), (34, 25), (32, 24), (30, 23), (28, 22)):
+        if cols > 3 and hs > 36:
+            continue
+        block = block_at(hs, bs)
+        if block <= room * (0.62 if rows == 1 else 0.9):
+            break
     if rows == 1:
         ch = min(ch, max(block + 2 * pad + (190 if numbered else 120), (BOTTOM - y0) * 0.7))
     for i, (head, body, tag) in enumerate(cards):
@@ -629,12 +653,24 @@ class Deck:
             self.theme = _theme_from_json(state["theme"])
         self.title = title if title is not None else state.get("title")
         self.brand = brand if brand is not None else state.get("brand")
+        if brand and _HEX.match(str(brand)) and theme is None and "accent" not in theme_overrides:
+            self.theme = _theme(self.theme, accent=brand)   # Deck(brand="#C9A84C") = brand colour, not a label
+        if fonts is not None and fonts not in ("office", "google"):
+            # Real typefaces, e.g. ("Playfair Display", "DM Sans") — fetched from Google Fonts.
+            self.theme = _theme(self.theme, fonts=fonts)
+            fonts = "google"
         self.fonts = fonts or state.get("fonts", "office")
-        self.make_pdf = pdf if pdf is not None else state.get("pdf", False)
+        self.make_pdf = pdf if pdf is not None else state.get("pdf")   # None = PDF at check()/edits, True = every save
         self.slides: list[dict] = state.get("slides", []) if not new else []
         self._insert_at = None
         if state and not new:
             print(f"reopened {os.path.basename(self.path)} · {len(self.slides)} slides · theme {self.theme.name}")
+
+    @property
+    def footer_label(self) -> str:
+        """Brand name in the footer — never a colour code passed as brand."""
+        brand = "" if self.brand and _HEX.match(str(self.brand)) else (self.brand or "")
+        return str(brand or self.title or "")
 
     # ── persistence ──
     def _save_state(self):
@@ -670,6 +706,7 @@ class Deck:
         from pptx.util import Emu
         prs = Presentation()
         prs.slide_width, prs.slide_height = Emu(12192000), Emu(6858000)
+        prs.part._element.sldSz.attrib.pop("type", None)   # template says "screen4x3"; the size is 16:9
         if self.title:
             prs.core_properties.title = self.title
         warnings = {}
@@ -696,8 +733,8 @@ class Deck:
         out = path or self.pdf_path
         c = rl.Canvas(out, pagesize=(W * 0.5, H * 0.5))
         c.setTitle(self.title or os.path.basename(out))
-        if self.brand:
-            c.setAuthor(self.brand)
+        if self.footer_label:
+            c.setAuthor(self.footer_label)
         total = len(self.slides)
         with tempfile.TemporaryDirectory() as tmp:
             for i, spec in enumerate(self.slides):
@@ -711,6 +748,11 @@ class Deck:
             print(f"✓ {os.path.basename(out)} · {total} pages")
         return out
 
+    def _refresh_pdf(self):
+        """Keep the preview PDF in step after an edit (save() already did it when pdf=True)."""
+        if self.make_pdf is None and os.path.exists(self.pdf_path):
+            self.pdf(quiet=True)
+
     # ── editing ──
     def at(self, n: int):
         """Insert the next slide at position n (1-based): d.at(3).kpis(...)"""
@@ -720,18 +762,21 @@ class Deck:
     def remove(self, n: int):
         self.slides.pop(n - 1)
         self.save()
+        self._refresh_pdf()
         print(f"removed slide {n} · {len(self.slides)} left")
 
     def move(self, n: int, to: int):
         s = self.slides.pop(n - 1)
         self.slides.insert(to - 1, s)
         self.save()
+        self._refresh_pdf()
         print(f"moved slide {n} → {to}")
 
     def edit(self, n: int, **changes):
         """Change arguments of slide n, e.g. d.edit(4, title="Sharper title")."""
         self.slides[n - 1]["args"].update({k: v for k, v in changes.items()})
         w = self.save()
+        self._refresh_pdf()
         print(f"✓ edited slide {n}")
         for x in w.get(n, []):
             print(f"  ! {x}")
@@ -740,6 +785,7 @@ class Deck:
         """Switch theme for the whole deck and re-render."""
         self.theme = _theme(theme or self.theme, **overrides)
         self.save()
+        self._refresh_pdf()
         print(f"✓ theme → {self.theme.name}")
 
     def outline(self):
@@ -774,6 +820,8 @@ class Deck:
         warnings = self.save()
         for n, ws in warnings.items():
             issues += [f"slide {n}: {w}" for w in ws]
+        if self.make_pdf is None:
+            self.pdf(quiet=True)   # the chat shows this PDF as the deck's preview
         if issues:
             print("fix before handing over:")
             for x in issues:

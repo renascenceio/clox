@@ -98,7 +98,22 @@ class Theme:
         return on(self.accent)
 
     def font(self, role: str) -> str:
+        if self.fonts not in FONT_SETS:
+            from .fonts import ensure
+            ensure(self.fonts)
         return FONT_SETS[self.fonts].get(role, FONT_SETS[self.fonts]["body"])
+
+    @property
+    def serif(self) -> bool:
+        """Headlines in a serif face — lets layouts give them a little more size."""
+        if self.fonts == "editorial":
+            return True
+        if self.fonts.startswith("gf:"):
+            fam = self.fonts[3:].split("|")[0].lower()
+            return any(k in fam for k in ("serif", "playfair", "fraunces", "garamond", "lora", "merriweather",
+                                          "libre baskerville", "dm serif", "cormorant", "newsreader", "gelasio",
+                                          "crimson", "spectral", "bodoni", "prata", "young serif"))
+        return False
 
     def color(self, i: int) -> str:
         return self.series[i % len(self.series)]
@@ -173,6 +188,9 @@ def theme(name: str | Theme | None = None, *, brand: str | None = None, dark: bo
         base = THEMES[key]
     if brand and name:
         overrides.setdefault("accent", brand)
+    if "fonts" in overrides and overrides["fonts"] not in FONT_SETS:
+        from .fonts import key_for
+        overrides["fonts"] = key_for(overrides["fonts"]) or base.fonts
     if "series" in overrides and not isinstance(overrides["series"], tuple):
         overrides["series"] = tuple(overrides["series"])
     return replace(base, **overrides) if overrides else base

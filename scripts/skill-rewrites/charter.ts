@@ -14,7 +14,9 @@
 // v2 — PPTX switched from pptxgenjs to python-pptx, HARD LIMIT block.
 // v3 — clox_kit: themes, embedded fonts, Deck/Report/Book/data APIs, native
 //      charts, design review (`check()`), new Data skill. ~70% fewer tokens.
-export const CHARTER_VERSION = 3
+// v4 — Google Fonts pairings (fonts=(display, body)), "!" warnings must be fixed,
+//      one chart per scale.
+export const CHARTER_VERSION = 4
 
 export const PRECEDENCE = `The user's brief wins: colours, fonts, brand, length, file name, tone and structure they specify override every default below.`
 
@@ -29,7 +31,11 @@ export const THEMES = `THEMES (pick by audience; never default to plain white + 
   swiss      white, black, blaze orange, grotesk — clean, confident, design-led
   forest     soft green + mint — sustainability, health, calm finance
 Brand colour: theme="studio", brand="#E4002B" (or dark=True). Fine-tune any token:
-accent=, accent2=, hero= (cover/section colour), bg=, ink=, series=[...].`
+accent=, accent2=, hero= (cover/section colour), bg=, ink=, series=[...].
+TYPE: any Google Font pairing — fonts=("Playfair Display", "DM Sans") (display, body; "Fraunces:600" picks the
+headline weight). Files are fetched once, text is fitted with their real metrics and embedded in PDFs. Pair a
+characterful display face with a quiet sans; match the mood (luxury → Playfair/Cormorant, tech → Space Grotesk/
+Inter, editorial → Fraunces/Newsreader, friendly → DM Sans/Manrope). Honour any font the user names.`
 
 export const FORMATS = `Number formats (fmt=): "money" ($4.2M), "money:€", "pct" (0.34 → 34%), "%" (34 → 34%), "int", "1dp", "k", "m".
 Chart kinds: bar, barh, stacked, stacked100, barh_stacked, line, area, pie, donut, scatter.
@@ -53,5 +59,7 @@ export const FAILURES = `IF SOMETHING BREAKS — fix and continue, never fall ba
   - Traceback → read the last line, fix that argument, rerun ONLY that call (state is on disk).
   - Unsure what's built → d.outline() (or r.outline()) prints every slide/block.
   - Wrong slide → d.edit(n, title=...) / d.remove(n) / d.move(n, to) / d.at(n).kpis(...) inserts.
-  - Wrong look → d.restyle("navy") re-renders everything; nothing is lost.
+  - Wrong look → d.restyle("navy") or d.restyle(fonts=("Fraunces", "Inter")) re-renders everything; nothing is lost.
+  - A line starting with "!" after a slide is a real defect (text too long, a series on a different scale that
+    will draw flat, too many rows). Fix that slide with d.edit(n, ...) before moving on.
   - ImportError for clox_kit → the sandbox is old: pip install python-pptx reportlab openpyxl pillow, then retry.`

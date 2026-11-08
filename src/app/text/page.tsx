@@ -4,6 +4,7 @@ import { useChat } from '@ai-sdk/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { CodeArtifact } from '@/shared/ui/components/CodeArtifact'
 import { DownloadStrip, type DownloadStripFile } from '@/shared/ui/components/DownloadStrip'
 
@@ -1148,8 +1149,14 @@ export default function TextPage() {
            */
           <div className="prose">
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 code: CodeArtifact,
+                table: ({ children }) => (
+                  <div className="prose-table-wrap">
+                    <table>{children}</table>
+                  </div>
+                ),
                 // Strip the default <pre> wrapper because CodeArtifact
                 // ships its own framed container; nesting another
                 // <pre> would double-pad and disable horizontal scroll.
@@ -1740,7 +1747,7 @@ export default function TextPage() {
                 Auto-compacted {compactionAnnotation.compactedCount} earlier turns
               </div>
             )}
-            {outputFiles.length > 0 && <DownloadStrip files={outputFiles} />}
+            {outputFiles.length > 0 && <DownloadStrip files={outputFiles} defaultPreview={isLastMessage} />}
           </div>
         )
       }

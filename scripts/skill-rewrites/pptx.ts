@@ -11,7 +11,12 @@ const API = `API — from clox_kit import Deck
 d = Deck("q3-board-review", theme="studio", title="Q3 Board Review", brand="Acme", new=True)
   name → file name (/mnt/user-data/outputs/q3-board-review.pptx). new=True only on the FIRST call.
   Later calls: d = Deck("q3-board-review") reopens with theme and slides intact.
-  pdf=True also writes a matching PDF on every save. fonts="google" if the user will open it in Google Slides.
+  brand= is the footer name ("Acme"); a hex there becomes the accent colour instead.
+  d.check() and every edit also write deck.pdf beside the .pptx — the chat shows it as a live preview, so the
+  user can ask for changes and see them without downloading. (pdf=True writes it on every save; pdf=False never.)
+  fonts=("Playfair Display", "DM Sans") uses Google Fonts (perfect in the PDF and Google Slides; PowerPoint
+  shows them once installed). Default fonts="office" uses Georgia/Aptos so the .pptx looks right everywhere.
+  Two series on very different scales (price 1,500 vs yield 7%) → two charts, never one.
 
 Slide types (every one takes kicker= — a small label above the title — and notes= for speaker notes):
   d.cover(title, subtitle, kicker=, meta="Board update · Oct 2026", image="/path.jpg")
@@ -32,7 +37,8 @@ Slide types (every one takes kicker= — a small label above the title — and n
 ${FORMATS}
 
 Finish: d.check() — design review (missing notes, repetitive layouts, overflowing text, no visuals).
-Fix everything it lists, then d.pdf() if the user wants a PDF copy.
+Fix everything it lists. Amend requests ("make slide 4 punchier", "use our brand green", "try serif headings")
+→ reopen the deck and use d.edit / d.restyle; never rebuild from scratch.
 Read an existing deck: from pptx import Presentation; walk p.slides → shapes → text_frame / has_chart / notes.
 Restyle an uploaded deck: extract its content, then rebuild it with Deck (much better than patching shapes).`
 

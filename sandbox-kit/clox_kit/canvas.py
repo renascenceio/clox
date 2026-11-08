@@ -11,8 +11,10 @@ W, H = 1920, 1080
 EMU = 6350          # 13.333in * 914400 / 1920
 PT = 0.5            # 960pt page / 1920px
 
-# How each measured font is named inside a .pptx. `factor` > 1 = the viewer's
-# font is wider than the file we measure with, so we fit more conservatively.
+# How each layout font is named inside a .pptx: (name, bold, italic, factor[, measure_with]).
+# `measure_with` = a metric-compatible open font, so text is fitted with the exact
+# widths PowerPoint will use (Gelasio has Georgia's metrics). `factor` > 1 = the
+# viewer's font is wider than the file we measure with, so we fit more conservatively.
 OFFICE_FONTS = {
     "InterDisplay-Bold": ("Aptos Display", True, False, 1.0),
     "InterDisplay-SemiBold": ("Aptos Display", False, False, 1.0),
@@ -21,10 +23,10 @@ OFFICE_FONTS = {
     "Inter-SemiBold": ("Aptos SemiBold", False, False, 1.02),
     "Inter-Bold": ("Aptos", True, False, 1.02),
     "Inter-Italic": ("Aptos", False, True, 1.0),
-    "InstrumentSerif-Regular": ("Georgia", False, False, 1.25),
-    "InstrumentSerif-Italic": ("Georgia", False, True, 1.25),
-    "SpaceGrotesk-Bold": ("Aptos Display", True, False, 1.0),
-    "SpaceGrotesk-Medium": ("Aptos Display", False, False, 1.0),
+    "InstrumentSerif-Regular": ("Georgia", False, False, 1.02, "Gelasio-Regular"),
+    "InstrumentSerif-Italic": ("Georgia", False, True, 1.02, "Gelasio-Italic"),
+    "SpaceGrotesk-Bold": ("Aptos Display", True, False, 1.04),
+    "SpaceGrotesk-Medium": ("Aptos Display", False, False, 1.04),
     "JetBrainsMono-Regular": ("Consolas", False, False, 1.0),
 }
 GOOGLE_FONTS = {
@@ -53,8 +55,13 @@ class Canvas:
     def factor(self, font: str) -> float:
         return 1.0
 
+    def mfont(self, font: str) -> str:
+        """The font file whose widths match what the viewer will actually draw."""
+        return font
+
     def fit(self, s, font, w, h, size, min_size=None, lh=1.15, tracking=0.0, max_lines=None):
-        size_, lines, ok = T.fit(s, font, w, h, size, min_size, lh, tracking, max_lines, self.factor(font))
+        size_, lines, ok = T.fit(s, self.mfont(font), w, h, size, min_size, lh, tracking, max_lines,
+                                 self.factor(font))
         if not ok:
             short = (s[:40] + "…") if len(s) > 40 else s
             self.warnings.append(f'text did not fit: "{short}" — shorten it')
@@ -84,7 +91,8 @@ class Canvas:
         if not s:
             return 0
         s = str(s).upper() if upper else str(s)
-        return T.block_height(s, self.t.font(role), size, w, lh)
+        font = self.t.font(role)
+        return T.block_height(s, self.mfont(font), size * self.factor(font), w, lh) / self.factor(font)
 
 
 # ─── PowerPoint ────────────────────────────────────────────────────
@@ -100,8 +108,26 @@ class PptxCanvas(Canvas):
     def e(self, v):
         return self.Emu(int(round(v * EMU)))
 
+    def entry(self, font):
+        if font in self.map:
+            return self.map[font]
+        from .fonts import is_google, pptx_name
+        if is_google(font):
+            name, bold, italic = pptx_name(font)
+            return (name, bold, italic, 1.0)
+        return ("Aptos", False, False, 1.0)
+
     def factor(self, font):
-        return self.map.get(font, ("", False, False, 1.0))[3]
+        # 3% headroom: PowerPoint, Keynote and LibreOffice round and hint glyphs
+        # differently, and a line measured to the last pixel wraps in one of them.
+        return self.entry(font)[3] * 1.03
+
+    def mfont(self, font):
+        e = self.entry(font)
+        return e[4] if len(e) > 4 else font
+
+    def font_name(self, font):
+        return self.entry(font)[0]
 
     def _rgb(self, hexstr):
         from pptx.dml.color import RGBColor
@@ -184,7 +210,7 @@ class PptxCanvas(Canvas):
         from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
         from pptx.util import Pt
         from pptx.oxml.ns import qn
-        name, bold, italic, _ = self.map.get(font, ("Aptos", False, False, 1.0))
+        name, bold, italic = self.entry(font)[:3]
         # Give PowerPoint a little slack so a slightly wider viewer font
         # re-wraps inside the box instead of spilling past it.
         tb = self.slide.shapes.add_textbox(self.e(x), self.e(top), self.e(w), self.e(used + size * 0.2))
@@ -260,12 +286,17 @@ _REGISTERED: set[str] = set()
 def register_pdf_fonts():
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
-    for fn in os.listdir(T.FONT_DIR):
-        if fn.endswith(".ttf"):
-            name = fn[:-4]
-            if name not in _REGISTERED:
-                pdfmetrics.registerFont(TTFont(name, os.path.join(T.FONT_DIR, fn)))
-                _REGISTERED.add(name)
+    from .fonts import all_files
+    files = [os.path.join(T.FONT_DIR, fn) for fn in os.listdir(T.FONT_DIR) if fn.endswith(".ttf")]
+    try:
+        files += all_files()
+    except OSError:
+        pass
+    for path in files:
+        name = os.path.basename(path)[:-4]
+        if name not in _REGISTERED:
+            pdfmetrics.registerFont(TTFont(name, path))
+            _REGISTERED.add(name)
 
 
 class PdfCanvas(Canvas):
