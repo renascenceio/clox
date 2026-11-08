@@ -39,6 +39,13 @@ const nextConfig = {
    * server bundle has access to the real built-ins and shouldn't be
    * stubbed.
    */
+  // clox_kit (Python design library + fonts) is read from disk at
+  // sandbox boot and copied into each chat's sandbox.
+  experimental: {
+    outputFileTracingIncludes: {
+      '/api/chat': ['./sandbox-kit/clox_kit/**/*'],
+    },
+  },
   webpack: (config, { isServer, webpack }) => {
     if (!isServer) {
       config.resolve = config.resolve || {}

@@ -24,6 +24,7 @@ import LanguageSwitcher from '@/shared/ui/components/LanguageSwitcher'
 import Avatar from '@/shared/ui/components/Avatar'
 import { createClient } from '@/lib/supabase/client'
 import { syncLocalChatsToDB } from '@/lib/projects/chat-sync'
+import { openPreferences } from '@/lib/consent/store'
 
 export const spring: Transition = { type: "spring", stiffness: 380, damping: 30 }
 
@@ -463,6 +464,18 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
                   <span className="text-[12.5px] flex-1">Theme</span>
                   <ThemeToggle />
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUserMenu(false)
+                    openPreferences()
+                  }}
+                  className="w-full h-9 flex items-center gap-2.5 px-2.5 rounded-sharp hover:bg-rail-soft text-left text-ink"
+                >
+                  <MenuIcon path="M12 3a9 9 0 109 9 3 3 0 01-3-3 3 3 0 01-3-3 3 3 0 01-3-3zM8.5 10.5h.01M10 15h.01M15 14.5h.01" />
+                  <span className="text-[12.5px] flex-1">Cookie settings</span>
+                </button>
 
                 {isSuperAdmin && (
                   <>

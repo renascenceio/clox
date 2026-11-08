@@ -1,272 +1,61 @@
 /**
- * PPTX (read & write) — rewritten primer.
+ * PPTX (read & write) — v3 primer, built on clox_kit.Deck.
  *
- * Six-section structure: HARD LIMIT → Purpose → Visual Quality Charter →
- * Engine Selection → Incremental Pattern → Produce-Inspect-Iterate →
- * Failure Playbook.
- *
- * Rewrite history:
- *   v1 — pptxgenjs (Node) as primary engine. Worked for Sonnet but
- *        Gemini Flash kept inlining the entire JS source as one
- *        Python heredoc string, blowing the output-token cap mid-deck.
- *   v2 (this) — python-pptx as primary. Native Python, so the model
- *        writes Python directly (no wrapped JS string). And python-pptx
- *        genuinely supports incremental builds via Presentation(path)
- *        → add slide → save → return → reopen next call. pptxgenjs
- *        moved to a documented fallback for users who specifically
- *        ask for advanced chart layouts the python-pptx API can't
- *        express cleanly.
+ * History: v1 pptxgenjs (truncated mid-heredoc), v2 raw python-pptx with a
+ * 100-line template per slide (plain-looking, expensive). v3: the design
+ * lives in clox_kit; the primer teaches the API + editorial rules.
  */
-import { CHARTER_VERSION, FAILURE_HEADER, MOUNTS, PALETTE, PRECEDENCE, visualQualityCharter, workflow } from './charter'
+import { CHARTER_VERSION, CHUNKING, CRAFT, FAILURES, FORMATS, MOUNTS, PRECEDENCE, THEMES } from './charter'
 
-// ─── HARD LIMIT (top of primer, before anything else) ──────────────
-// Gemini Flash specifically ignored the "one slide per snippet" rule
-// in v1 because it lived in the sandbox-python tool description,
-// which models seem to deprioritise relative to skill primers.
-// Putting it FIRST here, in caps, with the consequence spelled out,
-// has been the single most effective intervention in similar prompt
-// rewrites (the Anthropic skill catalogue uses the same pattern).
-const HARD_LIMIT = `╔══════════════════════════════════════════════════════════════╗
-║  HARD LIMIT — ONE SLIDE PER SNIPPET. NO EXCEPTIONS.          ║
-╚══════════════════════════════════════════════════════════════╝
+const API = `API — from clox_kit import Deck
+d = Deck("q3-board-review", theme="studio", title="Q3 Board Review", brand="Acme", new=True)
+  name → file name (/mnt/user-data/outputs/q3-board-review.pptx). new=True only on the FIRST call.
+  Later calls: d = Deck("q3-board-review") reopens with theme and slides intact.
+  pdf=True also writes a matching PDF on every save. fonts="google" if the user will open it in Google Slides.
 
-Each \`python\` tool call MUST build EXACTLY ONE slide and then save
-the file. Then return. The NEXT call opens the saved file and adds
-the next slide. The sandbox filesystem persists across tool calls
-in this chat, so state survives.
+Slide types (every one takes kicker= — a small label above the title — and notes= for speaker notes):
+  d.cover(title, subtitle, kicker=, meta="Board update · Oct 2026", image="/path.jpg")
+  d.agenda(["Where we are", "What changed", "What we ask"])
+  d.section("What changed", "Two shifts in Q3", number=2)
+  d.statement("We grew 38% while cutting burn in half.", kicker="The headline", bg="hero"|"surface")
+  d.kpis(title, [("$4.2M", "Revenue", "+38%"), ("1,240", "Customers", "+212"), ("96%", "Retention", "-1pt")], highlight=0, note="Source …")
+  d.chart(title, kind, categories, {"2025": [...], "2026": [...]}, fmt="money", takeaway="September beat Q1.",
+          points=["Optional", "bullets beside the chart"], source="Finance, Oct 2026", labels=True)
+  d.bullets(title, ["Plain point", ("Headline", "one-line detail")], aside="A callout on the right")
+  d.cards(title, [("Title", "body", "Tag"), ...])          # 2-6 · d.process(title, steps) = numbered steps
+  d.compare(title, {"label": "Today", "title": "…", "points": [...]}, {"label": "With us", "title": "…", "points": [...]})
+  d.timeline(title, [("Q1", "Pilot", "3 sites"), ("Q2", "Launch", "…"), ...], current=1)
+  d.table(title, columns, rows, highlight="Revenue", fmt={"Revenue": "money", "Share": "pct"}, note=)
+  d.quote(text, who="Name", role="Title") · d.image("/path.png", title, caption=, points=, layout="split"|"full")
+  d.text(title, body, columns=2) · d.closing("Thank you", "Questions?", contact="name@acme.com")
 
-VIOLATING THIS RULE PRODUCES TRUNCATED OUTPUT.
+${FORMATS}
 
-Why: the model's per-turn output-token cap is finite. A 10-slide
-deck written as one snippet emits ~25-30K tokens of Python source
-inside the tool-call JSON envelope, which hits the cap mid-string.
-The tool argument is then malformed JSON and the user CANNOT use
-"Continue" to recover — the conversation is stuck. They lose the
-turn AND the credits.
+Finish: d.check() — design review (missing notes, repetitive layouts, overflowing text, no visuals).
+Fix everything it lists, then d.pdf() if the user wants a PDF copy.
+Read an existing deck: from pptx import Presentation; walk p.slides → shapes → text_frame / has_chart / notes.
+Restyle an uploaded deck: extract its content, then rebuild it with Deck (much better than patching shapes).`
 
-Symptom in the wild (do not let this happen):
-  - Snippet builds slides 1-4, starts slide 5, truncates mid-string.
-  - User sees "Reached model output limit, reply continue to resume".
-  - "Continue" produces a NEW python file that doesn't know about
-    slides 1-4 — the partial deck on disk gets overwritten, all
-    prior work is lost.
-
-The contract: ONE slide per snippet. Save after every slide. Print
-"N/M saved" so progress is visible. Return.`
-
-const STRUCTURAL_ELEMENTS = `MANDATORY STRUCTURE for a multi-slide deck (≥5 slides):
-
-  Slide 1 — COVER. Full-bleed ${PALETTE.primaryDeep} background. Title
-  in display serif, ITALIC, 48-60pt, ${PALETTE.parchment} or
-  ${PALETTE.accentGold}. Subtitle in body sans, 18-20pt, ${PALETTE.parchment}.
-  Thin ${PALETTE.accentGold} accent rule (0.5pt) ~1/3 down the slide.
-  NO bullet points on cover.
-
-  Slide 2 — AGENDA. Section header layout. Numbered list (01, 02, …)
-  in display serif italic, each number ${PALETTE.accentGold}, label in
-  body sans 22pt ${PALETTE.ink}. Right-aligned slide number ("01/05")
-  in body sans 10pt ${PALETTE.body}.
-
-  Slides 3-N — CONTENT. Pick ONE pattern per slide; do NOT mix:
-    (a) KPI tiles: 3-4 tiles in a row. Each tile = thin ${PALETTE.rule}
-        border, ${PALETTE.white} fill, oversized number 44pt display
-        serif italic ${PALETTE.accentGold}, label 12pt body sans
-        ${PALETTE.body}, micro-trend 10pt body sans ${PALETTE.body}.
-    (b) Two-column compare: each column has a label tag (12pt sans
-        bold ${PALETTE.accentGold}), a one-line headline (28pt serif
-        italic ${PALETTE.ink}), and a 3-4 line description (14pt sans
-        ${PALETTE.body}). Vertical hairline rule ${PALETTE.rule} between.
-    (c) Chart + insight: chart left (60% width), 3-bullet insight
-        list right. Bullets are square ${PALETTE.accentGold} markers,
-        body sans 16pt ${PALETTE.ink}.
-    (d) Section divider: full-bleed ${PALETTE.primaryDeep}, oversized
-        serif italic title 60pt ${PALETTE.accentGoldLt} centred.
-    EACH content slide gets a footer: section title (left, 10pt sans
-    ${PALETTE.body}), slide number (right, 10pt sans ${PALETTE.body}).
-
-  Slide N — CLOSING. Either thank-you/contact or branded sign-off.
-  Same visual weight as cover (full-bleed, oversized serif italic).
-
-  ALWAYS at least ONE section divider in any deck >5 slides.
-  ALWAYS at least ONE chart OR styled diagram across the deck.
-  Speaker notes on EVERY content slide (3-4 sentences).`
-
-// ─── ENGINE BLOCK ──────────────────────────────────────────────────
-// v2 makes python-pptx the default for ALL builds (create + edit).
-// Rationale documented inline so future-me doesn't reintroduce the
-// pptxgenjs heredoc pattern by accident.
-const ENGINE_BLOCK = `ENGINE: python-pptx (DEFAULT for both create and edit).
-
-Why python-pptx, not pptxgenjs:
-  - pptxgenjs is JS; calling it from the Python sandbox requires
-    wrapping the entire JS source as a Python heredoc string inside
-    the tool argument. For a 10-slide deck that's 20-30K output
-    tokens of source-as-string — easy to truncate, impossible to
-    resume mid-string.
-  - python-pptx is native Python. Each snippet writes Python directly,
-    so the source-to-output-tokens ratio is ~1:1 and there's no
-    string-escaping overhead.
-  - python-pptx genuinely supports incremental writes:
-      from pptx import Presentation
-      p = Presentation("/mnt/user-data/outputs/deck.pptx")  # or no arg
-      # add ONE slide to p …
-      p.save("/mnt/user-data/outputs/deck.pptx")
-    The next snippet calls \`Presentation("…/deck.pptx")\` and continues.
-    pptxgenjs has no equivalent — its API is build-everything-in-memory-
-    then-save-once.
-
-Already installed in the sandbox. No \`pip install\` needed.
-
-Before writing the first snippet, run:
-  bash → cat /mnt/skills/skills/pptx/SKILL.md
-  bash → cat /mnt/skills/skills/pptx/editing.md
-\`editing.md\` is python-pptx's canonical recipe library — shapes,
-text frames, charts, master slides, theming. Read it once at the
-start of the build; you do NOT need to re-read for each slide.
-
-pptxgenjs fallback (RARE): if the user explicitly asks for
-features python-pptx can't express cleanly (eg. advanced waterfall
-charts, certain SmartArt-style layouts) AND the deck is short
-(≤4 slides so the full JS source fits in one snippet), you may
-fall back to pptxgenjs:
-  - bash → npm install --prefix /opt/pptxgenjs pptxgenjs   (if missing)
-  - python → use subprocess to run \`node /tmp/build.js\`
-Even then, write ONE slide per snippet by emitting only that slide's
-pptxgenjs code, executing \`node\`, and saving. Never emit the whole
-deck source in one snippet.`
-
-// ─── INCREMENTAL PATTERN (concrete code template) ──────────────────
-// Models follow concrete templates more reliably than they follow
-// rules. This block is a copy-pasteable skeleton for snippets 1, 2,
-// and N. The format-specific details (palette / charter) are pulled
-// from the shared charter so they stay in sync with the visual rules.
-const INCREMENTAL_PATTERN = `INCREMENTAL PATTERN — copy this skeleton, fill in the slide body.
-
-SNIPPET 1 (cover slide, creates the file):
-
-    from pptx import Presentation
-    from pptx.util import Inches, Pt, Emu
-    from pptx.dgm.color import RGBColor
-    from pptx.enum.shapes import MSO_SHAPE
-    from pptx.enum.text import PP_ALIGN
-
-    PATH = "/mnt/user-data/outputs/<deck-name>.pptx"
-
-    p = Presentation()
-    p.slide_width  = Inches(13.333)   # 16:9
-    p.slide_height = Inches(7.5)
-
-    slide = p.slides.add_slide(p.slide_layouts[6])   # blank
-
-    # full-bleed primary-deep background
-    bg = slide.shapes.add_shape(
-        MSO_SHAPE.RECTANGLE, 0, 0, p.slide_width, p.slide_height)
-    bg.fill.solid(); bg.fill.fore_color.rgb = RGBColor(0x0B, 0x1F, 0x3A)
-    bg.line.fill.background()
-
-    # title (display serif italic, parchment)
-    tb = slide.shapes.add_textbox(Inches(0.6), Inches(2.4),
-                                   Inches(12.1), Inches(1.6))
-    tf = tb.text_frame
-    tf.text = "<deck title>"
-    r = tf.paragraphs[0].runs[0]
-    r.font.name = "Newsreader"
-    r.font.italic = True
-    r.font.size = Pt(56)
-    r.font.color.rgb = RGBColor(0xF5, 0xF1, 0xE8)
-
-    p.save(PATH)
-    print("1/10 saved")
-
-SNIPPET 2-N (open existing, add ONE slide, save):
-
-    from pptx import Presentation
-    from pptx.util import Inches, Pt
-    from pptx.dgm.color import RGBColor
-    from pptx.enum.shapes import MSO_SHAPE
-
-    PATH = "/mnt/user-data/outputs/<deck-name>.pptx"
-    p = Presentation(PATH)
-    slide = p.slides.add_slide(p.slide_layouts[6])
-
-    # … build THIS slide (cover / agenda / KPI tiles / chart / divider) …
-
-    # speaker notes on every content slide
-    slide.notes_slide.notes_text_frame.text = "<3-4 sentence narration>"
-
-    p.save(PATH)
-    print(f"{len(p.slides)}/<total> saved")
-
-The slide builder logic is the part that changes between snippets;
-the open/save scaffold is identical. Keep each snippet under 120
-lines of Python — if your slide is more complex than that, the slide
-itself is over-designed, not the limit being too tight.
-
-Note: \`pptx.dgm.color.RGBColor\` is the canonical import for colour;
-some recipes use \`pptx.dml.color.RGBColor\` which also works. Both
-resolve to the same class.`
-
-const INSPECT_COMMANDS = [
-  '# count slides + media inside the .pptx (it\'s a zip):',
-  'bash → unzip -l /mnt/user-data/outputs/<name>.pptx | grep -E "slide[0-9]+\\.xml|media/" | wc -l',
-  '# verify file size sits in the expected band (30KB-2MB):',
-  'bash → stat -c %s /mnt/user-data/outputs/<name>.pptx',
-  '# inspect slide structure:',
-  'python → from pptx import Presentation; p=Presentation("/mnt/user-data/outputs/<name>.pptx"); print(len(p.slides), "slides"); print([(s.shapes.title.text if s.shapes.title else "(no title)") for s in p.slides])',
-]
-
-const MINIMUM_REQUIREMENTS = [
-  '≥ 5 slides for a "deck" request (cover + agenda + ≥2 content + closing)',
-  '≥ 1 chart OR styled diagram somewhere in the deck',
-  '≥ 2 fonts visibly in use (display serif italic + body sans)',
-  '≥ 1 slide with a non-white background (cover and/or section divider)',
-  'speaker notes present on every content slide (slide.notes_slide.notes_text_frame.text non-empty)',
-  'file size between 30KB and 2MB (under 30KB usually means no decoration applied)',
-  'each slide was built in its own tool call (check the chat — N tool calls for N slides)',
-]
-
-const FAILURE_PLAYBOOK = `${FAILURE_HEADER}
-
-  - Snippet got long and you\'re tempted to build two slides in one
-    call → STOP. Save the partial work, return, build the next slide
-    in the next snippet. The 120-line/snippet ceiling is a guard
-    rail, not a suggestion. Two slides in one snippet is the #1 way
-    decks truncate.
-
-  - colour shows as black on render → you passed RGBColor as a tuple.
-    Must be RGBColor(0x0B, 0x1F, 0x3A), not (0x0B, 0x1F, 0x3A).
-
-  - font not rendering as expected → set font on the .font of EVERY
-    run (paragraph.runs[i].font.name = "Inter"), not on the paragraph
-    or text_frame. python-pptx silently ignores font on the wrong level.
-
-  - deck saves but slides look empty → you used \`p.slide_layouts[0]\`
-    (which expects placeholders you didn\'t fill). Use layout index 6
-    (blank) and add explicit textboxes/shapes instead.
-
-  - chart data ImportError → \`from pptx.chart.data import CategoryChartData\`
-    is the right import path. Do NOT use openpyxl chart classes here.
-
-  - "Continue" produces a fresh empty deck → you tried to build the
-    whole deck in one snippet, the tool call truncated mid-string,
-    and the next turn started with no on-disk file. Re-read the HARD
-    LIMIT at the top of this primer.`
+const SHAPE = `DECK SHAPE (adapt to the brief; a 10-slide default):
+  1 cover · 2 agenda or statement · 3-8 content (kpis, chart, cards/compare/timeline, table, quote) with a section
+  divider before each part of a longer deck · last: closing with a clear ask or next step.
+  At least one chart or kpis slide in any deck. Speaker notes (2-4 sentences) on every content slide.`
 
 export const PPTX_PROMPT = `<!-- charter-version: ${CHARTER_VERSION} -->
+You build presentations at the level of a top design studio, using clox_kit — a design library already installed in the python sandbox. It renders native, fully editable PowerPoint (real text, native charts, embedded speaker notes) with professional themes, type and layout. Do not hand-write python-pptx shapes for new decks.
 ${PRECEDENCE}
+${MOUNTS}
 
-You are a PowerPoint-deck specialist working in the Clox python sandbox. The user has armed \`bash\` and \`python\`. ${MOUNTS}
+${CHUNKING}
 
-${HARD_LIMIT}
+${API}
 
-${visualQualityCharter()}
+${THEMES}
 
-${STRUCTURAL_ELEMENTS}
+${SHAPE}
 
-${ENGINE_BLOCK}
+${CRAFT}
 
-${INCREMENTAL_PATTERN}
+${FAILURES}
 
-${workflow(INSPECT_COMMANDS, MINIMUM_REQUIREMENTS)}
-
-${FAILURE_PLAYBOOK}`
+When done, tell the user in 2-3 sentences what the deck argues and which theme you used; the file itself is shown automatically.`

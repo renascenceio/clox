@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import { Newsreader } from "next/font/google";
 import "./globals.css";
 import CookieConsent from "@/components/cookie-consent/CookieConsent";
+import ConsentScripts from "@/components/cookie-consent/ConsentScripts";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -109,6 +110,7 @@ export default function RootLayout({
       >
         {children}
         <CookieConsent />
+        <ConsentScripts />
       </body>
     </html>
   );

@@ -18,6 +18,7 @@ import { PALETTES, type Palette } from '@/shared/ui/chat/palettes'
 import Avatar from '@/shared/ui/components/Avatar'
 import { createClient } from '@/lib/supabase/client'
 import { listChats } from '@/lib/chat-store'
+import PrivacyChoices from '@/components/cookie-consent/PrivacyChoices'
 
 const USE_CASES = [
   'Content Creation', 'Software Development', 'Research & Analysis',
@@ -393,6 +394,10 @@ function SettingsBody({
         <Field p={p} mono={mono} label="How do you use Clox?">
           <Select p={p} value={form.use_case} onChange={v => setField('use_case', v)} options={['', ...USE_CASES]} placeholder="Select primary use case" />
         </Field>
+      </Section>
+
+      <Section p={p} mono={mono} serif={serif} eyebrow="04" title="Privacy & cookies">
+        <PrivacyChoices />
       </Section>
 
       {error && (

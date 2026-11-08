@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import CookieSettingsLink from '@/components/cookie-consent/CookieSettingsLink'
-import { CATEGORY_COPY } from '@/lib/consent/types'
+import { CATEGORIES, CATEGORY_COPY } from '@/lib/consent/types'
+import { entriesFor } from '@/lib/consent/registry'
 import LegalShell, { type LegalSection } from '@/components/legal/LegalShell'
 
 export const metadata: Metadata = {
@@ -10,48 +11,7 @@ export const metadata: Metadata = {
     'What cookies and similar storage Clox uses, what each category does, how long they live, and how to change your consent at any time.',
 }
 
-const EFFECTIVE = 'May 2026'
-
-const TABLE: Array<{
-  category: keyof typeof CATEGORY_COPY
-  examples: string[]
-  retention: string
-}> = [
-  {
-    category: 'necessary',
-    examples: [
-      'sb-* — Supabase auth session',
-      'clox_consent — your consent record',
-      '__Host-csrf — CSRF protection',
-    ],
-    retention: 'Session or up to 12 months',
-  },
-  {
-    category: 'functional',
-    examples: [
-      'clox_theme — pearl / onyx + alternates',
-      'clox_locale — language preference',
-      'clox_last_model — preferred default model',
-    ],
-    retention: 'Up to 12 months',
-  },
-  {
-    category: 'analytics',
-    examples: [
-      'Privacy-respecting page-view counter',
-      'Aggregate error sampling',
-    ],
-    retention: 'Up to 13 months',
-  },
-  {
-    category: 'marketing',
-    examples: [
-      'Anonymised campaign attribution (only if you opt in)',
-      'Conversion pixels for paid ads (only if you opt in)',
-    ],
-    retention: 'Up to 13 months',
-  },
-]
+const EFFECTIVE = 'November 2026'
 
 const SECTIONS: LegalSection[] = [
   {
@@ -91,46 +51,69 @@ const SECTIONS: LegalSection[] = [
   },
   {
     id: 'inventory',
-    title: 'A current inventory',
+    title: 'Everything we store or load',
     body: (
       <>
         <p>
-          The exact list shifts as we ship features, but the table below is accurate as of the effective date and covers
-          everything we set on first-party domains.
+          This list is generated from the same register the cookie banner uses, so it always matches what the site
+          actually does. Entries ending in <code>*</code> cover a family of keys (for example one per chat).
         </p>
-        <div className="mt-4 overflow-x-auto border border-hairline">
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="border-b border-hairline-soft bg-rail-soft">
-                <th className="px-4 py-3 font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-muted">Category</th>
-                <th className="px-4 py-3 font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-muted">Examples</th>
-                <th className="px-4 py-3 font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-muted">Retention</th>
-              </tr>
-            </thead>
-            <tbody>
-              {TABLE.map(row => (
-                <tr key={row.category} className="border-b border-hairline-soft last:border-b-0">
-                  <td className="px-4 py-3 align-top">
-                    <div className="font-serif italic text-[15.5px] text-ink leading-tight">
-                      {CATEGORY_COPY[row.category].label}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <ul className="m-0 list-none p-0 font-mono text-[11.5px] tracking-[0.02em] text-ink leading-[1.6]">
-                      {row.examples.map(ex => (
-                        <li key={ex}>{ex}</li>
-                      ))}
-                    </ul>
-                  </td>
-                  <td className="px-4 py-3 align-top font-mono text-[11.5px] tracking-[0.02em] text-ink-soft">
-                    {row.retention}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {CATEGORIES.map(cat => {
+          const rows = entriesFor(cat)
+          return (
+            <div key={cat} className="mt-6">
+              <h3 className="font-serif italic text-[17px] text-ink leading-tight">{CATEGORY_COPY[cat].label}</h3>
+              {rows.length ? (
+                <ul className="mt-2 m-0 list-none p-0 border border-hairline divide-y divide-hairline-soft">
+                  {rows.map(r => (
+                    <li key={r.match} className="grid gap-1 px-4 py-3 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_minmax(0,11rem)] md:gap-4">
+                      <div className="min-w-0">
+                        <div className="break-all font-mono text-[12px] text-ink">{r.match}</div>
+                        <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-muted">
+                          {r.kind} · {r.provider}
+                        </div>
+                      </div>
+                      <div className="text-[13.5px] leading-relaxed text-ink-soft">{r.purpose}</div>
+                      <div className="font-mono text-[11px] tracking-[0.02em] text-ink-muted md:text-right">{r.duration}</div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-ink-muted">Nothing in this category is in use right now.</p>
+              )}
+            </div>
+          )
+        })}
       </>
+    ),
+  },
+  {
+    id: 'how-consent-works',
+    title: 'How your choice is applied',
+    body: (
+      <ul>
+        <li>
+          Optional categories are <strong>off until you turn them on</strong>, in every country, including places where
+          the law only requires an opt-out.
+        </li>
+        <li>
+          &ldquo;Reject all&rdquo; is as easy as &ldquo;Accept all&rdquo;, and there are no pre-ticked boxes.
+        </li>
+        <li>
+          Your choice is saved on this device (a <code>clox_consent</code> cookie and a local copy) with the date and a
+          consent ID you can quote if you contact us. Every page and every open tab follows it immediately.
+        </li>
+        <li>
+          Turning a category off removes what it stored and stops its scripts straight away.
+        </li>
+        <li>
+          We ask again after six months, or sooner if this list changes.
+        </li>
+        <li>
+          The wording you see depends on your country (from your connection, at country or state level only), never
+          your controls.
+        </li>
+      </ul>
     ),
   },
   {
@@ -141,8 +124,8 @@ const SECTIONS: LegalSection[] = [
         <p>
           We honour the <strong>Global Privacy Control</strong> (GPC) signal as a binding opt-out of the &ldquo;sale or
           sharing&rdquo; of personal information under California&rsquo;s CCPA / CPRA and the corresponding rules in
-          Colorado and Connecticut. If your browser sends GPC, we set marketing to off automatically and don&rsquo;t show
-          the consent banner.
+          Colorado and Connecticut. If your browser sends GPC, we keep everything optional off, don&rsquo;t show the consent
+          banner, and marketing can never be switched back on while the signal is present.
         </p>
         <p>
           We also honour the legacy <strong>Do Not Track</strong> (DNT) header in the same way, even though most browsers
@@ -163,7 +146,7 @@ const SECTIONS: LegalSection[] = [
             <CookieSettingsLink className="underline decoration-hairline hover:decoration-ink">
               Cookie settings
             </CookieSettingsLink>{' '}
-            here, or use the same link in the footer of any page.
+            here, or from the footer, your account menu, or Settings › Privacy &amp; cookies.
           </li>
           <li>
             Clear cookies in your browser&rsquo;s privacy settings — we&rsquo;ll re-prompt the next time you visit.

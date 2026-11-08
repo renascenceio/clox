@@ -1,125 +1,57 @@
 /**
- * SHARED VISUAL QUALITY CHARTER — the taste layer the model doesn't
- * have natively. Every doc-producing primer (PPTX/XLSX/PDF/DOCX)
- * composes its content from these building blocks so we never drift
- * on palette, typography, spacing, or workflow shape across formats.
+ * Shared building blocks for the document-skill primers (PPTX, PDF, XLSX,
+ * DOCX, Data). Since v3 the taste lives in CODE — `clox_kit`, the Python
+ * design library copied into every sandbox (source: `sandbox-kit/clox_kit/`).
+ * Primers teach the kit's API and the editorial rules; they no longer carry
+ * hex tables and 100-line python-pptx templates. That makes them ~4× shorter
+ * (cheaper per turn) and the output far more consistent.
  *
- * EDITING THIS FILE: bump `CHARTER_VERSION` whenever any constant or
- * composer changes. The apply script (`_apply-skill-rewrites.ts`)
- * keys on this version — re-running with the same version is a
- * no-op, bumping it triggers an UPDATE on all four primers.
+ * EDITING: bump `CHARTER_VERSION` whenever any primer changes. The apply
+ * script keys on it — same version = no-op, higher = UPDATE all primers.
  */
 
-// v1 — initial four-primer rewrite (PPTX/XLSX/PDF/DOCX from a single charter).
-// v2 — PPTX primer switched from pptxgenjs (JS-in-Python heredoc, output-cap
-//      casualty) to python-pptx (native, genuinely incremental). HARD LIMIT
-//      block added at top of the primer. Inspect/failure sections updated.
-//      Other three primers re-pushed unchanged but with a fresh version
-//      tag so the idempotency guard doesn't skip them on a fresh DB.
-export const CHARTER_VERSION = 2
+// v1 — four primers from one charter (palette + typography as prose).
+// v2 — PPTX switched from pptxgenjs to python-pptx, HARD LIMIT block.
+// v3 — clox_kit: themes, embedded fonts, Deck/Report/Book/data APIs, native
+//      charts, design review (`check()`), new Data skill. ~70% fewer tokens.
+export const CHARTER_VERSION = 3
 
-// ─── PRECEDENCE BANNER ────────────────────────────────────────────
-// Shipped at the top of every primer. The model's first job is to
-// respect the user's brief. Defaults below are scaffolding — they
-// only fill in what the user DIDN'T pin down.
-export const PRECEDENCE = `PRECEDENCE: any explicit instructions in the user message — colours, fonts, layout, content focus, page count, file name, format — OVERRIDE the craftsmanship defaults below. Defaults are scaffolding, not requirements. If the user says "dark blue and gold", use dark blue and gold; if they say "single page", produce one page; if they say "no footer", drop the footer. Apply the defaults only for aspects the user did NOT specify.`
+export const PRECEDENCE = `The user's brief wins: colours, fonts, brand, length, file name, tone and structure they specify override every default below.`
 
-// ─── DEFAULT PALETTE ──────────────────────────────────────────────
-// A single tasteful palette that works for pitch decks, financial
-// workbooks, executive memos, and product briefs alike. Chosen
-// because (a) the user's recent prompts repeatedly land on "dark
-// navy + gold", (b) it photographs/screenshots well across both
-// light and dark renderers, (c) every hex value is accessibility-
-// safe (≥4.5:1 contrast against the matched neutral).
-//
-// Hex values are LITERAL — do not paraphrase them in the primer.
-// The model needs the exact codes to feed RGBColor / Font / Fill.
-export const PALETTE = {
-  primaryDeep:   '#0B1F3A',  // deep navy — cover bg, master accent
-  primaryMid:    '#1E3A5F',  // steel blue — secondary fills, chart bars
-  accentGold:    '#C7A557',  // warm matte gold — KPI numbers, rules
-  accentGoldLt:  '#E6D292',  // gold tint — callout fills, highlights
-  ink:           '#1A1A1A',  // primary text on light backgrounds
-  body:          '#4A4A4A',  // secondary text, captions
-  rule:          '#C8CCD2',  // hairline rules, table gridlines
-  parchment:     '#F5F1E8',  // warm canvas, alternate row stripe
-  white:         '#FFFFFF',
-} as const
+export const MOUNTS = `Uploads: /mnt/user-data/uploads/. Everything clox_kit writes goes to /mnt/user-data/outputs/ and appears in the chat as a download — never base64 files into your reply.`
 
-// ─── TYPOGRAPHY ────────────────────────────────────────────────────
-// Two-family stack: editorial serif for display (titles, large
-// numbers, section dividers) and a neutral sans for body. Italic
-// serif is the signature move — it's what makes Anthropic-style
-// decks/briefs feel deliberate vs. corporate-PowerPoint.
-export const TYPOGRAPHY = `Display (titles, section dividers, oversize numbers): 'Newsreader', Georgia, 'Times New Roman', serif — ITALIC.
-Body (paragraphs, table cells, captions): 'Inter', 'Helvetica Neue', Arial, sans-serif — regular.
-Mono (code, fixed-width data): 'JetBrains Mono', Menlo, Consolas, monospace.
-NEVER use Calibri. NEVER use the default theme font. Always set fonts explicitly on every text run.`
+export const THEMES = `THEMES (pick by audience; never default to plain white + blue):
+  studio     light, electric violet + hot pink — the default; product, strategy, general
+  midnight   dark, acid lime + violet — tech, launches, AI
+  electric   near-black, hot pink + cyan + yellow, grotesk type — pitches, events, culture, bold asks
+  editorial  warm paper, serif headlines, vermilion — essays, research, memos
+  navy       white + navy + gold, serif — finance, board, legal, formal
+  swiss      white, black, blaze orange, grotesk — clean, confident, design-led
+  forest     soft green + mint — sustainability, health, calm finance
+Brand colour: theme="studio", brand="#E4002B" (or dark=True). Fine-tune any token:
+accent=, accent2=, hero= (cover/section colour), bg=, ink=, series=[...].`
 
-// ─── SPACING SCALE ─────────────────────────────────────────────────
-// One scale, used everywhere — gutter between KPI tiles, slide
-// margins, table cell padding, paragraph spacing. Multiples of 4
-// because that's the divisor every layout engine snaps to.
-export const SPACING = `Spacing scale (use these values, NOT arbitrary numbers): 4, 8, 12, 16, 24, 40, 64 (px or pt, scale to the format). Inside a slide/page: 40-64 outer margin, 24 between major blocks, 16 between paragraphs, 8 between bullet items.`
+export const FORMATS = `Number formats (fmt=): "money" ($4.2M), "money:€", "pct" (0.34 → 34%), "%" (34 → 34%), "int", "1dp", "k", "m".
+Chart kinds: bar, barh, stacked, stacked100, barh_stacked, line, area, pie, donut, scatter.
+Every list/series argument also accepts pandas Series, numpy arrays and DataFrames.`
 
-// ─── PRODUCE → INSPECT → ITERATE WORKFLOW ─────────────────────────
-// The uniform self-check loop. Every format-specific primer plugs
-// its own structural assertions into the INSPECT block.
-export function workflow(inspectCommands: string[], minimumRequirements: string[]): string {
-  return `PRODUCE → INSPECT → ITERATE — every artifact must go through all three.
+export const CRAFT = `CRAFT — what separates a designed document from a default one:
+  - Headlines are claims, not topics: "Enterprise drives 70% of revenue", not "Revenue by segment".
+  - One idea per slide/section. If you need two charts, make two slides.
+  - Numbers carry the story: put the key figure big (kpis) and say what changed (deltas, takeaway=).
+  - Use real numbers from the user's data or your research. Never invent statistics; if you estimate, say so.
+  - Vary rhythm: never three slides of the same kind in a row; use a statement/section to pace.
+  - Short copy: ≤ 6 bullets, ≤ 14 words each. Detail goes in speaker notes (notes=...).
+  - Charts: ≤ 8 categories (group the tail into "Other"), sorted, one highlighted message.`
 
-1. PRODUCE: write the file to /mnt/user-data/outputs/<sensible-name>.<ext>.
-   The filename must reflect the user's request ("ai-trends-deck.pptx", not "output.pptx").
+export const CHUNKING = `BUILD IN SMALL CALLS — each python call adds 1-3 slides/blocks/sheets, then returns.
+The kit saves after EVERY call, so a timeout or output cap never loses work.
+The next call reopens by name (Deck("q3-review") / Report("brief") / Book("analysis")) and continues.
+Never write a whole deck in one snippet: long snippets hit the output cap mid-JSON and cannot be resumed.`
 
-2. INSPECT: run THESE structural checks before declaring done.
-${inspectCommands.map(c => '   ' + c).join('\n')}
-
-   The output is "ready" only when ALL of these pass:
-${minimumRequirements.map(r => '   - ' + r).join('\n')}
-
-3. ITERATE: if any inspect check fails OR the output is structurally
-   thin (one chart instead of three, one font everywhere, no
-   decoration, no theme), patch the code and re-save. Run inspect
-   again. Only after the second inspect goes green do you tell the
-   user the file is ready.
-
-NEVER skip step 2. NEVER declare "done" off the back of a saved file
-without confirming the saved file matches the requirements.`
-}
-
-// ─── FAILURE-MODE PLAYBOOK FRAMING ─────────────────────────────────
-// The header for the per-format playbook. Each primer appends its
-// own 3-5 specific entries.
-export const FAILURE_HEADER = `FAILURE-MODE PLAYBOOK — when something breaks, do NOT bail to "I'll explain it in text instead". Recover with one of these moves:`
-
-// ─── MOUNT PATHS ───────────────────────────────────────────────────
-// Single source of truth for the sandbox layout. If the manager
-// ever changes these, only this constant moves.
-export const MOUNTS = `Read uploads at /mnt/user-data/uploads/<filename>. Write deliverables to /mnt/user-data/outputs/<filename>. Files written there are auto-collected and shown to the user as download chips.`
-
-// ─── COLOUR/TYPE PARAGRAPH HELPER ─────────────────────────────────
-// Renders the palette + typography + spacing into a single VQC
-// section. Used identically across all four primers so the model
-// internalises the same defaults regardless of which format it
-// was activated for.
-export function visualQualityCharter(extras: string = ''): string {
-  return `VISUAL QUALITY CHARTER — apply these defaults unless the user pinned a different brand.
-
-PALETTE (literal hex codes — feed these to RGBColor / Fill / Font):
-  primary-deep   ${PALETTE.primaryDeep}   (cover backgrounds, master accent bars)
-  primary-mid    ${PALETTE.primaryMid}    (secondary fills, primary chart series)
-  accent-gold    ${PALETTE.accentGold}    (KPI numbers, decorative rules, highlights)
-  accent-gold-lt ${PALETTE.accentGoldLt}  (callout fills, soft highlights)
-  ink            ${PALETTE.ink}           (primary text on light backgrounds)
-  body           ${PALETTE.body}          (secondary text, captions, footnotes)
-  rule           ${PALETTE.rule}          (hairline rules, gridlines)
-  parchment      ${PALETTE.parchment}     (warm canvas, alternate row stripe)
-  white          ${PALETTE.white}
-
-TYPOGRAPHY:
-${TYPOGRAPHY.split('\n').map(l => '  ' + l).join('\n')}
-
-SPACING:
-  ${SPACING}
-${extras ? '\n' + extras : ''}`
-}
+export const FAILURES = `IF SOMETHING BREAKS — fix and continue, never fall back to describing the file in text:
+  - Traceback → read the last line, fix that argument, rerun ONLY that call (state is on disk).
+  - Unsure what's built → d.outline() (or r.outline()) prints every slide/block.
+  - Wrong slide → d.edit(n, title=...) / d.remove(n) / d.move(n, to) / d.at(n).kpis(...) inserts.
+  - Wrong look → d.restyle("navy") re-renders everything; nothing is lost.
+  - ImportError for clox_kit → the sandbox is old: pip install python-pptx reportlab openpyxl pillow, then retry.`

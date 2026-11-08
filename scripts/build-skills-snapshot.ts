@@ -61,6 +61,9 @@ const PYTHON_PACKAGES: string[] = [
   // Numerics — algorithmic-art, xlsx, occasional analysis.
   'numpy>=1.26',
   'pandas>=2.2',
+  // clox_kit PNG charts (decks/PDF reports). The kit auto-installs it
+  // on first use when the snapshot predates this line.
+  'matplotlib>=3.8',
 ]
 
 const SKILLS_REPO_URL    = 'https://github.com/anthropics/skills.git'

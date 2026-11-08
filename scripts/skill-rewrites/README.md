@@ -1,5 +1,14 @@
 # Document-skill quality system
 
+> **v3 (Nov 2026):** the design now lives in code — `sandbox-kit/clox_kit/`
+> (themes incl. `electric`, embedded Inter / Instrument Serif / Space Grotesk,
+> `Deck` → editable PPTX + PDF, `Report` → designed PDF, `Book` → styled XLSX,
+> `data` → token-cheap pandas helpers). It is copied into every chat sandbox at
+> boot (`src/lib/sandbox/kit.ts`). The primers below teach its API and are ~half
+> the size of v2. New skill: `data.ts` → "Data analysis (CSV & Excel)".
+> End-to-end check in a real sandbox: `pnpm exec tsx scripts/_verify-clox-kit.ts`.
+> Parts of the text below describe v2 and are kept for history.
+
 This folder is the **single source of truth** for the document-producing
 skill primers (PPTX, XLSX, PDF, DOCX). Every primer is a typed module
 that composes a shared `Visual Quality Charter` (palette, typography,
