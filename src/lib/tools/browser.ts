@@ -112,7 +112,10 @@ export function makeBrowserTool(
     },
     experimental_toToolResultContent: result => {
       const r = result as { toolCallId?: string; shot?: unknown; seen?: unknown }
-      const { shot: _shot, seen: _seen, toolCallId: _id, ...rest } = r as Record<string, unknown>
+      const rest: Record<string, unknown> = { ...(r as Record<string, unknown>) }
+      delete rest.shot
+      delete rest.seen
+      delete rest.toolCallId
       const parts: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[] = [
         { type: 'text', text: JSON.stringify(rest) },
       ]
