@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
+import WorkspaceSlot from '@/shared/ui/chat/workspace-host'
+import { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
 import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
 import { PALETTES, type Palette } from '@/shared/ui/chat/palettes'
 import { listChats } from '@/lib/chat-store'
@@ -209,8 +210,7 @@ export default function SkillsPage() {
   }, [chrome.router, chatList])
 
   return (
-    <div className="fixed inset-0 isolate">
-      <ChatWorkspace
+    <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
         brandName="Clox"
@@ -403,8 +403,7 @@ export default function SkillsPage() {
             )}
           </div>
         }
-      />
-    </div>
+    />
   )
 }
 

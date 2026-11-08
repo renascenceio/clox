@@ -112,7 +112,9 @@ export async function deliver(
   ctx: { caller: Awaited<ReturnType<typeof getCallerForLogging>>; chatId: string | null; kind: string },
 ): Promise<string[]> {
   const total = outputs.reduce((n, o) => n + o.bytes.byteLength, 0)
-  if (total <= INLINE_LIMIT_BYTES || !ctx.caller) {
+  // Signed-in results are always stored: a data URL would only live in the
+  // browser's own storage (gone on another device, and it fills the quota).
+  if (!ctx.caller) {
     if (total > INLINE_LIMIT_BYTES) {
       throw new Error('The generated file is too large to return without a signed-in account to store it.')
     }
@@ -129,7 +131,7 @@ export async function deliver(
         content: Buffer.from(o.bytes),
         contentType: o.mediaType,
       })
-      return uploaded.signedUrl
+      return uploaded.url
     }),
   )
 }

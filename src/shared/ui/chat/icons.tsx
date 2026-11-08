@@ -32,9 +32,16 @@ export const I: Record<
   | 'trash'
   | 'video'
   | 'check'
-  | 'sparkle',
+  | 'sparkle'
+  | 'files',
   ReactNode
 > = {
+  files: (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+      <path d="M3.5 1.5h4l2.5 2.5v7.5h-6.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+      <path d="M7.5 1.5V4H10M5.2 7h3.1M5.2 9h3.1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  ),
   home: (
     <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
       <path d="M1.5 6.5 6.5 2l5 4.5V11a1 1 0 0 1-1 1H8.5V8.5h-4V12H2.5a1 1 0 0 1-1-1z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />

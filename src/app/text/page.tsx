@@ -9,7 +9,8 @@ import { CodeArtifact } from '@/shared/ui/components/CodeArtifact'
 import { DownloadStrip, type DownloadStripFile } from '@/shared/ui/components/DownloadStrip'
 import { BrowserPanel, type BrowserInvocation, type BrowserProgressEvent } from '@/shared/ui/components/BrowserPanel'
 
-import ChatWorkspace, {
+import WorkspaceSlot from '@/shared/ui/chat/workspace-host'
+import {
   type Attachment,
   type ModeOption,
   type ModelOption,
@@ -19,6 +20,8 @@ import ChatWorkspace, {
 import { I } from '@/shared/ui/chat/icons'
 import {
   getStoredPalette,
+  initialPalette,
+  markPaletteSeen,
   setStoredPalette,
   type PaletteKey,
 } from '@/shared/ui/chat/palettes'
@@ -62,6 +65,7 @@ import type { AppLanguage } from '@/shared/ui/chat/ChatWorkspace'
 import { formatCredits, planFor } from '@/lib/plans'
 import { SIGNED_OUT_USER, cachedIdentity, watchIdentity } from '@/shared/ui/chat/chrome-identity'
 import { saveTranscript } from '@/lib/transcript-store'
+import { parseStored } from '@/lib/storage/file-url'
 
 /* =====================================================================
    Modes — text route is "chat / research / code"; image, voice and video
@@ -107,10 +111,10 @@ export default function TextPage() {
   // regions (which read this `theme` variable) match what's already on
   // the html element. We deliberately do NOT touch the DOM attributes
   // here — those are owned by `setStoredPalette` to avoid double writes.
-  const [theme, setTheme] = useState<PaletteKey>('pearl')
+  const [theme, setTheme] = useState<PaletteKey>(() => initialPalette('pearl'))
   useEffect(() => {
-    const stored = getStoredPalette('pearl')
-    setTheme(stored)
+    setTheme(getStoredPalette('pearl'))
+    markPaletteSeen()
   }, [])
 
   /* ----- modality + model + active chat ----------------------------
@@ -732,7 +736,7 @@ export default function TextPage() {
   useEffect(() => {
     const saved = localStorage.getItem(`chat-history-${activeChatId}`)
     if (saved && setMessages) {
-      try { setMessages(JSON.parse(saved)) } catch { setMessages([]) }
+      try { setMessages(parseStored(saved)) } catch { setMessages([]) }
     } else if (setMessages) {
       setMessages([])
     }
@@ -2188,6 +2192,7 @@ export default function TextPage() {
     { id: 'projects', label: 'Projects', icon: I.proj, onClick: () => router.push('/projects') },
     { id: 'chats', label: 'Chats', icon: I.chats, count: recentChats.length, active: true },
     { id: 'history', label: 'History', icon: I.hist, onClick: () => router.push('/history') },
+    { id: 'files', label: 'Files', icon: I.files, onClick: () => router.push('/files') },
     { id: 'gallery', label: 'Gallery', icon: I.gal, onClick: () => router.push('/gallery') },
   ]
 
@@ -2440,8 +2445,7 @@ export default function TextPage() {
   }, [systemPrompt, messages, input, selectedTextModel.id])
 
   return (
-    <div className="fixed inset-0 isolate">
-      <ChatWorkspace
+    <WorkspaceSlot
         theme={theme}
         variant="chip"
         brandName="Clox"
@@ -2523,8 +2527,7 @@ export default function TextPage() {
         topP={0.95}
         maxTokens={maxTokens}
         onChangeMaxTokens={setMaxTokens}
-      />
-    </div>
+    />
   )
 }
 

@@ -1210,7 +1210,7 @@ export async function POST(req: Request) {
                     dataStream.writeMessageAnnotation({
                       type: 'output-file',
                       filename: uploaded.filename,
-                      url: uploaded.signedUrl,
+                      url: uploaded.url,
                       mime: uploaded.mime,
                       size: uploaded.size,
                     })

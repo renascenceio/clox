@@ -207,6 +207,21 @@ export function getStoredPalette(fallback: PaletteKey = 'pearl'): PaletteKey {
   return fallback
 }
 
+let paletteSeen = false
+
+/** Initial palette for a page's `useState`. The first page of a tab must
+ *  start from the fallback (it matches the server HTML); every page after
+ *  that starts from the stored palette, so switching pages never flashes
+ *  the default colours for a frame. */
+export function initialPalette(fallback: PaletteKey = 'pearl'): PaletteKey {
+  return paletteSeen ? getStoredPalette(fallback) : fallback
+}
+
+/** Call from an effect once the stored palette has been applied. */
+export function markPaletteSeen() {
+  paletteSeen = true
+}
+
 /**
  * Map a palette key to the `data-theme` value `globals.css` actually
  * reacts to. The CSS uses kebab-case for the alternates (`pearl-light`)

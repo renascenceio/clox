@@ -10,6 +10,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import { stableFileUrl } from '@/lib/storage/file-url'
 
 export interface BrowserInvocation {
   toolCallId?: string
@@ -124,10 +125,10 @@ export function BrowserPanel({
 
       <div style={{ position: 'relative', aspectRatio: '1280 / 800', background: 'rgba(127,127,127,0.12)' }}>
         {page?.shot ? (
-          <a href={page.shot} target="_blank" rel="noreferrer" title="Open full-size screenshot">
+          <a href={stableFileUrl(page.shot)} target="_blank" rel="noreferrer" title="Open full-size screenshot">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={page.shot}
+              src={stableFileUrl(page.shot)}
               alt={page.title ? `Screenshot of ${page.title}` : 'Browser screenshot'}
               style={{
                 display: 'block', width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top',

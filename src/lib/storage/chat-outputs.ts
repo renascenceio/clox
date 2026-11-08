@@ -19,6 +19,7 @@
  */
 
 import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { fileUrl } from './file-url'
 
 const BUCKET = 'chat-outputs'
 const SIGNED_URL_TTL_SECONDS = 60 * 60 // 1 hour
@@ -61,8 +62,11 @@ export interface ChatOutputUpload {
 export interface ChatOutputResult {
   /** The full storage path: `<userId>/<chatId>/<filename>`. */
   path: string
-  /** A short-lived signed URL the browser can fetch directly. */
+  /** A short-lived signed URL — only for handing to outside services
+   *  (e.g. a provider fetching an input image). */
   signedUrl: string
+  /** Permanent in-app link (`/api/files/…`) — what chats should keep. */
+  url: string
   /** Original filename — propagated to the download chip label. */
   filename: string
   /** Resolved mime type — used by the chip to pick an icon. */
@@ -107,6 +111,24 @@ export async function uploadChatOutput(
     throw new Error(`chat-outputs upload failed: ${uploadError.message}`)
   }
 
+  // The Files library lists from this table. Images handed to a provider
+  // as input aren't something the user made, so they stay out of it.
+  if (!filename.startsWith('input-')) {
+    const { error: rowError } = await supabase.from('chat_files').upsert(
+      {
+        user_id: input.userId,
+        chat_id: input.chatId,
+        path,
+        filename,
+        mime,
+        size: input.content.byteLength,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'path' },
+    )
+    if (rowError) console.error('[clox] chat_files record failed:', rowError.message)
+  }
+
   const { data, error: signError } = await supabase.storage
     .from(BUCKET)
     .createSignedUrl(path, SIGNED_URL_TTL_SECONDS)
@@ -119,6 +141,7 @@ export async function uploadChatOutput(
   return {
     path,
     signedUrl: data.signedUrl,
+    url: fileUrl(path),
     filename,
     mime,
     size: input.content.byteLength,
@@ -178,10 +201,38 @@ export async function loadChatFiles(userId: string, chatId: string): Promise<Sto
   }
 }
 
-/** Browser screenshots live beside the chat's files, out of sight of the
- *  workspace restore. Signed for a week so the chat can replay them. */
-const SHOT_TTL_SECONDS = 7 * 24 * 60 * 60
+/** Fresh signed URL for a stored file (used by `/api/files/…`); null when
+ *  the file doesn't exist. `downloadAs` makes the browser save it. */
+export async function signChatOutput(path: string, downloadAs?: string): Promise<string | null> {
+  const { data, error } = await getServiceClient().storage
+    .from(BUCKET)
+    .createSignedUrl(path, SIGNED_URL_TTL_SECONDS, downloadAs ? { download: downloadAs } : undefined)
+  return error || !data?.signedUrl ? null : data.signedUrl
+}
 
+/** Remove one of the user's files (storage object and its library row). */
+export async function deleteChatOutput(userId: string, path: string): Promise<void> {
+  if (!path.startsWith(`${userId}/`) || path.split('/').length !== 3) throw new Error('Not your file')
+  const supabase = getServiceClient()
+  const { error } = await supabase.storage.from(BUCKET).remove([path])
+  if (error) throw new Error(`delete failed: ${error.message}`)
+  await supabase.from('chat_files').delete().eq('path', path).eq('user_id', userId)
+}
+
+/** Remove everything a chat stored (files, working state, screenshots). */
+export async function deleteChatFolder(userId: string, chatId: string): Promise<void> {
+  const supabase = getServiceClient()
+  const bucket = supabase.storage.from(BUCKET)
+  const base = `${userId}/${chatId}`
+  const names = async (dir: string) => ((await bucket.list(dir, { limit: 1000 })).data ?? [])
+    .filter(f => f.id).map(f => `${dir}/${f.name}`)
+  const all = (await Promise.all([base, `${base}/_workspace`, `${base}/_browser`].map(names))).flat()
+  if (all.length) await bucket.remove(all)
+  await supabase.from('chat_files').delete().eq('user_id', userId).eq('chat_id', chatId)
+}
+
+/** Browser screenshots live beside the chat's files, out of sight of the
+ *  workspace restore. */
 export async function saveBrowserShot(input: {
   userId: string
   chatId: string
@@ -193,7 +244,5 @@ export async function saveBrowserShot(input: {
   const bucket = supabase.storage.from(BUCKET)
   const { error } = await bucket.upload(path, input.content, { contentType: 'image/png', upsert: true })
   if (error) throw new Error(`screenshot upload failed: ${error.message}`)
-  const { data, error: signError } = await bucket.createSignedUrl(path, SHOT_TTL_SECONDS)
-  if (signError || !data?.signedUrl) throw new Error(`screenshot sign failed: ${signError?.message ?? 'no url'}`)
-  return data.signedUrl
+  return fileUrl(path)
 }

@@ -19,6 +19,8 @@ import { useRouter } from 'next/navigation'
 import { I } from './icons'
 import {
   getStoredPalette,
+  initialPalette,
+  markPaletteSeen,
   setStoredPalette,
   type PaletteKey,
 } from './palettes'
@@ -27,7 +29,7 @@ import { createClient } from '@/lib/supabase/client'
 import { SIGNED_OUT_USER, cachedIdentity, watchIdentity, type ChromeUser } from './chrome-identity'
 
 export type ActiveRail =
-  | 'projects' | 'chats' | 'history' | 'gallery'
+  | 'projects' | 'chats' | 'history' | 'files' | 'gallery'
   // Surfaces opened from the avatar dropdown (no rail-nav highlight).
   | 'skills' | 'settings' | 'admin'
 
@@ -46,10 +48,10 @@ export function useChatChrome(active: ActiveRail) {
      .dark class, localStorage), so we never end up with the React state,
      CSS variables, and inline palette out of sync.
   */
-  const [theme, setTheme] = useState<PaletteKey>('pearl')
+  const [theme, setTheme] = useState<PaletteKey>(() => initialPalette('pearl'))
   useEffect(() => {
-    const stored = getStoredPalette('pearl')
-    setTheme(stored)
+    setTheme(getStoredPalette('pearl'))
+    markPaletteSeen()
   }, [])
   function handleThemeChange(next: PaletteKey) {
     setTheme(next)
@@ -117,6 +119,7 @@ export function useChatChrome(active: ActiveRail) {
     { id: 'projects', label: 'Projects', icon: I.proj,  onClick: () => router.push('/projects'), active: active === 'projects' },
     { id: 'chats',    label: 'Chats',    icon: I.chats, onClick: () => router.push('/text'),     active: active === 'chats' },
     { id: 'history',  label: 'History',  icon: I.hist,  onClick: () => router.push('/history'),  active: active === 'history' },
+    { id: 'files',    label: 'Files',    icon: I.files, onClick: () => router.push('/files'),    active: active === 'files' },
     { id: 'gallery',  label: 'Gallery',  icon: I.gal,   onClick: () => router.push('/gallery'),  active: active === 'gallery' },
   ]
 

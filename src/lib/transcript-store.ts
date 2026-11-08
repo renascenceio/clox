@@ -6,6 +6,8 @@
  *  and drop the file bodies (names and types stay), and as a last resort
  *  clear the oldest other transcripts. */
 
+import { emitChatChange } from './chat-store'
+
 const PREFIX = 'chat-history-'
 
 type Msg = Record<string, unknown>
@@ -47,6 +49,17 @@ function otherTranscriptKeys(keep: string) {
 
 export function saveTranscript(chatId: string, messages: unknown[]) {
   if (typeof window === 'undefined' || !chatId || messages.length === 0) return
+  emitChatChange({ kind: 'history', chatId, modality: 'text', items: messages })
+  writeLocal(chatId, messages)
+}
+
+/** Keep a transcript in this browser only (e.g. one just loaded from the server). */
+export function cacheTranscript(chatId: string, messages: unknown[]) {
+  if (typeof window === 'undefined' || !chatId || messages.length === 0) return
+  writeLocal(chatId, messages)
+}
+
+function writeLocal(chatId: string, messages: unknown[]) {
   const key = PREFIX + chatId
   let full: string
   try { full = JSON.stringify(messages) } catch { return }
@@ -60,5 +73,5 @@ export function saveTranscript(chatId: string, messages: unknown[]) {
     localStorage.removeItem(other)
     if (tryWrite(key, slim)) return
   }
-  console.warn('[clox] transcript too large to keep in this browser; it stays on the server')
+  console.warn('[clox] transcript too large to keep in this browser; the server copy stays')
 }

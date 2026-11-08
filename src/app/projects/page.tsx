@@ -10,7 +10,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 // AND the uniform left rail spacing every other library page uses. The old
 // AppLayout-only wrapping made History disappear from the topstrip and
 // produced a slightly different rail gutter on project routes.
-import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
+import WorkspaceSlot from '@/shared/ui/chat/workspace-host'
+import { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
 import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
 import RowActionsMenu, { RowActionIcons } from '@/shared/ui/components/RowActionsMenu'
 
@@ -277,8 +278,7 @@ export default function ProjectsIndexPage() {
   )
 
   return (
-    <div className="fixed inset-0 isolate">
-      <ChatWorkspace
+    <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
         brandName="Clox"
@@ -323,8 +323,7 @@ export default function ProjectsIndexPage() {
         onInputChange={() => undefined}
         onSend={() => undefined}
         bodySlot={body}
-      />
-    </div>
+    />
   )
 }
 
