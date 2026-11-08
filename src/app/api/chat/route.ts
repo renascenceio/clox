@@ -1,5 +1,7 @@
-import { streamText, createDataStreamResponse } from 'ai'
+import { streamText, createDataStreamResponse, type JSONValue } from 'ai'
 import { resolveLanguageModel, AIProvider } from '@/domains/text-generation/services/model-router'
+import { catalogEntry } from '@/lib/gateway/catalog'
+import { CLAUDE_EFFORT_HEADER, describeGatewayError } from '@/lib/gateway/server'
 import { assertBudget } from '@/lib/projects/server'
 import { loadSkillCatalog, buildSkillIndex } from '@/lib/skills-index'
 import { makeReadSkillTool } from '@/lib/tools/read-skill'
@@ -410,7 +412,7 @@ export async function POST(req: Request) {
     temperature = 0.7,
     maxTokens = 2048,
     systemPrompt,
-    apiKey,
+    params = {},
     projectId,
     chatId: chatIdField,
     id: idField,
@@ -422,7 +424,8 @@ export async function POST(req: Request) {
     temperature?: number
     maxTokens?: number
     systemPrompt?: string
-    apiKey?: string
+    /** Config-pane values keyed by the field names in lib/ai-capabilities. */
+    params?: Record<string, unknown>
     projectId?: string | null
     chatId?: string | null
     /** `useChat`'s top-level `id` is sometimes echoed into the POST
@@ -459,18 +462,14 @@ export async function POST(req: Request) {
   console.log('[v0] /api/chat:', {
     provider,
     model,
-    hasClientKey: Boolean(apiKey),
     messagesCount: Array.isArray(messages) ? messages.length : 0,
   })
 
   try {
-    // We always call providers directly via their @ai-sdk/* package
-    // (LanguageModelV1). The AI Gateway path was removed because ai@4
-    // does not accept gateway model strings — it would 400 on every request
-    // with "Unsupported model version. AI SDK 4 only supports models that
-    // implement specification version 'v1'."
-    const resolved = resolveLanguageModel(provider, model, apiKey)
-    console.log('[v0] resolved model via provider SDK')
+    // Every model is served by the Vercel AI Gateway (see lib/gateway).
+    const { model: resolved, modelId: gatewayModelId } = await resolveLanguageModel(model)
+    const modelInfo = catalogEntry(gatewayModelId)
+    const sampling = buildSamplingOptions(gatewayModelId, modelInfo, { temperature, maxTokens, params })
 
     // Inflate `experimental_attachments` from useChat into multimodal content
     // parts. Vision-capable models (gpt-4o, claude 3.x, gemini 2.5, etc.) read
@@ -584,8 +583,8 @@ export async function POST(req: Request) {
     const stableSystem = skillIndex
       ? `${CLOX_CAPABILITIES_PREAMBLE}\n${skillIndex}`
       : CLOX_CAPABILITIES_PREAMBLE
-    const dynamicSystem = systemPrompt ?? ''
-    const isAnthropic = provider === 'anthropic'
+    const dynamicSystem = [systemPrompt ?? '', sampling.systemSuffix].filter(Boolean).join('\n\n')
+    const isAnthropic = gatewayModelId.startsWith('anthropic/')
     // Kept for backwards compat with the few places below that still
     // reference the old name (sandbox auto-arming, telemetry).
     const composedSystem = dynamicSystem
@@ -741,8 +740,7 @@ export async function POST(req: Request) {
       onError: (error: unknown) => {
         if (error == null) return 'Unknown chat error'
         if (typeof error === 'string') return error
-        if (error instanceof Error) return error.message
-        try { return JSON.stringify(error) } catch { return String(error) }
+        return describeGatewayError(error).message
       },
       execute: dataStream => {
         // Tell the UI we auto-compacted older turns. Surfaced as a
@@ -817,7 +815,10 @@ export async function POST(req: Request) {
         // at the top of the route, because we now bind bash + python
         // here. An empty `tools: {}` map upsets Anthropic with a 400
         // — the conditional spread below still depends on this flag.
-        const hasTools = Object.keys(enabledTools).length > 0
+        // Some gateway models (Llama, image-output models, …) reject tool
+        // definitions outright; only attach tools to models that take them.
+        const modelTakesTools = !modelInfo?.tags || modelInfo.tags.includes('tool-use')
+        const hasTools = modelTakesTools && Object.keys(enabledTools).length > 0
         const result = streamText({
           // `resolved` is always a LanguageModelV1 instance now (gateway
           // strings were removed). The cast satisfies the streamText prop
@@ -848,7 +849,10 @@ export async function POST(req: Request) {
               : []),
             ...(messagesForModel as never[]),
           ],
-          temperature,
+          ...(sampling.temperature !== undefined ? { temperature: sampling.temperature } : {}),
+          ...(sampling.stopSequences ? { stopSequences: sampling.stopSequences } : {}),
+          ...(sampling.providerOptions ? { providerOptions: sampling.providerOptions } : {}),
+          ...(sampling.headers ? { headers: sampling.headers } : {}),
           // Document-generation requests (sandbox armed) burn tokens
           // fast: per-slide content + multi-paragraph python snippets
           // + tool result reads. The 2048 default truncated a 5-slide
@@ -870,7 +874,10 @@ export async function POST(req: Request) {
           // at the capability ceiling upstream). A non-sandbox text
           // chat keeps the requested cap as-is so we don't silently
           // inflate cost for plain conversations.
-          maxTokens: sandboxArmed ? Math.max(maxTokens, 64_000) : maxTokens,
+          maxTokens: Math.min(
+            sampling.maxOutput,
+            Math.max(sampling.minTokens, sandboxArmed ? Math.max(sampling.maxTokens, 64_000) : sampling.maxTokens),
+          ),
           // The AI SDK retries every failed request twice (3 attempts
           // total) with no special handling for 429s. That's actively
           // harmful against Anthropic's PER-MINUTE input-token cap:
@@ -1048,8 +1055,8 @@ export async function POST(req: Request) {
                 await recordUsage({
                   userId: caller.userId,
                   domain: caller.domain,
-                  provider: String(provider),
-                  model,
+                  provider: modelInfo?.owner ?? String(provider),
+                  model: gatewayModelId,
                   modality: 'text',
                   chatType: 'text',
                   promptTokens: usage?.promptTokens,
@@ -1107,9 +1114,94 @@ export async function POST(req: Request) {
       },
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown chat error'
+    const { message, status } = describeGatewayError(error)
     console.error('[v0] /api/chat error:', message)
     // Return a structured error the client can show inline.
-    return Response.json({ error: message }, { status: 400 })
+    return Response.json({ error: message }, { status })
+  }
+}
+
+/**
+ * Turns the config-pane values into AI SDK options for the selected
+ * gateway model, applying only what that model accepts:
+ *
+ *   - temperature   — skipped for models that fix it (GPT-5, o-series);
+ *                     Claude is capped at 1, and Claude with thinking on
+ *                     must run at its default.
+ *   - max tokens    — clamped to the model's output ceiling.
+ *   - reasoning     — Claude: extended-thinking budget (Messages API);
+ *                     everyone else: `reasoning_effort` on the
+ *                     OpenAI-compatible endpoint.
+ *   - stop / JSON   — stop sequences pass straight through; JSON output
+ *                     is requested via a system instruction because
+ *                     ai@4's streamText has no response-format option.
+ */
+function buildSamplingOptions(
+  modelId: string,
+  info: ReturnType<typeof catalogEntry>,
+  input: { temperature: number; maxTokens: number; params: Record<string, unknown> },
+) {
+  const p = input.params ?? {}
+  const supported = new Set(info?.params ?? ['temperature', 'max_tokens', 'stop'])
+  const isClaude = modelId.startsWith('anthropic/')
+  const maxOutput = info?.maxOutput && info.maxOutput > 0 ? info.maxOutput : 128_000
+
+  const effortValues = info?.reasoning?.find(r => r.type === 'effort') as { values: string[] } | undefined
+  const effort = typeof p.reasoningEffort === 'string' && p.reasoningEffort !== 'default'
+    && effortValues?.values.includes(p.reasoningEffort) ? p.reasoningEffort : undefined
+  const budgetParam = Number(p.reasoningBudget) > 0 ? Math.floor(Number(p.reasoningBudget)) : undefined
+  const toggleOn = p.reasoning === true
+
+  // Claude models that publish effort levels use adaptive thinking with
+  // `output_config.effort` (newer Opus/Sonnet refuse fixed budgets). The
+  // installed Anthropic SDK can't express that, so the effort rides on a
+  // private header that the gateway fetch wrapper turns into body fields
+  // (see `chatModel` in lib/gateway/server.ts). Older Claude models only
+  // take a fixed thinking budget.
+  let claudeEffort: string | undefined
+  let thinkingBudget: number | undefined
+  if (isClaude) {
+    if (effort) claudeEffort = effort
+    else if (budgetParam) thinkingBudget = Math.max(1024, budgetParam)
+    else if (toggleOn) thinkingBudget = 8192
+  }
+  const thinkingOn = Boolean(thinkingBudget) || (claudeEffort !== undefined && claudeEffort !== 'none')
+
+  let providerOptions: Record<string, Record<string, JSONValue>> | undefined
+  if (thinkingBudget) {
+    providerOptions = { anthropic: { thinking: { type: 'enabled', budgetTokens: thinkingBudget } } }
+  } else if (!isClaude && effort) {
+    providerOptions = { openai: { reasoningEffort: effort } }
+  }
+
+  const requestedMax = Number(p.maxTokens) > 0 ? Math.floor(Number(p.maxTokens)) : input.maxTokens
+  // Thinking tokens count against max_tokens, so leave room for an answer.
+  const minTokens = thinkingBudget ? thinkingBudget + 1024 : claudeEffort && claudeEffort !== 'none' ? 8192 : 1
+
+  let temperature: number | undefined
+  // Claude requires the default temperature whenever it is thinking.
+  const tempAllowed = info?.temperature !== false && supported.has('temperature') && !thinkingOn
+  if (tempAllowed) {
+    const t = Number(p.temperature ?? input.temperature)
+    if (Number.isFinite(t)) temperature = Math.min(isClaude ? 1 : 2, Math.max(0, t))
+  }
+
+  const stopSequences = supported.has('stop') && typeof p.stopSequences === 'string'
+    ? p.stopSequences.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4)
+    : []
+
+  const systemSuffix = p.jsonMode === true
+    ? 'Reply with a single valid JSON object and nothing else — no prose, no code fences.'
+    : ''
+
+  return {
+    temperature,
+    maxTokens: Math.min(requestedMax, maxOutput),
+    minTokens,
+    maxOutput,
+    stopSequences: stopSequences.length ? stopSequences : undefined,
+    providerOptions,
+    headers: claudeEffort ? { [CLAUDE_EFFORT_HEADER]: claudeEffort } : undefined,
+    systemSuffix,
   }
 }

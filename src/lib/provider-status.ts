@@ -34,7 +34,7 @@ export interface ProviderConnectionState {
 let cachedServerStatus: ProviderStatusResponse | null = null
 let inflight: Promise<ProviderStatusResponse> | null = null
 
-const CACHE_KEY = 'clox_provider_status_v1'
+const CACHE_KEY = 'clox_provider_status_v2'
 
 function hydrateCacheFromSession(): ProviderStatusResponse | null {
   if (typeof window === 'undefined') return null
@@ -118,7 +118,9 @@ export function useProviderStatus() {
           : 'none'
 
     return {
-      connected: enabled && (hasEnvKey || aiGatewayCapable || hasLocalKey),
+      // All generation goes through the AI Gateway; locally stored
+      // provider keys are no longer used by any route.
+      connected: enabled && aiGatewayCapable,
       source,
       hasEnvKey,
       aiGatewayCapable,
