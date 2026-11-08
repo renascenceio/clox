@@ -60,6 +60,8 @@ import {
 } from '@/lib/chat-store'
 import type { AppLanguage } from '@/shared/ui/chat/ChatWorkspace'
 import { formatCredits, planFor } from '@/lib/plans'
+import { SIGNED_OUT_USER, cachedIdentity, watchIdentity } from '@/shared/ui/chat/chrome-identity'
+import { saveTranscript } from '@/lib/transcript-store'
 
 /* =====================================================================
    Modes — text route is "chat / research / code"; image, voice and video
@@ -701,11 +703,31 @@ export default function TextPage() {
   }, [modality, input, dbSkills.skills, dbSkills.activeIds, dismissedAutoIds])
 
   // Persist & rehydrate chat history per active chat id.
+  //
+  // Writing the whole transcript on every streamed chunk serialised
+  // megabytes (tool scripts, results, attached files) many times a second
+  // and froze the page. While a reply streams we save once it goes quiet;
+  // the server keeps the reply anyway (chat_runs), so nothing is lost.
+  const pendingSave = useRef<{ id: string; messages: unknown[]; timer: number } | null>(null)
   useEffect(() => {
-    if (chat.messages && chat.messages.length > 0) {
-      localStorage.setItem(`chat-history-${activeChatId}`, JSON.stringify(chat.messages))
+    if (!activeChatId || !chat.messages || chat.messages.length === 0) return
+    const busy = status === 'streaming' || status === 'submitted'
+    const previous = pendingSave.current
+    if (previous) {
+      window.clearTimeout(previous.timer)
+      if (previous.id !== activeChatId) saveTranscript(previous.id, previous.messages)
     }
-  }, [chat.messages, activeChatId])
+    const entry = { id: activeChatId, messages: chat.messages as unknown[], timer: 0 }
+    entry.timer = window.setTimeout(() => {
+      saveTranscript(entry.id, entry.messages)
+      if (pendingSave.current === entry) pendingSave.current = null
+    }, busy ? 2000 : 150)
+    pendingSave.current = entry
+  }, [chat.messages, activeChatId, status])
+  useEffect(() => () => {
+    const last = pendingSave.current
+    if (last) { window.clearTimeout(last.timer); saveTranscript(last.id, last.messages) }
+  }, [])
 
   useEffect(() => {
     const saved = localStorage.getItem(`chat-history-${activeChatId}`)
@@ -2339,64 +2361,16 @@ export default function TextPage() {
     plan: string
     email?: string
     avatarSeed?: string
-  }>({ initial: '·', name: 'Signed out', plan: 'guest' })
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  }>(() => cachedIdentity()?.user ?? SIGNED_OUT_USER)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(() => cachedIdentity()?.isSuperAdmin ?? false)
 
   useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      try {
-        const supabase = createClient()
-        const { data: { user: authUser } } = await supabase.auth.getUser()
-        if (!authUser || cancelled) return
-
-        const [profile, credits] = await Promise.all([
-          supabase
-            .from('profiles')
-            .select('first_name, last_name, plan, avatar_seed, role')
-            .eq('id', authUser.id)
-            .single(),
-          supabase.from('credits').select('balance_credits').eq('user_id', authUser.id).single(),
-        ])
-        if (cancelled) return
-        setIsSuperAdmin(profile.data?.role === 'super_admin')
-
-        const first = (profile.data?.first_name ?? '').trim()
-        const last  = (profile.data?.last_name  ?? '').trim()
-        const fallback = authUser.email?.split('@')[0] ?? 'Clox user'
-        const fullName = [first, last].filter(Boolean).join(' ').trim() || fallback
-        const initial = (first || fallback).slice(0, 1).toLowerCase() || '·'
-
-        const planName = planFor(profile.data?.plan as string | null | undefined).name.toLowerCase()
-        const plan = credits.data?.balance_credits != null
-          ? `${planName} · ${formatCredits(Number(credits.data.balance_credits))} credits`
-          : planName
-
-        setUser({
-          initial,
-          name: fullName,
-          plan,
-          email: authUser.email ?? undefined,
-          avatarSeed: profile.data?.avatar_seed ?? authUser.email ?? undefined,
-        })
-      } catch (e) {
-        console.error('[v0] /text profile load failed', e)
-      }
-    }
-
-    load()
-
-    const onProfileChanged = () => { if (!cancelled) void load() }
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === 'clox.profile.tick' && !cancelled) void load()
-    }
-    window.addEventListener('clox-profile-changed', onProfileChanged)
-    window.addEventListener('storage', onStorage)
+    const stop = watchIdentity(identity => {
+      setUser(identity.user)
+      setIsSuperAdmin(identity.isSuperAdmin)
+    })
     return () => {
-      cancelled = true
-      window.removeEventListener('clox-profile-changed', onProfileChanged)
-      window.removeEventListener('storage', onStorage)
+      stop()
     }
   }, [])
 
