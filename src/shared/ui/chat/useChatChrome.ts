@@ -88,6 +88,7 @@ export function useChatChrome(active: ActiveRail) {
    * sentinel on cross-tab `storage` events keeps multiple open
    * tabs in lockstep too. */
   const [user, setUser] = useState<ChromeUser>(DEFAULT_USER)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   useEffect(() => {
     let cancelled = false
 
@@ -100,7 +101,7 @@ export function useChatChrome(active: ActiveRail) {
         const [profile, credits] = await Promise.all([
           supabase
             .from('profiles')
-            .select('first_name, last_name, plan, avatar_seed')
+            .select('first_name, last_name, plan, avatar_seed, role')
             .eq('id', authUser.id)
             .single(),
           supabase
@@ -111,6 +112,7 @@ export function useChatChrome(active: ActiveRail) {
         ])
 
         if (cancelled) return
+        setIsSuperAdmin(profile.data?.role === 'super_admin')
 
         const first = (profile.data?.first_name ?? '').trim()
         const last  = (profile.data?.last_name  ?? '').trim()
@@ -214,7 +216,7 @@ export function useChatChrome(active: ActiveRail) {
     handleDeleteAccount,
     nav,
     onOpenSettings:    () => router.push('/settings'),
-    onOpenSuperAdmin:  () => router.push('/admin'),
+    onOpenSuperAdmin:  isSuperAdmin ? () => router.push('/admin') : undefined,
     onOpenSkills:      () => router.push('/skills'),
     onNewChat:         () => router.push('/text'),
     // The "see all →" affordance in the rail's recent block. Defaults to

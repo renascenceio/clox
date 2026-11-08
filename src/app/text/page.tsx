@@ -21,10 +21,14 @@ import {
   type PaletteKey,
 } from '@/shared/ui/chat/palettes'
 
-import { TEXT_MODELS } from '@/domains/text-generation/services/model-router'
-import { IMAGE_MODELS } from '@/domains/image-generation/services/image-models'
-import { VIDEO_MODELS } from '@/domains/video-generation/services/video-models'
-import { AUDIO_MODELS } from '@/domains/audio-generation/services/audio-models'
+import {
+  TEXT_MODELS,
+  IMAGE_MODELS,
+  VIDEO_MODELS,
+  AUDIO_MODELS,
+  defaultModelId,
+  resolveModelId,
+} from '@/lib/gateway/catalog'
 import { getCapability, type Capability } from '@/lib/ai-capabilities'
 import {
   filterSkillsByModality,
@@ -42,7 +46,6 @@ import {
   formatTokenCount,
 } from '@/lib/token-estimate'
 import { useAvailableModels } from '@/lib/use-available-models'
-import { getAdminSettings, getProviderApiKey } from '@/lib/admin-settings'
 import { createClient } from '@/lib/supabase/client'
 import {
   createChat,
@@ -70,11 +73,6 @@ const TEXT_MODES: ModeOption[] = [
   { id: 'video',    label: 'Video',    hint: 'motion + frames' },
 ]
 
-function modelTagFor(provider: string, brandName?: string): string {
-  if (brandName) return brandName.toLowerCase()
-  return provider
-}
-
 function shortName(version: string | undefined, name: string): string {
   return (version || name).toLowerCase()
 }
@@ -93,21 +91,9 @@ export default function TextPage() {
   const enabledTextModels  = useAvailableModels(TEXT_MODELS)
   const enabledImageModels = useAvailableModels(IMAGE_MODELS)
   const enabledVideoModels = useAvailableModels(VIDEO_MODELS)
-  // The Voice mode picker should only surface text-to-speech models —
-  // not the music-generation entries (Suno, Udio, Stable Audio) that
-  // also live in AUDIO_MODELS for a future "Music" mode. Without this
-  // filter the dropdown was 15 rows long and the speech entries
-  // (ElevenLabs, OpenAI TTS, Azure, Play.ht, Fish, ChatGLM) were
-  // visually buried beneath the music half — users reported that
-  // ElevenLabs "wasn't in the list" even though it was technically
-  // present, just below the fold of the dropdown's vh-cap on small
-  // viewports. Pre-filtering on `type === 'voice'` keeps the picker
-  // focused on what the active mode can actually deliver.
-  const VOICE_AUDIO_MODELS = useMemo(
-    () => AUDIO_MODELS.filter(m => m.type === 'voice'),
-    [],
-  )
-  const enabledAudioModels = useAvailableModels(VOICE_AUDIO_MODELS)
+  // Voice mode lists speech, music and sound-effect models — they all
+  // turn a prompt into audio. The picker groups them by provider.
+  const enabledAudioModels = useAvailableModels(AUDIO_MODELS)
 
   /* ----- theme ------------------------------------------------------- */
   // Initial paint comes from the blocking script in `layout.tsx`, which
@@ -151,10 +137,18 @@ export default function TextPage() {
   // The active model swaps as soon as the modality changes. We keep one
   // selected model per modality so flipping back and forth doesn't lose
   // your choice.
-  const [selectedTextModel, setSelectedTextModel]   = useState<typeof TEXT_MODELS[number]>(TEXT_MODELS[0])
-  const [selectedImageModel, setSelectedImageModel] = useState<typeof IMAGE_MODELS[number]>(IMAGE_MODELS[0])
-  const [selectedVideoModel, setSelectedVideoModel] = useState<typeof VIDEO_MODELS[number]>(VIDEO_MODELS[0])
-  const [selectedAudioModel, setSelectedAudioModel] = useState<typeof AUDIO_MODELS[number]>(AUDIO_MODELS[0])
+  const [selectedTextModel, setSelectedTextModel]   = useState<typeof TEXT_MODELS[number]>(
+    () => TEXT_MODELS.find(m => m.id === defaultModelId('text')) ?? TEXT_MODELS[0],
+  )
+  const [selectedImageModel, setSelectedImageModel] = useState<typeof IMAGE_MODELS[number]>(
+    () => IMAGE_MODELS.find(m => m.id === defaultModelId('image')) ?? IMAGE_MODELS[0],
+  )
+  const [selectedVideoModel, setSelectedVideoModel] = useState<typeof VIDEO_MODELS[number]>(
+    () => VIDEO_MODELS.find(m => m.id === defaultModelId('video')) ?? VIDEO_MODELS[0],
+  )
+  const [selectedAudioModel, setSelectedAudioModel] = useState<typeof AUDIO_MODELS[number]>(
+    () => AUDIO_MODELS.find(m => m.id === defaultModelId('audio')) ?? AUDIO_MODELS[0],
+  )
 
   // Fan-out helpers — components only know about one "selectedModel" at a
   // time and one "registry" of options to choose from.
@@ -308,7 +302,7 @@ export default function TextPage() {
         maxTokens?: number
       }
       if (settings.modelId) {
-        const model = TEXT_MODELS.find(m => m.id === settings.modelId)
+        const model = TEXT_MODELS.find(m => m.id === resolveModelId(settings.modelId, 'text'))
         if (model) setSelectedTextModel(model)
       }
       if (settings.systemPrompt !== undefined) setSystemPrompt(settings.systemPrompt)
@@ -364,13 +358,6 @@ export default function TextPage() {
      The hook only fires when modality === 'text'. Image/audio/video are
      sent through dedicated REST calls below; we still drive their results
      into the same transcript so the surface stays unified. */
-  const [currentApiKey, setCurrentApiKey] = useState('')
-  useEffect(() => {
-    const settings = getAdminSettings()
-    const key = settings.providers[selectedTextModel.provider]?.apiKey || ''
-    setCurrentApiKey(key)
-  }, [selectedTextModel.provider])
-
   // Append the active DB skills to the system prompt for every text
   // request. `buildSkillsBlock` concatenates each row's full
   // `system_prompt` under a `### Name` header, so multi-paragraph
@@ -378,6 +365,27 @@ export default function TextPage() {
   // designer brief, …) keep their structure. Short overlay prompts
   // (Concise, Step-by-step, JSON only) come through with the same
   // formatting — they're just shorter, no special-casing needed. */
+  /* ----- per-modality params ---------------------------------------
+     One bag per modality so flipping back and forth keeps the user's
+     knobs intact. The ConfigDrawer reads from / writes to the slot that
+     matches the current modality. Declared above useChat because its
+     body forwards `textParams`. Reset when the model changes so a knob
+     from one model never leaks into another model's request. */
+  const [textParams,  setTextParams]  = useState<Record<string, unknown>>({})
+  const [imageParams, setImageParams] = useState<Record<string, unknown>>({})
+  const [videoParams, setVideoParams] = useState<Record<string, unknown>>({})
+  const [audioParams, setAudioParams] = useState<Record<string, unknown>>({})
+  useEffect(() => { setImageParams({}) }, [selectedImageModel.id])
+  useEffect(() => { setVideoParams({}) }, [selectedVideoModel.id])
+  useEffect(() => { setAudioParams({}) }, [selectedAudioModel.id])
+  useEffect(() => {
+    setTextParams(prev => {
+      const keep: Record<string, unknown> = {}
+      if (prev.temperature !== undefined) keep.temperature = prev.temperature
+      return keep
+    })
+  }, [selectedTextModel.id])
+
   const composedSystemPrompt = useMemo(() => {
     const activeRows = resolveSkills(dbSkills.skills, dbSkills.activeIds)
     const skillsBlock = buildSkillsBlock(activeRows)
@@ -465,7 +473,10 @@ export default function TextPage() {
       systemPrompt: composedSystemPrompt,
       temperature,
       maxTokens,
-      apiKey: currentApiKey,
+      // Every other knob from the config pane (reasoning effort, stop
+      // sequences, JSON output, …). The route only applies the keys the
+      // selected model accepts.
+      params: textParams,
       // Forward the user's enabled tools so /api/chat can attach the
       // matching tool definitions to streamText. Sending an empty list
       // is cheap and explicit; the route reads `tools: []` as "no
@@ -554,18 +565,15 @@ export default function TextPage() {
     if (!isRateLimit) return
 
     const currentId = selectedTextModel.id
-    const isClaudeFlagship =
-      currentId === 'claude-sonnet-4.6' ||
-      currentId === 'claude-opus-4.6' ||
-      currentId === 'claude-opus-4.7'
+    const isClaudeFlagship = /^anthropic\/claude-(opus|sonnet)/.test(currentId)
     if (!isClaudeFlagship) return
 
-    // Opus → Sonnet first (same family, ~8× TPM), Sonnet → Haiku.
-    // Mirrors the existing manual banner's alternateModel picker so
-    // auto and manual paths agree.
-    const fallbackId = (currentId === 'claude-opus-4.6' || currentId === 'claude-opus-4.7')
-      ? 'claude-sonnet-4.6'
-      : 'claude-haiku-4.5'
+    // Opus → Sonnet first (same family, higher quota), Sonnet → Haiku.
+    // Mirrors the manual banner's alternateModel picker so auto and
+    // manual paths agree.
+    const fallbackId = currentId.includes('opus')
+      ? 'anthropic/claude-sonnet-4.6'
+      : 'anthropic/claude-haiku-4.5'
     const fallback = TEXT_MODELS.find(m => m.id === fallbackId)
     if (!fallback) return
 
@@ -597,7 +605,7 @@ export default function TextPage() {
           systemPrompt: composedSystemPrompt,
           temperature,
           maxTokens,
-          apiKey: currentApiKey,
+          params: textParams,
           tools: enabledToolIds,
         },
       })
@@ -605,7 +613,7 @@ export default function TextPage() {
       console.error('[v0] auto-fallback reload failed', e)
     }
     // Intentionally omit composedSystemPrompt / temperature / maxTokens /
-    // currentApiKey / enabledToolIds from the dep list: they're read
+    // textParams / enabledToolIds from the dep list: they're read
     // at fire-time inside the body builder, and including them would
     // re-run this effect every time those values churn (e.g. the
     // user toggles a skill mid-stream), risking duplicate reloads.
@@ -690,15 +698,6 @@ export default function TextPage() {
   function handleRemoveAttachment(id: string) {
     setAttachments(curr => curr.filter(a => a.id !== id))
   }
-
-  /* ----- per-modality params ---------------------------------------
-     One bag per modality so flipping back and forth keeps the user's
-     knobs intact. The ConfigDrawer reads from / writes to the slot that
-     matches the current modality. */
-  const [textParams,  setTextParams]  = useState<Record<string, unknown>>({})
-  const [imageParams, setImageParams] = useState<Record<string, unknown>>({})
-  const [videoParams, setVideoParams] = useState<Record<string, unknown>>({})
-  const [audioParams, setAudioParams] = useState<Record<string, unknown>>({})
 
   const activeParams =
     modality === 'image' ? imageParams :
@@ -865,15 +864,16 @@ export default function TextPage() {
     ])
     setInput('')
 
+    // Reference images / start frames ride along as data URLs. Only image
+    // and video models take them.
+    const mediaFiles = modality === 'image' || modality === 'video'
+      ? attachments
+          .filter(a => a.contentType.startsWith('image/'))
+          .map(a => ({ name: a.name, contentType: a.contentType, url: a.dataUrl }))
+      : []
+    setAttachments([])
+
     try {
-      const apiKey = getProviderApiKey(selectedModel.provider) || undefined
-      // Dual-credential providers (Kling, Baidu ERNIE, Play.ht, Azure
-      // Speech…) round-trip a second value alongside the API key. We
-      // read it straight off the admin-settings store so the existing
-      // single-key callers don't need to know about it; routes that
-      // don't care simply ignore the field.
-      const apiSecret =
-        getAdminSettings().providers[selectedModel.provider]?.apiSecret || undefined
       // Media-gen routes accept a single `prompt` string. We thread the
       // active skills through by prepending a tight directive built from
       // each skill's `system_prompt`. `resolveSkills` drops any unknown
@@ -884,48 +884,36 @@ export default function TextPage() {
       const skillsPrefix    = buildSkillsPromptPrefix(activeMediaRows)
       const composedPrompt  = skillsPrefix + promptText
 
-      let result: { url?: string; urls?: string[]; durationSec?: number; error?: string } = {}
-      if (modality === 'image') {
-        const ratio = (imageParams.aspectRatio as string | undefined) ?? '1:1'
-        // The image picker exposes a 1-4 count for every model. Pass it
-        // through so the route can fan out parallel calls (DALL-E 3 only
-        // accepts n=1 natively, so the server loops; other providers
-        // honour `count` directly).
-        const count = Math.max(1, Math.min(4, Number(imageParams.count) || 1))
-        const res = await fetch('/api/generate-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: composedPrompt, model: selectedImageModel.id, ratio, count, apiKey }),
-        })
-        result = await res.json()
-        if (!res.ok || !result.url) throw new Error(result.error || `Image generation failed (${res.status})`)
-      } else if (modality === 'video') {
-        const aspect   = (videoParams.aspectRatio as string | undefined) ?? '16:9'
-        const duration = (videoParams.duration as number | undefined) ?? 5
-        const res = await fetch('/api/generate-video', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: composedPrompt, model: selectedVideoModel.id, aspectRatio: aspect, duration, apiKey, apiSecret }),
-        })
-        result = await res.json()
-        if (!res.ok || !result.url) throw new Error(result.error || `Video generation failed (${res.status})`)
-      } else if (modality === 'audio') {
-        const voice = audioParams.voice as string | undefined
-        const res = await fetch('/api/generate-audio', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: composedPrompt, model: selectedAudioModel.id, voice, apiKey }),
-        })
-        result = await res.json()
-        if (!res.ok || !result.url) throw new Error(result.error || `Audio generation failed (${res.status})`)
-      }
+      let result: { url?: string; urls?: string[]; durationSec?: number; error?: string; warnings?: string[] } = {}
+      const endpoint =
+        modality === 'image' ? '/api/generate-image' :
+        modality === 'video' ? '/api/generate-video' : '/api/generate-audio'
+      const params =
+        modality === 'image' ? imageParams :
+        modality === 'video' ? videoParams : audioParams
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: composedPrompt,
+          model: selectedModel.id,
+          params,
+          files: mediaFiles,
+          chatId: activeChatId,
+        }),
+      })
+      result = await res.json().catch(() => ({ error: `Generation failed (${res.status})` }))
+      if (!res.ok || !result.url) throw new Error(result.error || `Generation failed (${res.status})`)
+      if (result.warnings?.length) console.warn('[clox] model ignored some settings:', result.warnings)
 
       setMessages?.((prev: unknown[]) =>
         (prev as Array<Record<string, unknown>>).map(m =>
           m.id === aiId
             ? {
                 ...m,
-                content: '',
+                content: result.warnings?.length
+                  ? `The model ignored: ${result.warnings.join('; ')}`
+                  : '',
                 clox_pending: false,
                 clox_media_url: result.url,
                 // Capture the full set when the route returned multiple
@@ -969,7 +957,8 @@ export default function TextPage() {
       return {
         id: m.id,
         label: `${m.brandName ?? m.provider} ${m.version || m.name}`,
-        tag: connected ? modelTagFor(m.provider, m.brandName) : 'needs api key',
+        tag: connected ? m.id : 'gateway not connected',
+        group: m.brandName,
         short: shortName(m.version, m.name),
         disconnected: !connected,
       }
@@ -1819,9 +1808,19 @@ export default function TextPage() {
       //   generic     → anything else; we show the raw message
       const rawMessage = (() => {
         if (!chatError) return ''
-        if (chatError instanceof Error) return chatError.message
-        try { return String((chatError as { message?: unknown })?.message ?? chatError) }
-        catch { return 'Unknown error' }
+        let text: string
+        if (chatError instanceof Error) text = chatError.message
+        else {
+          try { text = String((chatError as { message?: unknown })?.message ?? chatError) }
+          catch { return 'Unknown error' }
+        }
+        // Our own routes answer with `{ error: "…" }` (sign-in, credit,
+        // budget) — show the sentence, not the JSON.
+        try {
+          const parsed = JSON.parse(text)
+          if (parsed && typeof parsed.error === 'string') return parsed.error
+        } catch { /* plain text */ }
+        return text
       })()
       const lower = rawMessage.toLowerCase()
       const errorKind: 'rate_limit' | 'overloaded' | 'timeout' | 'no_response' | 'generic' =
@@ -1851,20 +1850,20 @@ export default function TextPage() {
       // <same model>" + the wait-60s advice.
       const alternateModel = (() => {
         const id = selectedTextModel.id
-        if (id === 'claude-opus-4.6' || id === 'claude-opus-4.7') {
-          return TEXT_MODELS.find(m => m.id === 'claude-sonnet-4.6') ?? null
+        if (/^anthropic\/claude-opus/.test(id)) {
+          return TEXT_MODELS.find(m => m.id === 'anthropic/claude-sonnet-4.6') ?? null
         }
-        if (id === 'claude-sonnet-4.6') {
-          return TEXT_MODELS.find(m => m.id === 'claude-haiku-4.5') ?? null
+        if (/^anthropic\/claude-sonnet/.test(id)) {
+          return TEXT_MODELS.find(m => m.id === 'anthropic/claude-haiku-4.5') ?? null
         }
         // Already on Google → escape to OpenAI rather than recommend
         // the same family.
         if (selectedTextModel.provider === 'google') {
-          return TEXT_MODELS.find(m => m.id === 'gpt-4o') ?? null
+          return TEXT_MODELS.find(m => m.id === 'openai/gpt-5-mini') ?? null
         }
-        // Already on the high-TPM fallback → no swap to suggest.
-        if (id === 'gemini-2.5-flash') return null
-        return TEXT_MODELS.find(m => m.id === 'gemini-2.5-flash') ?? null
+        // Already on the high-quota fallback → no swap to suggest.
+        if (id === 'google/gemini-2.5-flash') return null
+        return TEXT_MODELS.find(m => m.id === 'google/gemini-2.5-flash') ?? null
       })()
 
       // Friendly one-liner per kind. References the picked alternate
@@ -1985,7 +1984,7 @@ export default function TextPage() {
                           systemPrompt: composedSystemPrompt,
                           temperature,
                           maxTokens,
-                          apiKey: currentApiKey,
+                          params: textParams,
                           tools: enabledToolIds,
                         },
                       })
@@ -2073,7 +2072,7 @@ export default function TextPage() {
     chatError, isStreaming, chatReload,
     selectedTextModel, setSelectedTextModel,
     composedSystemPrompt, temperature, maxTokens,
-    currentApiKey, enabledToolIds,
+    textParams, enabledToolIds,
   ])
 
   const nav: RailNavItem[] = [
@@ -2254,6 +2253,7 @@ export default function TextPage() {
     email?: string
     avatarSeed?: string
   }>({ initial: '·', name: 'Signed out', plan: 'guest' })
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -2267,12 +2267,13 @@ export default function TextPage() {
         const [profile, credits] = await Promise.all([
           supabase
             .from('profiles')
-            .select('first_name, last_name, plan, avatar_seed')
+            .select('first_name, last_name, plan, avatar_seed, role')
             .eq('id', authUser.id)
             .single(),
           supabase.from('credits').select('balance_usd').eq('user_id', authUser.id).single(),
         ])
         if (cancelled) return
+        setIsSuperAdmin(profile.data?.role === 'super_admin')
 
         const first = (profile.data?.first_name ?? '').trim()
         const last  = (profile.data?.last_name  ?? '').trim()
@@ -2391,7 +2392,7 @@ export default function TextPage() {
         onChangeTheme={handleThemeChange}
         language={language}
         onChangeLanguage={handleChangeLanguage}
-        onOpenSuperAdmin={() => router.push('/admin')}
+        onOpenSuperAdmin={isSuperAdmin ? () => router.push('/admin') : undefined}
         onOpenSkills={() => router.push('/skills')}
         onSignOut={handleSignOut}
         onDeleteAccount={handleDeleteAccount}

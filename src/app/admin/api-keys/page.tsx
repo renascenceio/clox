@@ -1,20 +1,26 @@
 'use client'
 
 /**
- * Models — provider & API key management.
+ * Models — what the Vercel AI Gateway gives Clox.
  *
- * This page lives at /admin/api-keys but presents itself as "Models" within
- * the super-admin rail. It preserves the existing provider-status logic
- * (env vars > AI Gateway > local key) and renders it inside the editorial
- * AdminShell — hairline cards, mono labels, serif provider names, the
- * single Terracotta accent for "live" states.
+ * Lives at /admin/api-keys but presents itself as "Models" in the
+ * super-admin rail. Every model runs through the gateway, so there are no
+ * per-provider keys to manage: this page shows the gateway connection,
+ * every provider it serves (with model counts per surface), and a switch
+ * per provider that hides its models from the pickers.
  */
 
-import { useState, useEffect, useMemo } from 'react'
-import { getAdminSettings, setProviderApiKey, setProviderEnabled } from '@/lib/admin-settings'
-import { PROVIDERS, ProviderCategory } from '@/lib/providers'
+import { useEffect, useMemo, useState } from 'react'
+import { getAdminSettings, setProviderEnabled } from '@/lib/admin-settings'
 import { useProviderStatus } from '@/lib/provider-status'
-import { getModelsForProviderInCategory } from '@/lib/provider-models'
+import {
+  AUDIO_MODELS,
+  IMAGE_MODELS,
+  TEXT_MODELS,
+  VIDEO_MODELS,
+  gatewayProviders,
+  type ModelEntry,
+} from '@/lib/gateway/catalog'
 import AdminShell, {
   AdminBtn,
   AdminFilter,
@@ -22,122 +28,60 @@ import AdminShell, {
   AdminPanel,
 } from '@/shared/ui/admin/AdminShell'
 
-const CATEGORY_LABELS: Record<ProviderCategory, string> = {
+type Category = 'text' | 'image' | 'video' | 'audio'
+
+const CATEGORY_LABELS: Record<Category, string> = {
   text: 'Text & chat',
   image: 'Image',
   video: 'Video',
   audio: 'Audio & voice',
 }
-const CATEGORY_ORDER: ProviderCategory[] = ['text', 'image', 'video', 'audio']
+const CATEGORY_ORDER: Category[] = ['text', 'image', 'video', 'audio']
+const MODELS: Record<Category, ModelEntry[]> = {
+  text: TEXT_MODELS,
+  image: IMAGE_MODELS,
+  video: VIDEO_MODELS,
+  audio: AUDIO_MODELS,
+}
 
 export default function ModelsAdminPage() {
-  const { aiGatewayConnected, getState, refresh } = useProviderStatus()
-
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
-  // Some providers (Kling/Kuaishou, Baidu ERNIE, Play.ht, Azure Speech…)
-  // authenticate with a key + secret pair. Tracking the secret in its own
-  // map keeps the existing single-key code paths unchanged while letting
-  // dual-credential providers round-trip both halves through the form.
-  const [apiSecrets, setApiSecrets] = useState<Record<string, string>>({})
-  const [enabledProviders, setEnabledProviders] = useState<Record<string, boolean>>({})
-  const [editingProvider, setEditingProvider] = useState<string | null>(null)
-  const [savedMessage, setSavedMessage] = useState<string | null>(null)
-  const [filter, setFilter] = useState<ProviderCategory | 'all'>('all')
+  const { aiGatewayConnected, loading, refresh } = useProviderStatus()
+  const providers = useMemo(() => gatewayProviders(), [])
+  const [enabled, setEnabled] = useState<Record<string, boolean>>({})
+  const [filter, setFilter] = useState<Category | 'all'>('all')
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     const settings = getAdminSettings()
-    const keys: Record<string, string> = {}
-    const secrets: Record<string, string> = {}
-    const enabled: Record<string, boolean> = {}
-    PROVIDERS.forEach(p => {
-      keys[p.id] = settings.providers[p.id]?.apiKey || ''
-      secrets[p.id] = settings.providers[p.id]?.apiSecret || ''
-      enabled[p.id] = settings.providers[p.id]?.enabled ?? true
-    })
-    setApiKeys(keys)
-    setApiSecrets(secrets)
-    setEnabledProviders(enabled)
-  }, [])
+    const next: Record<string, boolean> = {}
+    providers.forEach(p => { next[p.id] = settings.providers[p.id]?.enabled ?? true })
+    setEnabled(next)
+  }, [providers])
 
-  // Save handler accepts an optional secret. For single-key providers we
-  // pass `undefined` and `setProviderApiKey`'s existing logic skips the
-  // secret field entirely, so we don't disturb their stored data.
-  const handleSaveKey = (providerId: string, apiKey: string, apiSecret?: string) => {
-    const trimmedKey = apiKey.trim()
-    const trimmedSecret = apiSecret?.trim()
-    setProviderApiKey(providerId, trimmedKey, trimmedSecret)
-    setApiKeys(prev => ({ ...prev, [providerId]: trimmedKey }))
-    if (trimmedSecret !== undefined) {
-      setApiSecrets(prev => ({ ...prev, [providerId]: trimmedSecret }))
-    }
-    setEditingProvider(null)
-    const name = PROVIDERS.find(p => p.id === providerId)?.name
-    setSavedMessage(`${name} key saved`)
-    setTimeout(() => setSavedMessage(null), 2500)
+  const toggle = (id: string) => {
+    const next = !enabled[id]
+    setProviderEnabled(id, next)
+    setEnabled(prev => ({ ...prev, [id]: next }))
   }
 
-  const handleToggleEnabled = (providerId: string) => {
-    const next = !enabledProviders[providerId]
-    setProviderEnabled(providerId, next)
-    setEnabledProviders(prev => ({ ...prev, [providerId]: next }))
-  }
+  const q = query.trim().toLowerCase()
+  const visibleCategories = filter === 'all' ? CATEGORY_ORDER : [filter]
 
-  // Configured-rank order: env var > gateway > saved & enabled > saved & off > nothing.
-  const configuredRank = (providerId: string) => {
-    const state = getState(providerId)
-    if (!state.enabled && state.hasLocalKey) return 3
-    if (state.hasEnvKey) return 0
-    if (state.aiGatewayCapable) return 1
-    if (state.hasLocalKey && state.enabled) return 2
-    return 4
-  }
-
-  const visibleProviders = useMemo(
-    () => (filter === 'all' ? PROVIDERS : PROVIDERS.filter(p => p.categories.includes(filter))),
-    [filter],
-  )
-
-  // A provider shows up under EVERY category it powers.
-  const grouped = useMemo(() => {
-    const out: Record<ProviderCategory, typeof PROVIDERS> = { text: [], image: [], video: [], audio: [] }
-    visibleProviders.forEach(p => p.categories.forEach(cat => out[cat].push(p)))
-    CATEGORY_ORDER.forEach(cat => {
-      out[cat].sort((a, b) => {
-        const rd = configuredRank(a.id) - configuredRank(b.id)
-        return rd !== 0 ? rd : a.name.localeCompare(b.name)
-      })
-    })
-    return out
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleProviders, getState])
-
-  // KPI strip — counts of providers in each connection state.
-  const counts = useMemo(() => {
-    let live = 0
-    let gateway = 0
-    let local = 0
-    let idle = 0
-    PROVIDERS.forEach(p => {
-      const s = getState(p.id)
-      if (s.hasEnvKey) live++
-      else if (s.aiGatewayCapable) gateway++
-      else if (s.hasLocalKey && s.enabled) local++
-      else idle++
-    })
-    return { live, gateway, local, idle, total: PROVIDERS.length }
-  }, [getState])
+  const totals = useMemo(() => ({
+    providers: providers.length,
+    text: TEXT_MODELS.length,
+    image: IMAGE_MODELS.length,
+    video: VIDEO_MODELS.length,
+    audio: AUDIO_MODELS.length,
+  }), [providers])
 
   return (
     <AdminShell
       crumb={['admin', 'platform']}
       here="Models"
-      eyebrow="superadmin · providers · api keys"
-      heading={
-        <>
-          Connect <em className="italic">every model.</em>
-        </>
-      }
-      lead="Enable a provider, paste a key, and that model becomes available to every user across text, image, video and audio surfaces. Vercel env vars take priority, then the AI Gateway, then your local key."
+      eyebrow="superadmin · vercel ai gateway"
+      heading={<>Every model, <em className="italic">one gateway.</em></>}
+      lead="All text, image, video and audio generation runs through the Vercel AI Gateway — billing, rate limits and failover are handled there, and no provider keys are stored in Clox. Switch a provider off to hide its models from every picker."
       headExtra={
         <>
           {(['all', ...CATEGORY_ORDER] as const).map(cat => (
@@ -149,231 +93,116 @@ export default function ModelsAdminPage() {
       }
       actions={
         <>
-          <AdminIconBtn title="Re-check env vars" onClick={() => refresh()}>
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-              <path
-                d="M11 6.5a4.5 4.5 0 1 1-1.32-3.18M11 1.5v3H8"
-                stroke="currentColor"
-                strokeWidth="1.1"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+          <AdminIconBtn title="Re-check gateway connection" onClick={() => refresh()}>
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
+              <path d="M11 6.5a4.5 4.5 0 1 1-1.32-3.18M11 1.5v3H8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </AdminIconBtn>
-          <AdminBtn primary onClick={() => refresh()}>
-            Re-check
-          </AdminBtn>
+          <AdminBtn primary onClick={() => refresh()}>Re-check</AdminBtn>
         </>
       }
     >
-      {/* Toast — terracotta tinted, replaces alert() */}
-      {savedMessage && (
-        <div className="mb-4 inline-flex items-center gap-2 px-3 py-1.5 border border-accent/40 bg-accent/10 rounded-sharp font-mono text-[10.5px] tracking-[0.06em] uppercase text-accent">
-          {savedMessage}
-        </div>
-      )}
-
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 border border-hairline rounded-card bg-surface mb-[18px]">
-        <Stat label="Total providers" value={counts.total.toString()} />
-        <Stat label="Env-var live" value={counts.live.toString()} accent />
-        <Stat label="Via gateway" value={counts.gateway.toString()} />
-        <Stat label="Local key" value={counts.local.toString()} />
-        <Stat label="Idle" value={counts.idle.toString()} muted />
+      <div className="grid grid-cols-2 md:grid-cols-5 border border-hairline rounded-card bg-surface mb-[18px]">
+        <Stat label="Providers" value={totals.providers.toString()} accent />
+        <Stat label="Text models" value={totals.text.toString()} />
+        <Stat label="Image models" value={totals.image.toString()} />
+        <Stat label="Video models" value={totals.video.toString()} />
+        <Stat label="Audio models" value={totals.audio.toString()} />
       </div>
 
-      {/* Gateway banner */}
-      {aiGatewayConnected && (
-        <div className="mb-[18px] flex items-start gap-3 px-5 py-4 border border-accent/30 bg-accent/[0.06] rounded-card">
-          <span
-            aria-hidden
-            className="w-7 h-7 rounded-full bg-accent text-bg font-serif italic text-base flex items-center justify-center flex-shrink-0"
-          >
-            G
-          </span>
-          <div className="text-sm">
-            <div className="font-medium">Vercel AI Gateway connected</div>
-            <p className="text-ink-soft mt-0.5 leading-relaxed">
-              OpenAI, Anthropic and Google models run zero-config through the gateway. Adding your own keys is optional and gives you higher rate limits.
-            </p>
+      <div
+        className={`mb-[18px] flex items-start gap-3 px-5 py-4 border rounded-card ${
+          aiGatewayConnected ? 'border-accent/30 bg-accent/[0.06]' : 'border-hairline bg-surface'
+        }`}
+        role="status"
+      >
+        <span
+          aria-hidden
+          className={`w-7 h-7 rounded-full font-serif italic text-base flex items-center justify-center flex-shrink-0 ${
+            aiGatewayConnected ? 'bg-accent text-bg' : 'bg-hairline text-ink-soft'
+          }`}
+        >
+          G
+        </span>
+        <div className="text-sm">
+          <div className="font-medium">
+            {loading ? 'Checking the AI Gateway…' : aiGatewayConnected ? 'Vercel AI Gateway connected' : 'Vercel AI Gateway not connected'}
           </div>
+          <p className="text-ink-soft mt-0.5 leading-relaxed text-pretty">
+            {aiGatewayConnected
+              ? 'Deployed on Vercel, the app authenticates with its OIDC token automatically. Spend and usage show in your Vercel dashboard under AI Gateway.'
+              : 'On Vercel this connects automatically. For local runs set AI_GATEWAY_API_KEY, or pull an OIDC token with `vercel env pull`.'}
+          </p>
         </div>
-      )}
+      </div>
 
-      {/* Per-category sections */}
+      <div className="mb-[18px]">
+        <label htmlFor="model-search" className="sr-only">Search providers and models</label>
+        <input
+          id="model-search"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search providers or models…"
+          className="w-full h-9 px-3 bg-surface border border-hairline rounded-sharp font-mono text-[11.5px] text-ink placeholder:text-ink-muted outline-none focus:border-ink"
+        />
+      </div>
+
       <div className="space-y-[18px]">
-        {CATEGORY_ORDER.map(cat => {
-          const list = grouped[cat]
-          if (list.length === 0) return null
+        {visibleCategories.map(cat => {
+          const rows = providers
+            .filter(p => p.counts[cat] > 0)
+            .map(p => ({
+              ...p,
+              models: MODELS[cat].filter(m => m.provider === p.id),
+            }))
+            .map(p => ({
+              ...p,
+              models: q && !p.brand.toLowerCase().includes(q) && !p.id.includes(q)
+                ? p.models.filter(m => `${m.name} ${m.id}`.toLowerCase().includes(q))
+                : p.models,
+            }))
+            .filter(p => p.models.length > 0)
+          if (rows.length === 0) return null
           return (
             <AdminPanel
               key={cat}
               title={CATEGORY_LABELS[cat]}
-              meta={`${list.length} provider${list.length === 1 ? '' : 's'}`}
+              meta={`${rows.length} provider${rows.length === 1 ? '' : 's'} · ${rows.reduce((n, r) => n + r.models.length, 0)} models`}
             >
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-hairline border-t border-hairline">
-                {list.map(provider => {
-                  const state = getState(provider.id)
-                  const { connected, source, hasEnvKey, aiGatewayCapable, hasLocalKey } = state
-                  const modelsInCategory = getModelsForProviderInCategory(provider.id, cat)
-
-                  const statusLabel =
-                    source === 'env'
-                      ? 'env var'
-                      : source === 'gateway'
-                        ? 'gateway'
-                        : source === 'local'
-                          ? enabledProviders[provider.id]
-                            ? 'local key'
-                            : 'paused'
-                          : 'idle'
-
+                {rows.map(p => {
+                  const on = enabled[p.id] ?? true
+                  const live = on && aiGatewayConnected
                   return (
-                    <div
-                      key={`${cat}-${provider.id}`}
-                      className={`bg-surface p-5 ${connected ? '' : hasLocalKey ? '' : 'opacity-70 hover:opacity-100 transition-opacity'}`}
-                    >
-                      {/* Header: dot · status · serif name · toggle */}
-                      <div className="flex items-start justify-between gap-3 mb-3.5">
+                    <div key={`${cat}-${p.id}`} className={`bg-surface p-5 ${on ? '' : 'opacity-60 hover:opacity-100 transition-opacity'}`}>
+                      <div className="flex items-start justify-between gap-3 mb-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 mb-1">
-                            <span
-                              aria-hidden
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                connected
-                                  ? 'bg-accent'
-                                  : hasLocalKey
-                                    ? 'bg-ink-muted'
-                                    : 'bg-ink-muted/40'
-                              }`}
-                            />
+                            <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-accent' : 'bg-ink-muted/40'}`} />
                             <span className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted">
-                              {statusLabel}
+                              {!on ? 'hidden' : aiGatewayConnected ? 'via gateway' : 'not connected'}
                             </span>
                           </div>
-                          <h3 className="font-serif italic text-[20px] leading-tight tracking-[-0.01em]">
-                            {provider.name}
-                          </h3>
-                          <div className="font-mono text-[10px] text-ink-muted tracking-[0.04em] mt-0.5 truncate">
-                            {provider.envKey}
-                          </div>
+                          <h3 className="font-serif italic text-[20px] leading-tight tracking-[-0.01em]">{p.brand}</h3>
+                          <div className="font-mono text-[10px] text-ink-muted tracking-[0.04em] mt-0.5 truncate">{`${p.id}/*`}</div>
                         </div>
-                        <Toggle
-                          on={enabledProviders[provider.id]}
-                          onClick={() => handleToggleEnabled(provider.id)}
-                          label={`Toggle ${provider.name}`}
-                        />
+                        <Toggle on={on} onClick={() => toggle(p.id)} label={`Show ${p.brand} models`} />
                       </div>
-
-                      {/* Models powered */}
-                      {modelsInCategory.length > 0 && (
-                        <div className="mb-3.5">
-                          <div className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted mb-1.5">
-                            Powers {modelsInCategory.length} model{modelsInCategory.length === 1 ? '' : 's'}
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {modelsInCategory.map(m => (
-                              <span
-                                key={m.id}
-                                className={`font-mono text-[10px] tracking-[0.04em] px-2 py-0.5 border rounded-sharp ${
-                                  connected
-                                    ? 'border-accent/40 text-accent bg-accent/[0.06]'
-                                    : 'border-hairline-soft text-ink-soft'
-                                }`}
-                              >
-                                {m.displayName}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Key field — single input by default, but providers
-                          with `requiresSecret: true` (Kling, Baidu ERNIE,
-                          Play.ht, Azure Speech) need an Access Key + Secret
-                          Key pair. We surface both via `KeyEditor`'s
-                          `secretInitial` / `secretLabel` props. */}
-                      <div className="border-t border-hairline-soft pt-3">
-                        {editingProvider === provider.id ? (
-                          <KeyEditor
-                            initial={apiKeys[provider.id] ?? ''}
-                            secretInitial={provider.requiresSecret ? (apiSecrets[provider.id] ?? '') : undefined}
-                            // Per-provider labels win when set (e.g. Moonshot
-                            // labels its second field "User ID" rather than
-                            // "Secret Key"). Otherwise fall back to the
-                            // standard Access Key / Secret Key pairing
-                            // most dual-credential providers use.
-                            keyLabel={provider.keyLabel ?? (provider.requiresSecret ? 'Access Key' : 'API Key')}
-                            secretLabel={provider.secretLabel ?? 'Secret Key'}
-                            onSave={(v, s) => handleSaveKey(provider.id, v, s)}
-                            onCancel={() => setEditingProvider(null)}
-                          />
-                        ) : (
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="password"
-                                value={
-                                  // `hasLocalKey` comes from `useProviderStatus`,
-                                  // which hydrates synchronously, but `apiKeys`
-                                  // is populated by a post-paint effect. On the
-                                  // first render after reload `apiKeys[provider.id]`
-                                  // can be undefined while `hasLocalKey` is already
-                                  // true, so we read the length defensively and
-                                  // fall back to a fixed-length mask. Once the
-                                  // effect runs the real length comes through.
-                                  hasLocalKey
-                                    ? '\u2022'.repeat(Math.min(apiKeys[provider.id]?.length ?? 12, 32))
-                                    : ''
-                                }
-                                readOnly
-                                placeholder={
-                                  hasEnvKey
-                                    ? 'Using Vercel env var'
-                                    : aiGatewayCapable
-                                      ? 'Using AI Gateway (optional override)'
-                                      : provider.requiresSecret
-                                        ? `No ${(provider.keyLabel ?? 'access key').toLowerCase()} configured`
-                                        : 'No key configured'
-                                }
-                                className="flex-1 h-9 px-2.5 bg-bg border border-hairline-soft rounded-sharp font-mono text-[11.5px] text-ink placeholder:text-ink-muted outline-none"
-                                aria-label={`${provider.name} ${(provider.keyLabel ?? (provider.requiresSecret ? 'access key' : 'api key')).toLowerCase()}`}
-                              />
-                              <AdminBtn onClick={() => setEditingProvider(provider.id)}>
-                                {hasLocalKey ? 'Edit' : provider.requiresSecret ? 'Add keys' : 'Add key'}
-                              </AdminBtn>
-                              {provider.docsUrl && (
-                                <a
-                                  href={provider.docsUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="font-mono text-[10px] tracking-[0.06em] uppercase text-ink-soft hover:text-ink transition-colors"
-                                >
-                                  docs ↗
-                                </a>
-                              )}
-                            </div>
-
-                            {/* Secret-key preview row, only for dual-credential
-                                providers. Shown disabled to make the
-                                "two-field" reality obvious without forcing
-                                edit mode. */}
-                            {provider.requiresSecret && (
-                              <input
-                                type="password"
-                                value={
-                                  apiSecrets[provider.id]
-                                    ? '\u2022'.repeat(Math.min(apiSecrets[provider.id].length, 32))
-                                    : ''
-                                }
-                                readOnly
-                                placeholder={`No ${(provider.secretLabel ?? 'secret key').toLowerCase()} configured`}
-                                className="h-9 px-2.5 bg-bg border border-hairline-soft rounded-sharp font-mono text-[11.5px] text-ink placeholder:text-ink-muted outline-none"
-                                aria-label={`${provider.name} ${(provider.secretLabel ?? 'secret key').toLowerCase()}`}
-                              />
-                            )}
-                          </div>
-                        )}
+                      <div className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted mb-1.5">
+                        {p.models.length} model{p.models.length === 1 ? '' : 's'}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {p.models.map(m => (
+                          <span
+                            key={m.id}
+                            title={m.id}
+                            className={`font-mono text-[10px] tracking-[0.04em] px-2 py-0.5 border rounded-sharp ${
+                              live ? 'border-accent/40 text-accent bg-accent/[0.06]' : 'border-hairline-soft text-ink-soft'
+                            }`}
+                          >
+                            {m.name}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   )
@@ -384,45 +213,23 @@ export default function ModelsAdminPage() {
         })}
       </div>
 
-      {/* Footer note */}
       <div className="mt-[18px] border border-hairline-soft rounded-card bg-surface px-6 py-5">
-        <div className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted mb-2">
-          how connected providers are chosen
-        </div>
-        <ul className="text-sm text-ink-soft space-y-1 list-disc pl-5 leading-relaxed">
-          <li>
-            <strong className="text-ink font-medium">Env var</strong> — a matching key is set on your Vercel project. Safest, highest priority.
-          </li>
-          <li>
-            <strong className="text-ink font-medium">AI Gateway</strong> — OpenAI, Anthropic and Google work through the gateway with no key.
-          </li>
-          <li>
-            <strong className="text-ink font-medium">Local key</strong> — a key you typed here, stored in your browser only.
-          </li>
-        </ul>
-        <p className="text-[12px] text-ink-muted mt-3">
-          Dropdowns across the Text / Image / Video / Audio workspaces only show models whose provider is connected and not toggled off.
+        <div className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted mb-2">keeping the list current</div>
+        <p className="text-sm text-ink-soft leading-relaxed text-pretty">
+          The catalogue is generated from the gateway&apos;s model list. Run{' '}
+          <code className="font-mono text-[11.5px] text-ink">node scripts/sync-gateway-models.mjs</code>{' '}
+          to pick up newly released models; each model&apos;s settings (temperature, reasoning, sizes, durations, voices…) are derived from what the gateway reports for it.
         </p>
       </div>
     </AdminShell>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Local primitives
-// ---------------------------------------------------------------------------
-
-function Stat({ label, value, accent, muted }: { label: string; value: string; accent?: boolean; muted?: boolean }) {
+function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="px-5 py-[18px] flex flex-col gap-0.5 border-r last:border-r-0 border-hairline-soft">
       <span className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted">{label}</span>
-      <span
-        className={`font-serif text-[28px] leading-none tracking-[-0.02em] mt-1 ${
-          accent ? 'italic text-accent' : muted ? 'text-ink-muted' : ''
-        }`}
-      >
-        {value}
-      </span>
+      <span className={`font-serif text-[28px] leading-none tracking-[-0.02em] mt-1 ${accent ? 'italic text-accent' : ''}`}>{value}</span>
     </div>
   )
 }
@@ -440,84 +247,5 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
     >
       <span className={`block w-[11px] h-[11px] rounded-full ${on ? 'bg-bg' : 'bg-ink-soft'}`} />
     </button>
-  )
-}
-
-/**
- * Single- or dual-credential editor.
- *
- * For most providers we render a single text field labelled "API Key".
- * Dual-credential providers (`requiresSecret: true` in `PROVIDERS`) get
- * a second field for the secret. Caller decides which mode by passing
- * `secretInitial` (string for dual, `undefined` for single).
- *
- * `onSave(value, secret)` is invoked with the trimmed values; `secret`
- * is `undefined` in single-credential mode so the upstream save handler
- * can pass it through to `setProviderApiKey` without touching stored
- * secrets that the user didn't intend to change.
- */
-function KeyEditor({
-  initial,
-  secretInitial,
-  keyLabel = 'API Key',
-  secretLabel = 'Secret Key',
-  onSave,
-  onCancel,
-}: {
-  initial: string
-  secretInitial?: string
-  keyLabel?: string
-  secretLabel?: string
-  onSave: (v: string, s?: string) => void
-  onCancel: () => void
-}) {
-  const [value, setValue] = useState(initial)
-  const [secret, setSecret] = useState(secretInitial ?? '')
-  const dualMode = secretInitial !== undefined
-
-  const submit = () => onSave(value, dualMode ? secret : undefined)
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          autoFocus
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') submit()
-            else if (e.key === 'Escape') onCancel()
-          }}
-          placeholder={dualMode ? `Paste ${keyLabel.toLowerCase()}…` : 'Paste API key…'}
-          aria-label={keyLabel}
-          className="flex-1 h-9 px-2.5 bg-bg border border-ink rounded-sharp font-mono text-[11.5px] text-ink outline-none"
-        />
-        {!dualMode && (
-          <>
-            <AdminBtn primary onClick={submit}>Save</AdminBtn>
-            <AdminBtn onClick={onCancel}>Cancel</AdminBtn>
-          </>
-        )}
-      </div>
-      {dualMode && (
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={secret}
-            onChange={e => setSecret(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') submit()
-              else if (e.key === 'Escape') onCancel()
-            }}
-            placeholder={`Paste ${secretLabel.toLowerCase()}…`}
-            aria-label={secretLabel}
-            className="flex-1 h-9 px-2.5 bg-bg border border-ink rounded-sharp font-mono text-[11.5px] text-ink outline-none"
-          />
-          <AdminBtn primary onClick={submit}>Save</AdminBtn>
-          <AdminBtn onClick={onCancel}>Cancel</AdminBtn>
-        </div>
-      )}
-    </div>
   )
 }

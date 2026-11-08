@@ -131,10 +131,10 @@ export default function InviteAcceptPage({
             ) : viewerEmail === null ? (
               <div className="mt-8 text-center space-y-3">
                 <p className="text-[13px] text-ink">
-                  Sign in as <span className="font-medium">{info.email}</span> to join.
+                  Sign in or create an account as <span className="font-medium">{info.email}</span> to join.
                 </p>
                 <Link
-                  href={`/auth/login?redirect=${encodeURIComponent(`/invite/${token}`)}&email=${encodeURIComponent(info.email)}`}
+                  href={`/login?redirect=${encodeURIComponent(`/invite/${token}`)}&email=${encodeURIComponent(info.email)}`}
                   className="inline-block font-mono text-[11px] tracking-[0.08em] uppercase bg-ink text-bg px-5 py-2.5 hover:bg-ink-soft transition-colors"
                 >
                   Sign in →
@@ -145,12 +145,16 @@ export default function InviteAcceptPage({
                 <p className="text-[13px] text-ink">
                   This invite is for <span className="font-medium">{info.email}</span>, but you&apos;re signed in as <span className="font-medium">{viewerEmail}</span>.
                 </p>
-                <Link
-                  href={`/auth/login?redirect=${encodeURIComponent(`/invite/${token}`)}&email=${encodeURIComponent(info.email)}`}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await createClient().auth.signOut()
+                    window.location.assign(`/login?redirect=${encodeURIComponent(`/invite/${token}`)}&email=${encodeURIComponent(info.email)}`)
+                  }}
                   className="inline-block font-mono text-[11px] tracking-[0.08em] uppercase border border-hairline px-5 py-2 hover:bg-rail-soft"
                 >
                   Switch account
-                </Link>
+                </button>
               </div>
             ) : (
               <div className="mt-8 flex justify-center">

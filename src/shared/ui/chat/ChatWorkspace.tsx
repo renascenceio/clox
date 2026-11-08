@@ -75,11 +75,11 @@ export interface ModelOption {
   label: string
   tag: string
   short: string
-  /** True when the user hasn't configured this model's provider yet
-   *  (no env var, no AI Gateway, no local key). The picker still shows
-   *  the model so users can discover what's available, but renders a
-   *  muted "needs api key" affordance and a Configure shortcut. */
+  /** True when the server can't reach the AI Gateway. The picker still
+   *  lists the model but renders it muted. */
   disconnected?: boolean
+  /** Provider heading the model is listed under (e.g. "Claude"). */
+  group?: string
 }
 
 export interface ModeOption {
@@ -1017,10 +1017,12 @@ function UserMenu({
 
       <div style={{ height: 1, background: p.hairlineSoft, margin: '6px 12px' }} />
 
-      <UserMenuRow
-        p={p} icon={I.shield} label="Super Admin"
-        onClick={() => { onOpenSuperAdmin?.(); onClose() }}
-      />
+      {onOpenSuperAdmin ? (
+        <UserMenuRow
+          p={p} icon={I.shield} label="Super Admin"
+          onClick={() => { onOpenSuperAdmin(); onClose() }}
+        />
+      ) : null}
       <UserMenuRow
         p={p} icon={I.bulb} label="Skills"
         onClick={() => { onOpenSkills?.(); onClose() }}
@@ -1789,23 +1791,49 @@ function ModelMenu({ p, mono, serif, models, model, setModel, left = 12 }: {
   p: Palette; mono: string; serif: string
   models: ModelOption[]; model: string; setModel: (id: string) => void; left?: number
 }) {
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const visible = q
+    ? models.filter(m => `${m.label} ${m.id} ${m.group ?? ''}`.toLowerCase().includes(q))
+    : models
   return (
     <div style={{
       position: 'absolute', bottom: 'calc(100% + 6px)', left,
-      width: 280, background: p.surface,
+      width: 300, background: p.surface,
       border: `1px solid ${p.hairline}`, borderRadius: 3,
       boxShadow: `0 12px 40px ${p.bg === '#14130E' ? 'rgba(0,0,0,.45)' : 'rgba(22,20,16,.10)'}`,
-      padding: '6px 0', zIndex: 10,
-      // The video registry has 14+ models (Sora, Luma, Runway, Pika,
-      // Haiper, Kling, HeyGen, Synthesia, D-ID, etc.) — capping at the
-      // old 320px hid roughly half the list below an unobvious scroll
-      // boundary. Switching to a vh-based ceiling lets every connected
-      // *and* disconnected model fit in view on a normal-height screen,
-      // while still leaving headroom on small viewports.
-      maxHeight: 'min(70vh, 640px)', overflow: 'auto',
+      zIndex: 10,
+      display: 'flex', flexDirection: 'column',
+      maxHeight: 'min(70vh, 640px)',
     }}>
-      <div style={{ padding: '8px 14px 4px', fontFamily: mono, fontSize: 9.5, letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted }}>select model</div>
-      {models.map(m => {
+      <div style={{ padding: '10px 12px 8px', borderBottom: `1px solid ${p.hairlineSoft}` }}>
+        <label htmlFor="clox-model-search" className="sr-only">Search models</label>
+        <input
+          id="clox-model-search"
+          autoFocus
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229 && visible[0]) {
+              e.preventDefault()
+              setModel(visible[0].id)
+            }
+          }}
+          placeholder={`search ${models.length} models`}
+          style={{
+            width: '100%', padding: '6px 8px',
+            background: p.surfaceAlt, color: p.ink,
+            border: `1px solid ${p.hairlineSoft}`, borderRadius: 2,
+            fontFamily: mono, fontSize: 11.5, outline: 'none',
+          }}
+        />
+      </div>
+      <div role="listbox" aria-label="Models" style={{ overflow: 'auto', padding: '4px 0 6px' }}>
+      {visible.length === 0 && (
+        <div style={{ padding: '10px 14px', fontFamily: mono, fontSize: 11, color: p.inkMuted }}>no models match</div>
+      )}
+      {visible.map((m, i) => {
+        const header = m.group && m.group !== visible[i - 1]?.group ? m.group : null
         // Disconnected models stay clickable so users can read the
         // "needs api key" affordance and pick one anyway — submitting
         // surfaces the route's missing-key error which directs them to
@@ -1813,7 +1841,11 @@ function ModelMenu({ p, mono, serif, models, model, setModel, left = 12 }: {
         // ones read as the obvious default.
         const muted = Boolean(m.disconnected)
         return (
-          <button key={m.id} onClick={() => setModel(m.id)} style={{
+          <div key={m.id}>
+          {header && (
+            <div style={{ padding: '10px 14px 3px', fontFamily: mono, fontSize: 9.5, letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted }}>{header}</div>
+          )}
+          <button role="option" aria-selected={model === m.id} onClick={() => setModel(m.id)} style={{
             display: 'block', width: '100%', textAlign: 'left',
             padding: '8px 14px',
             background: model === m.id ? p.surfaceAlt : 'transparent',
@@ -1835,8 +1867,10 @@ function ModelMenu({ p, mono, serif, models, model, setModel, left = 12 }: {
               marginTop: 2, letterSpacing: '0.04em',
             }}>{m.tag}</div>
           </button>
+          </div>
         )
       })}
+      </div>
     </div>
   )
 }

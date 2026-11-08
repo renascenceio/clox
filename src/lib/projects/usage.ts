@@ -12,6 +12,7 @@
  */
 
 import { getServiceClient } from '@/lib/projects/server'
+import { chargeCredit } from '@/lib/credits'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 
 export type Modality = 'text' | 'image' | 'video' | 'audio' | 'research' | 'code'
@@ -117,6 +118,8 @@ export interface RecordUsageInput {
  * synchronous from the caller's perspective but does NOT block the request
  * if you `void` it (we use that pattern after streamed responses).
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function recordUsage(input: RecordUsageInput): Promise<number> {
   const cost = input.costUsd ?? computeCostUsd({
     modality: input.modality,
@@ -130,7 +133,9 @@ export async function recordUsage(input: RecordUsageInput): Promise<number> {
   const { error } = await sb.from('usage_logs').insert({
     user_id: input.userId,
     project_id: input.projectId ?? null,
-    chat_id: input.chatId ?? null,
+    // usage_logs.chat_id is a uuid; personal chats use ids like
+    // "text_1794…", which made every insert fail. Keep only real uuids.
+    chat_id: input.chatId && UUID_RE.test(input.chatId) ? input.chatId : null,
     modality: input.modality,
     chat_type: input.chatType ?? input.modality,
     provider: input.provider,
@@ -142,6 +147,7 @@ export async function recordUsage(input: RecordUsageInput): Promise<number> {
     is_free_domain: Boolean(input.isFreeDomain),
   })
   if (error) console.error('[v0] recordUsage failed:', error.message)
+  await chargeCredit(input.userId, input.domain, cost)
   return cost
 }
 
