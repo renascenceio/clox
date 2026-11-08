@@ -108,6 +108,9 @@ const NETWORK_POLICY = {
     'codeload.github.com',
     'objects.githubusercontent.com',
     'ai-gateway.vercel.sh',
+    // clox_kit downloads any Google Font the deck asks for (fonts=...).
+    'fonts.googleapis.com',
+    'fonts.gstatic.com',
   ] as string[],
 }
 

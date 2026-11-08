@@ -843,7 +843,8 @@ class Deck:
         """One big idea, full-slide. bg: None | 'surface' | 'hero' | '#hex'."""
         return self._add("statement", text=text, kicker=kicker, attribution=attribution, bg=bg, notes=notes)
 
-    def bullets(self, title, points, *, kicker=None, aside=None, numbered=True, notes=None):
+    def bullets(self, title, points=None, *, items=None, kicker=None, aside=None, numbered=True, notes=None):
+        points = points if points is not None else items
         """points: ["text", ...] or [("Headline", "one-line detail"), ...]. aside = a callout on the right."""
         return self._add("bullets", title=title, points=points, kicker=kicker, aside=aside, numbered=numbered,
                          notes=notes)
@@ -869,15 +870,19 @@ class Deck:
         return self._add("table", title=title, columns=jsonable(columns), rows=jsonable(rows), kicker=kicker,
                          highlight=highlight, highlight_row=highlight_row, fmt=fmt, note=note, notes=notes)
 
-    def timeline(self, title, steps, *, kicker=None, current=None, notes=None):
+    def timeline(self, title, steps=None, *, items=None, kicker=None, current=None, notes=None):
+        steps = steps if steps is not None else items
         """steps: [(when, what, detail?)] — 3 to 6. current = index reached so far."""
         return self._add("timeline", title=title, steps=steps, kicker=kicker, current=current, notes=notes)
 
-    def cards(self, title, cards, *, kicker=None, numbered=False, notes=None):
-        """cards: [(title, body, tag?)] — 2 to 6. numbered=True for a process / steps slide."""
+    def cards(self, title, cards=None, *, items=None, kicker=None, numbered=False, notes=None):
+        """cards: [(title, body, tag?)] — 2 to 6. numbered=True for a process / steps slide.
+        items= is accepted as another name for cards= (kpis/agenda use items)."""
+        cards = cards if cards is not None else items
         return self._add("cards", title=title, cards=cards, kicker=kicker, numbered=numbered, notes=notes)
 
-    def process(self, title, steps, *, kicker=None, notes=None):
+    def process(self, title, steps=None, *, items=None, kicker=None, notes=None):
+        steps = steps if steps is not None else items
         return self.cards(title, steps, kicker=kicker, numbered=True, notes=notes)
 
     def quote(self, text, who=None, role=None, *, kicker=None, notes=None):

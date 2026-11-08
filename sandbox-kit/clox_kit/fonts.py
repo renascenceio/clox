@@ -46,8 +46,13 @@ def _stem(family: str, weight: int, italic: bool) -> str:
 
 def _get(url: str) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "clox-kit/1 (python)"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.read()
+    except urllib.error.HTTPError:
+        raise
+    except urllib.error.URLError as e:
+        raise OSError(f"can't reach Google Fonts from here ({e.reason})") from e
 
 
 def _css(family: str, variants: list[tuple[int, bool]]) -> str:

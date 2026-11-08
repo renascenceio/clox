@@ -190,7 +190,13 @@ def theme(name: str | Theme | None = None, *, brand: str | None = None, dark: bo
         overrides.setdefault("accent", brand)
     if "fonts" in overrides and overrides["fonts"] not in FONT_SETS:
         from .fonts import key_for
-        overrides["fonts"] = key_for(overrides["fonts"]) or base.fonts
+        try:
+            overrides["fonts"] = key_for(overrides["fonts"]) or base.fonts
+        except (OSError, ValueError) as e:
+            # A font that can't be fetched must not stop the deck: keep the
+            # theme's own fonts and say so (lines starting "!" are defects).
+            print(f"! fonts {overrides['fonts']!r} not used, kept the theme's fonts: {e}")
+            overrides["fonts"] = base.fonts
     if "series" in overrides and not isinstance(overrides["series"], tuple):
         overrides["series"] = tuple(overrides["series"])
     return replace(base, **overrides) if overrides else base

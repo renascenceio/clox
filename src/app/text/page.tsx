@@ -1830,8 +1830,9 @@ export default function TextPage() {
         return text
       })()
       const lower = rawMessage.toLowerCase()
-      const errorKind: 'rate_limit' | 'overloaded' | 'timeout' | 'no_response' | 'generic' =
+      const errorKind: 'rate_limit' | 'overloaded' | 'timeout' | 'no_response' | 'missing_tool' | 'generic' =
         !chatError                                                ? 'no_response'
+        : /unavailable tool|no such tool|nosuchtool/i.test(lower) ? 'missing_tool'
         : /rate.?limit|429|tokens? per (minute|second)|tpm|exceed/i.test(lower) ? 'rate_limit'
         : /overload|529|temporarily unavailable|service unavail/i.test(lower)   ? 'overloaded'
         : /timeout|timed out|aborted|deadline/i.test(lower)       ? 'timeout'
@@ -1902,6 +1903,9 @@ export default function TextPage() {
             return 'The request timed out before the model finished. ' +
                    'For long deliverables (PPTX, multi-page PDFs), break the work into ' +
                    'smaller follow-up turns instead of one big request.'
+          case 'missing_tool':
+            return 'Clox tried to run code to rebuild the file, but the code tools were not attached to that message. ' +
+                   'This was a Clox problem, not the model. It is fixed now: try again and the same request will run.'
           case 'no_response':
             return 'The model stopped without producing a response. ' +
                    'This usually means the request timed out, hit the token limit, ' +
@@ -1942,6 +1946,7 @@ export default function TextPage() {
                errorKind === 'overloaded' ? 'Provider overloaded' :
                errorKind === 'timeout'    ? 'Request timed out' :
                errorKind === 'no_response' ? 'No response' :
+               errorKind === 'missing_tool' ? 'Tools not attached' :
                'Stream error'}
             </div>
             <div style={{ opacity: 0.85 }}>
@@ -2066,7 +2071,7 @@ export default function TextPage() {
                   opacity: isStreaming ? 0.5 : 1,
                 }}
               >
-                Retry on {selectedTextModel.name}
+                {canSuggestSwap ? `Retry on ${selectedTextModel.name}` : 'Try again'}
               </button>
             </div>
           </div>
