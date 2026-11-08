@@ -44,7 +44,7 @@ export async function GET(req: Request) {
   const emailById = await fetchEmailsByIds(sb, ids)
 
   const [credits, usage] = await Promise.all([
-    sb.from('credits').select('user_id, balance_usd').in('user_id', ids),
+    sb.from('credits').select('user_id, balance_credits').in('user_id', ids),
     sb.from('usage_logs')
       .select('user_id, cost_usd, prompt_tokens, completion_tokens')
       .in('user_id', ids)
@@ -52,7 +52,7 @@ export async function GET(req: Request) {
   ])
 
   const creditByUser = new Map<string, number>()
-  for (const c of credits.data ?? []) creditByUser.set(c.user_id, Number(c.balance_usd ?? 0))
+  for (const c of credits.data ?? []) creditByUser.set(c.user_id, Number(c.balance_credits ?? 0))
 
   const usageByUser = new Map<string, { spend: number; tokens: number; calls: number }>()
   for (const u of usage.data ?? []) {
@@ -76,7 +76,7 @@ export async function GET(req: Request) {
         country: r.country,
         city: r.city,
         created_at: r.created_at,
-        balance_usd: creditByUser.get(r.id) ?? 0,
+        balance_credits: creditByUser.get(r.id) ?? 0,
         usage_30d: usageByUser.get(r.id) ?? { spend: 0, tokens: 0, calls: 0 },
       }
     })

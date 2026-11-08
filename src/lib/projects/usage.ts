@@ -14,6 +14,8 @@
 import { getServiceClient } from '@/lib/projects/server'
 import { chargeCredit } from '@/lib/credits'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { TEXT_PRICES, IMAGE_PRICES } from '@/lib/gateway/prices.generated'
+import { creditsFor } from '@/lib/plans'
 
 export type Modality = 'text' | 'image' | 'video' | 'audio' | 'research' | 'code'
 
@@ -78,10 +80,24 @@ export function priceFor(modality: Modality, model: string): ModelPrice {
 export function computeCostUsd(opts: {
   modality: Modality
   model: string
+  /** Uncached input tokens (all input when the provider gives no split). */
   promptTokens?: number
   completionTokens?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
   durationSec?: number
 }): number {
+  // The gateway's own prices, refreshed by scripts/sync-gateway-prices.mjs.
+  const live = TEXT_PRICES[opts.model]
+  if (live && opts.modality !== 'image' && opts.modality !== 'video' && opts.modality !== 'audio') {
+    const total =
+      ((opts.promptTokens ?? 0) * live.in +
+        (opts.cacheReadTokens ?? 0) * (live.cacheRead ?? live.in) +
+        (opts.cacheWriteTokens ?? 0) * (live.cacheWrite ?? live.in) +
+        (opts.completionTokens ?? 0) * live.out) / 1e6
+    return Math.round(total * 1e6) / 1e6
+  }
+  if (opts.modality === 'image' && IMAGE_PRICES[opts.model] != null) return IMAGE_PRICES[opts.model]
   const p = priceFor(opts.modality, opts.model)
   let total = 0
   if (p.input_per_1k && opts.promptTokens) {
@@ -143,6 +159,7 @@ export async function recordUsage(input: RecordUsageInput): Promise<number> {
     prompt_tokens: Math.max(0, Math.floor(input.promptTokens ?? 0)),
     completion_tokens: Math.max(0, Math.floor(input.completionTokens ?? 0)),
     cost_usd: cost,
+    credits: creditsFor(cost),
     domain: input.domain ?? null,
     is_free_domain: Boolean(input.isFreeDomain),
   })

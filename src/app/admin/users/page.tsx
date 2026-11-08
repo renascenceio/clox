@@ -27,7 +27,7 @@ interface User {
   country: string | null
   city: string | null
   created_at: string
-  balance_usd: number
+  balance_credits: number
   usage_30d: { spend: number; tokens: number; calls: number }
 }
 
@@ -65,7 +65,7 @@ export default function UsersPage() {
   }, [role, query, refreshTick])
 
   const totalSpend = useMemo(() => users.reduce((s, u) => s + u.usage_30d.spend, 0), [users])
-  const totalBalance = useMemo(() => users.reduce((s, u) => s + u.balance_usd, 0), [users])
+  const totalBalance = useMemo(() => users.reduce((s, u) => s + u.balance_credits, 0), [users])
   const selected = users.find(u => u.id === selectedId) ?? null
 
   return (
@@ -106,7 +106,7 @@ export default function UsersPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 border border-hairline rounded-card bg-surface mb-[18px]">
         <KpiCell label="Accounts (filtered)" value={users.length.toLocaleString()} />
         <KpiCell label="Spend (30d, filtered)" value={`$${totalSpend.toFixed(2)}`} />
-        <KpiCell label="Outstanding balance" value={`$${totalBalance.toFixed(2)}`} accent />
+        <KpiCell label="Outstanding credits" value={Math.floor(totalBalance).toLocaleString('en-US')} accent />
         <KpiCell label="Active in 30d" value={users.filter(u => u.usage_30d.calls > 0).length.toLocaleString()} />
       </div>
 
@@ -186,7 +186,7 @@ export default function UsersPage() {
                         ${u.usage_30d.spend.toFixed(2)}
                       </td>
                       <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right font-mono text-[12px]">
-                        ${u.balance_usd.toFixed(2)}
+                        {Math.floor(u.balance_credits).toLocaleString('en-US')}
                       </td>
                       <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right">
                         <span className="font-mono text-[10.5px] text-ink-muted">{isSelected ? '—' : '+'}</span>
@@ -219,7 +219,7 @@ export default function UsersPage() {
               </div>
               <div className="border-t border-hairline-soft pt-4">
                 <div className="font-mono text-[9.5px] tracking-[0.18em] uppercase text-ink-muted mb-2">credits</div>
-                <div className="font-serif italic text-[28px] leading-none">${selected.balance_usd.toFixed(2)}</div>
+                <div className="font-serif italic text-[28px] leading-none">{Math.floor(selected.balance_credits).toLocaleString('en-US')}</div>
                 <div className="font-mono text-[10.5px] text-ink-muted mt-1">current balance</div>
               </div>
               <div className="pt-2">

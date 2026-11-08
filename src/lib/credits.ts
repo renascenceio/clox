@@ -1,6 +1,9 @@
 import { getServiceClient } from '@/lib/projects/server'
 import { getCallerForLogging } from '@/lib/projects/usage'
 import { FREE_DOMAINS } from '@/domains/text-generation/services/pricing'
+import { TEXT_PRICES } from '@/lib/gateway/prices.generated'
+import { AUTO_MODEL_ID } from '@/lib/auto-model'
+import { LOW_COST_LIMIT, creditsFor, planFor, type Plan } from '@/lib/plans'
 
 type Caller = NonNullable<Awaited<ReturnType<typeof getCallerForLogging>>>
 
@@ -9,42 +12,76 @@ export function isUncharged(domain: string | null | undefined) {
   return !!domain && FREE_DOMAINS.includes(domain.toLowerCase())
 }
 
-/**
- * Gate for every route that spends money on a model: the caller must be
- * signed in, active, and have credit left (free domains and super admins
- * are never blocked). Returns the caller, or a ready-to-send Response.
- */
-export async function checkCredit(): Promise<
-  { caller: Caller; blocked: null } | { caller: null; blocked: Response }
-> {
-  const caller = await getCallerForLogging()
-  if (!caller) {
-    return { caller: null, blocked: Response.json({ success: false, error: 'Sign in to use Clox.' }, { status: 401 }) }
-  }
-  const sb = getServiceClient()
-  const [{ data: profile }, { data: credit }] = await Promise.all([
-    sb.from('profiles').select('role, is_active').eq('id', caller.userId).maybeSingle(),
-    sb.from('credits').select('balance_usd').eq('user_id', caller.userId).maybeSingle(),
-  ])
-  if (profile && profile.is_active === false) {
-    return { caller: null, blocked: Response.json({ success: false, error: 'This account is suspended.' }, { status: 403 }) }
-  }
-  if (profile?.role === 'super_admin' || isUncharged(caller.domain)) return { caller, blocked: null }
-  if (Number(credit?.balance_usd ?? 0) <= 0) {
-    return {
-      caller: null,
-      blocked: Response.json(
-        { success: false, error: 'You’ve used all your credit. Add more in Settings › Billing to keep going.' },
-        { status: 402 },
-      ),
-    }
-  }
-  return { caller, blocked: null }
+/** Models the Free plan may use. */
+export function isLowCostModel(modelId: string) {
+  if (modelId === AUTO_MODEL_ID) return true
+  const p = TEXT_PRICES[modelId]
+  return Boolean(p && p.in <= LOW_COST_LIMIT.in && p.out <= LOW_COST_LIMIT.out)
 }
 
-/** Takes the cost of a call off the caller's balance (never below zero). */
+function block(status: number, error: string, code: string) {
+  return { caller: null, plan: null, blocked: Response.json({ success: false, error, code }, { status }) } as const
+}
+
+/**
+ * Gate for every route that spends money on a model: the caller must be
+ * signed in, active, and have credits left (free domains and super admins
+ * are never blocked). The Free plan also renews itself here each month,
+ * is limited to low-cost models, and has a daily cap.
+ */
+export async function checkCredit(opts: { model?: string } = {}): Promise<
+  | { caller: Caller; plan: Plan; blocked: null }
+  | { caller: null; plan: null; blocked: Response }
+> {
+  const caller = await getCallerForLogging()
+  if (!caller) return block(401, 'Sign in to use Clox.', 'signin')
+  const sb = getServiceClient()
+  const [{ data: profile }, { data: credit }] = await Promise.all([
+    sb.from('profiles').select('role, is_active, plan').eq('id', caller.userId).maybeSingle(),
+    sb.from('credits').select('balance_credits, period_end, subscription_status').eq('user_id', caller.userId).maybeSingle(),
+  ])
+  if (profile && profile.is_active === false) return block(403, 'This account is suspended.', 'suspended')
+  const plan = planFor(profile?.plan)
+  if (profile?.role === 'super_admin' || isUncharged(caller.domain)) return { caller, plan, blocked: null }
+
+  let balance = Number(credit?.balance_credits ?? 0)
+  const periodOver = !credit?.period_end || new Date(credit.period_end).getTime() <= Date.now()
+  // Paid plans renew from Stripe's invoice; the Free plan renews here.
+  if (credit && periodOver && plan.id === 'free') {
+    const next = new Date()
+    next.setUTCMonth(next.getUTCMonth() + 1)
+    const { data } = await sb.rpc('renew_credits', {
+      p_user_id: caller.userId, p_grant: plan.credits, p_period_end: next.toISOString(), p_change: false,
+    })
+    if (data != null) balance = Number(data)
+  }
+
+  if (plan.lowCostOnly && opts.model && !isLowCostModel(opts.model)) {
+    return block(402, `The Free plan includes Auto and fast models like Haiku and Gemini Flash. Upgrade to use this model.`, 'upgrade_model')
+  }
+  if (balance <= 0) {
+    return block(402, 'You’ve used all your credits. Upgrade your plan or add credits in Settings › Billing.', 'no_credits')
+  }
+  if (plan.dailyCap) {
+    const since = new Date()
+    since.setUTCHours(0, 0, 0, 0)
+    const { data: rows } = await sb
+      .from('usage_logs')
+      .select('credits')
+      .eq('user_id', caller.userId)
+      .gte('created_at', since.toISOString())
+    const today = (rows ?? []).reduce((s, r) => s + Number(r.credits ?? 0), 0)
+    if (today >= plan.dailyCap) {
+      return block(429, `You’ve used today’s ${plan.dailyCap} Free credits. They reset at midnight UTC, or upgrade for more.`, 'daily_cap')
+    }
+  }
+  return { caller, plan, blocked: null }
+}
+
+/** Takes the cost of a call off the caller's credits (never below zero). */
 export async function chargeCredit(userId: string, domain: string | null | undefined, costUsd: number) {
-  if (!(costUsd > 0) || isUncharged(domain)) return
-  const { error } = await getServiceClient().rpc('deduct_credits', { p_user_id: userId, p_amount: costUsd })
-  if (error) console.error('[v0] deduct_credits failed:', error.message)
+  const credits = creditsFor(costUsd)
+  if (!(credits > 0) || isUncharged(domain)) return
+  const { error } = await getServiceClient().rpc('spend_credits', { p_user_id: userId, p_amount: credits })
+  if (error) console.error('[v0] spend_credits failed:', error.message)
 }

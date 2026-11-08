@@ -21,7 +21,7 @@ interface User {
   role: string | null
   company: string | null
   created_at: string
-  balance_usd: number
+  balance_credits: number
   usage_30d: { spend: number; tokens: number; calls: number }
 }
 
@@ -153,7 +153,7 @@ export default function RecentUsersTable() {
                     ${u.usage_30d.spend.toFixed(2)}
                   </td>
                   <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right font-mono text-[12px]">
-                    ${u.balance_usd.toFixed(2)}
+                    {Math.floor(u.balance_credits).toLocaleString('en-US')}
                   </td>
                   <td className="px-4 py-2.5 border-b border-hairline-soft align-middle text-right">
                     <button
