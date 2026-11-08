@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const sb = getServiceClient()
 
   let profileQ = sb.from('profiles')
-    .select('id, first_name, last_name, role, company, country, city, created_at')
+    .select('id, first_name, last_name, role, plan, company, country, city, created_at')
     .order('created_at', { ascending: false })
     .limit(limit)
   if (roleFilter) profileQ = profileQ.eq('role', roleFilter)
@@ -72,6 +72,7 @@ export async function GET(req: Request) {
         email,
         name: [r.first_name, r.last_name].filter(Boolean).join(' ').trim() || (email.split('@')[0] || 'user'),
         role: r.role,
+        plan: r.plan ?? 'free',
         company: r.company,
         country: r.country,
         city: r.city,

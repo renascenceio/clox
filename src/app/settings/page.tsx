@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import ChatWorkspace, { type RailRecentItem } from '@/shared/ui/chat/ChatWorkspace'
 import { useChatChrome } from '@/shared/ui/chat/useChatChrome'
 import { PALETTES, type Palette } from '@/shared/ui/chat/palettes'
+import BillingSection from './billing-section'
 import Avatar from '@/shared/ui/components/Avatar'
 import { createClient } from '@/lib/supabase/client'
 import { listChats } from '@/lib/chat-store'
@@ -79,7 +80,7 @@ export default function SettingsPage() {
 
     const [profileRes, creditsRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', authUser.id).single(),
-      supabase.from('credits').select('balance_usd').eq('user_id', authUser.id).single(),
+      supabase.from('credits').select('balance_credits').eq('user_id', authUser.id).single(),
     ])
 
     if (profileRes.data) {
@@ -98,8 +99,8 @@ export default function SettingsPage() {
       setPreviewSeed(d.avatar_seed || authUser.email || '')
     }
 
-    if (creditsRes.data?.balance_usd != null) {
-      setBalance(parseFloat(String(creditsRes.data.balance_usd)).toFixed(2))
+    if (creditsRes.data?.balance_credits != null) {
+      setBalance(Math.floor(Number(creditsRes.data.balance_credits)).toLocaleString('en-US'))
     }
 
     setLoading(false)
@@ -345,10 +346,10 @@ function SettingsBody({
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: p.inkMuted, marginBottom: 4 }}>
-              Balance
+              Credits
             </div>
             <div style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 26, color: p.accent, lineHeight: 1 }}>
-              ${balance}
+              {balance}
             </div>
           </div>
         </div>
@@ -396,7 +397,11 @@ function SettingsBody({
         </Field>
       </Section>
 
-      <Section p={p} mono={mono} serif={serif} eyebrow="04" title="Privacy & cookies">
+      <Section p={p} mono={mono} serif={serif} eyebrow="04" title="Plan & credits" id="billing">
+        <BillingSection p={p} mono={mono} serif={serif} />
+      </Section>
+
+      <Section p={p} mono={mono} serif={serif} eyebrow="05" title="Privacy & cookies">
         <PrivacyChoices />
       </Section>
 
@@ -444,7 +449,7 @@ function SettingsBody({
    ===================================================================== */
 
 function Section({
-  p, mono, serif, eyebrow, title, children,
+  p, mono, serif, eyebrow, title, children, id,
 }: {
   p: Palette
   mono: string
@@ -452,9 +457,11 @@ function Section({
   eyebrow: string
   title: string
   children: React.ReactNode
+  id?: string
 }) {
   return (
-    <section style={{
+    <section id={id} style={{
+      scrollMarginTop: 24,
       background: p.surface,
       border: `1px solid ${p.hairline}`,
       borderRadius: 3,
