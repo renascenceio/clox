@@ -42,7 +42,15 @@ export function firstLine(text: unknown): string | null {
   return null
 }
 
-type Described = { label: string; detail: string | null; outcome: string | null; failed: boolean }
+type Described = {
+  label: string
+  detail: string | null
+  outcome: string | null
+  failed: boolean
+  /** Turned away on purpose before running (e.g. a raw python-pptx deck
+   *  sent to clox_kit) — the model's next step does it properly. */
+  redirected?: boolean
+}
 
 function describe(step: WorkStep, skillName: (id: string) => string | undefined): Described {
   const name = String(step.toolName ?? 'tool')
@@ -65,6 +73,9 @@ function describe(step: WorkStep, skillName: (id: string) => string | undefined)
     label = running ? `Running ${verb}` : verb
     detail = firstLine(name === 'bash' ? step.args?.command : step.args?.code)
     if (!running && r) {
+      if (r.ok === false && r.kind === 'use-kit') {
+        return { label, detail, outcome: 'Switched to the clox design kit, nothing was run', failed: false, redirected: true }
+      }
       if (r.ok === false) {
         failed = true
         outcome = firstLine(r.stderr) ?? firstLine(r.error) ?? `exit ${r.exitCode ?? '?'}`
@@ -86,7 +97,7 @@ function describe(step: WorkStep, skillName: (id: string) => string | undefined)
   return { label, detail, outcome, failed }
 }
 
-function Glyph({ state }: { state: 'running' | 'done' | 'failed' }) {
+function Glyph({ state }: { state: 'running' | 'done' | 'failed' | 'redirected' }) {
   if (state === 'running') {
     return (
       <span
@@ -111,7 +122,11 @@ function Glyph({ state }: { state: 'running' | 'done' | 'failed' }) {
         color: state === 'failed' ? 'var(--accent, #b00020)' : 'inherit', opacity: state === 'failed' ? 1 : 0.5,
       }}
     >
-      {state === 'failed' ? <path d="M3 3l6 6M9 3l-6 6" /> : <path d="M2.5 6.5l2.3 2.3L9.5 3.5" />}
+      {state === 'failed'
+        ? <path d="M3 3l6 6M9 3l-6 6" />
+        : state === 'redirected'
+          ? <path d="M2 6h7.5M6.5 3l3 3-3 3" />
+          : <path d="M2.5 6.5l2.3 2.3L9.5 3.5" />}
     </svg>
   )
 }
@@ -178,7 +193,7 @@ export function WorkLog({
               key={r.step.toolCallId ?? i}
               style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0, padding: '3px 0', lineHeight: '18px' }}
             >
-              <Glyph state={r.running ? 'running' : r.failed ? 'failed' : 'done'} />
+              <Glyph state={r.running ? 'running' : r.failed ? 'failed' : r.redirected ? 'redirected' : 'done'} />
               <span
                 style={{
                   flex: '0 0 auto', fontFamily: MONO, fontSize: 10.5, letterSpacing: '0.08em',
