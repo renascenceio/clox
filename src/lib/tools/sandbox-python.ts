@@ -22,7 +22,7 @@
 
 import { tool } from 'ai'
 import { z } from 'zod'
-import { snippetProblem } from './tool-input'
+import { rawDeckProblem, snippetProblem } from './tool-input'
 import {
   getOrCreateSandboxForChat,
   waitForPackages,
@@ -80,12 +80,15 @@ export function makePythonTool(chatId: string, onProgress?: SandboxProgressCallb
       '  /mnt/user-data/outputs/  — write deliverables here; auto-collected',
       '                             and shown to the user as artifacts. No',
       '                             need to base64 bytes back into output.',
-      '  /mnt/skills/skills/<n>/  — bundled skills (pptx, pdf, xlsx, docx,',
-      '                             theme-factory, web-artifacts-builder…).',
-      '                             For richly-formatted docs, FIRST `cat`',
-      '                             the skill\'s SKILL.md (+ sub-files it',
-      '                             references) before writing code — they',
-      '                             have tested recipes for the API.',
+      '',
+      'NEW decks are built with clox_kit.Deck, never with raw python-pptx',
+      'shapes (raw Presentation() for a new deck is refused). Any look is one',
+      'argument: theme="noir" (dark + gold, premium), "navy" (light + navy +',
+      'gold), "ivory", "midnight", "studio"…; brand="#C9A84C"; fonts=("Playfair',
+      'Display", "Inter"). Layouts: cover, agenda, section, statement, stat',
+      '(one huge figure), kpis, chart, feature (colour panel + points), cards,',
+      'compare, timeline, table, quote, image, closing. python-pptx is only',
+      'for reading or patching an uploaded file.',
       '',
       'CRITICAL — INCREMENTAL BUILDS ONLY. Do NOT write "one clean run"',
       'snippets for multi-unit deliverables. One snippet = ONE unit of',
@@ -138,7 +141,7 @@ export function makePythonTool(chatId: string, onProgress?: SandboxProgressCallb
         ),
     }),
     execute: async ({ code }) => {
-      const problem = snippetProblem(code, 'script')
+      const problem = snippetProblem(code, 'script') ?? rawDeckProblem(code)
       if (problem) return problem
       // Pull a one-line preview of what we're about to run so the
       // client can render "Running Python: <preview>" in the progress

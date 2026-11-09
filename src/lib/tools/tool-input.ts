@@ -36,6 +36,28 @@ export function snippetProblem(text: string | undefined, noun: string) {
   return null
 }
 
+/** A brand-new deck drawn shape by shape with python-pptx looks home-made
+ *  and costs dozens of calls; clox_kit does the design. `Presentation()`
+ *  with no file is how a new deck starts, so that is what we refuse. */
+const NEW_RAW_DECK = /\bPresentation\(\s*\)/
+
+export function rawDeckProblem(code: string) {
+  if (!NEW_RAW_DECK.test(code) || /clox_kit/.test(code)) return null
+  return {
+    ok: false as const,
+    kind: 'use-kit',
+    exitCode: 2,
+    stdout: '',
+    stderr: 'New decks are built with clox_kit, not raw python-pptx. Nothing was run.',
+    suggestion:
+      'from clox_kit import Deck\n' +
+      'd = Deck("my-deck", theme="noir", brand="Company", new=True)   # noir = dark + gold; navy, ivory, studio, midnight…\n' +
+      'd.cover("Title", "Subtitle", kicker="Label"); d.stat("AED 761B", "What it is", context="Why it matters")\n' +
+      'Later calls: d = Deck("my-deck") then d.kpis / d.chart / d.feature / d.cards / d.timeline …, finish with d.check().\n' +
+      'Colours and fonts: brand="#C9A84C", fonts=("Playfair Display", "Inter").',
+  }
+}
+
 /** The field each sandbox tool reads its snippet from. */
 export const SNIPPET_FIELD: Record<string, string> = {
   bash: 'command',

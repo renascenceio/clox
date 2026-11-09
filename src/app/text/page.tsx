@@ -8,6 +8,8 @@ import remarkGfm from 'remark-gfm'
 import { CodeArtifact } from '@/shared/ui/components/CodeArtifact'
 import { DownloadStrip, type DownloadStripFile } from '@/shared/ui/components/DownloadStrip'
 import { BrowserPanel, type BrowserInvocation, type BrowserProgressEvent } from '@/shared/ui/components/BrowserPanel'
+import { WorkLog, type WorkStep } from '@/shared/ui/chat/WorkLog'
+import useSWR from 'swr'
 
 import WorkspaceSlot from '@/shared/ui/chat/workspace-host'
 import {
@@ -83,6 +85,42 @@ const TEXT_MODES: ModeOption[] = [
   { id: 'voice',    label: 'Voice',    hint: 'spoken reply' },
   { id: 'video',    label: 'Video',    hint: 'motion + frames' },
 ]
+
+type ChatFileRow = { filename: string; url: string; mime: string; size: number; updatedAt: string }
+
+function timeOf(value: unknown): number | null {
+  if (value instanceof Date) return value.getTime()
+  if (typeof value === 'string' || typeof value === 'number') {
+    const t = new Date(value).getTime()
+    return Number.isFinite(t) ? t : null
+  }
+  return null
+}
+
+/** Assistant prose: markdown, with every fenced block rendered as a
+ *  downloadable / previewable artifact. */
+function AssistantMarkdown({ text }: { text: string }) {
+  return (
+    <div className="prose">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          code: CodeArtifact,
+          table: ({ children }) => (
+            <div className="prose-table-wrap">
+              <table>{children}</table>
+            </div>
+          ),
+          // CodeArtifact ships its own framed container; a second <pre>
+          // would double-pad and disable horizontal scroll.
+          pre: ({ children }) => <>{children}</>,
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  )
+}
 
 function shortName(version: string | undefined, name: string): string {
   return (version || name).toLowerCase()
@@ -598,6 +636,25 @@ export default function TextPage() {
   }, [activeChatId, setMessages, resumeTick])
 
   const isStreaming = liveStreaming || resumingRun
+
+  // This chat's files, so a reply always offers what it made even when the
+  // "file ready" note from the server didn't reach the tab.
+  const { data: chatFilesData, mutate: refreshChatFiles } = useSWR<{ files?: ChatFileRow[] }>(
+    activeChatId ? `/api/files?chatId=${encodeURIComponent(activeChatId)}` : null,
+    (url: string) => fetch(url, { cache: 'no-store' }).then(r => (r.ok ? r.json() : { files: [] })),
+    { revalidateOnFocus: false },
+  )
+  const chatFiles = chatFilesData?.files ?? []
+  const wasStreaming = useRef(isStreaming)
+  useEffect(() => {
+    const ended = wasStreaming.current && !isStreaming
+    wasStreaming.current = isStreaming
+    if (!ended) return
+    void refreshChatFiles()
+    // Uploads can land a moment after the stream closes.
+    const later = setTimeout(() => void refreshChatFiles(), 4000)
+    return () => clearTimeout(later)
+  }, [isStreaming, refreshChatFiles])
   const setInput = (v: string) => {
     handleInputChange?.({ target: { value: v } } as unknown as React.ChangeEvent<HTMLTextAreaElement>)
   }
@@ -1251,25 +1308,7 @@ export default function TextPage() {
            * truth for text colour — fixing the dark-on-dark text
            * bug after reloads.
            */
-          <div className="prose">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code: CodeArtifact,
-                table: ({ children }) => (
-                  <div className="prose-table-wrap">
-                    <table>{children}</table>
-                  </div>
-                ),
-                // Strip the default <pre> wrapper because CodeArtifact
-                // ships its own framed container; nesting another
-                // <pre> would double-pad and disable horizontal scroll.
-                pre: ({ children }) => <>{children}</>,
-              }}
-            >
-              {String(m.content ?? '')}
-            </ReactMarkdown>
-          </div>
+          <AssistantMarkdown text={String(m.content ?? '')} />
         )
       }
 
@@ -1423,27 +1462,6 @@ export default function TextPage() {
       //   call         → arguments complete, execute() running
       //   result       → execute() returned (or threw)
       const inFlightTool = toolInvocations.find(inv => inv.state !== 'result')
-      const inFlightToolPreview = (() => {
-        if (!inFlightTool) return null
-        const name = String(inFlightTool.toolName ?? '')
-        if (name === 'python') {
-          const code = String(inFlightTool.args?.code ?? '')
-          const firstLine = code.split('\n').map(l => l.trim()).find(l => l.length > 0 && !l.startsWith('#')) ?? ''
-          return firstLine ? `Running Python — ${firstLine.slice(0, 80)}` : 'Running Python…'
-        }
-        if (name === 'bash') {
-          const cmd = String(inFlightTool.args?.command ?? '')
-          const firstLine = cmd.split('\n').map(l => l.trim()).find(l => l.length > 0) ?? ''
-          return firstLine ? `Running shell — ${firstLine.slice(0, 80)}` : 'Running shell…'
-        }
-        if (name === 'web_search') {
-          const q = String(inFlightTool.args?.query ?? '')
-          return q ? `Searching the web — “${q}”` : 'Searching the web…'
-        }
-        if (name === 'run_javascript') return 'Running JavaScript…'
-        if (name === 'browser') return 'Using the browser…'
-        return name ? `Running ${name}…` : null
-      })()
 
       // ── Timeout / cut-off detection ────────────────────────────────
       // Three failure modes we want to recover from with one click:
@@ -1499,10 +1517,61 @@ export default function TextPage() {
         })
       }
 
+      // Steps and prose in the order they happened: the model's notes
+      // between steps ("that failed, trying another way") sit next to the
+      // steps they talk about instead of piling up under every card.
+      const skillName = (id: string) => dbSkills.skills.find(s => s.id === id)?.name
+      const workSteps = toolInvocations.filter(inv => inv.toolName !== 'browser') as WorkStep[]
+      const interleaved = !pending && !errored && !mediaKind &&
+        msgParts.some(part => part.type === 'tool-invocation')
+      const replySegments: React.ReactNode[] = []
+      if (interleaved) {
+        let group: WorkStep[] = []
+        const flush = (key: string, live: boolean) => {
+          if (group.length === 0) return
+          replySegments.push(<WorkLog key={key} steps={group} live={live} skillName={skillName} />)
+          group = []
+        }
+        msgParts.forEach((part, pi) => {
+          if (part.type === 'tool-invocation') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const inv = (part as any).toolInvocation as WorkStep | undefined
+            if (inv && inv.toolName !== 'browser') group.push(inv)
+          } else if (part.type === 'text' && String(part.text ?? '').trim()) {
+            flush(`w${pi}`, false)
+            replySegments.push(<AssistantMarkdown key={`t${pi}`} text={String(part.text)} />)
+          }
+        })
+        flush('w-end', isInFlight)
+      }
+
+      // Files made in this turn. The server attaches them to the reply when
+      // it finishes; if that note never reached this tab (long builds, a
+      // dropped connection) they still exist in the chat's file library.
+      const ranSandbox = toolInvocations.some(inv => inv.toolName === 'python' || inv.toolName === 'bash')
+      const turnFiles: DownloadStripFile[] = [...outputFiles]
+      if (ranSandbox && !isInFlight && chatFiles.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const list = messages as any[]
+        const prevUser = [...list.slice(0, i)].reverse().find(x => x?.role === 'user')
+        const nextUser = list.slice(i + 1).find(x => x?.role === 'user')
+        const from = timeOf(prevUser?.createdAt) ?? timeOf(m.createdAt)
+        const to = timeOf(nextUser?.createdAt) ?? Number.POSITIVE_INFINITY
+        if (from !== null) {
+          const known = new Set(turnFiles.map(f => f.filename))
+          for (const f of chatFiles) {
+            const at = timeOf(f.updatedAt)
+            if (at === null || at < from - 5_000 || at >= to || known.has(f.filename) || f.filename.startsWith('.')) continue
+            known.add(f.filename)
+            turnFiles.push({ filename: f.filename, url: f.url, mime: f.mime, size: f.size })
+          }
+        }
+      }
+
       let bodyWithTools: React.ReactNode = body
       if (
         toolInvocations.length > 0 ||
-        outputFiles.length > 0 ||
+        turnFiles.length > 0 ||
         progressEvents.length > 0 ||
         showContinueButton ||
         // A finish-warning is meaningful on its own — the model may
@@ -1556,38 +1625,6 @@ export default function TextPage() {
                 <style>{`@keyframes cloxPulse { 0%,100%{opacity:1} 50%{opacity:.25} }`}</style>
               </div>
             )}
-            {isInFlight && inFlightTool && (
-              // Live current-step strip — what the model is doing
-              // right now. Only renders while in flight, so old
-              // messages don't grow stale "Running…" labels. The
-              // tool-invocation pills below also show this same
-              // tool, but with much less prominence — this strip
-              // is the reassurance signal: "yes, the answer IS
-              // still being worked on, here's the current step".
-              <div
-                role="status"
-                aria-live="polite"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 10px',
-                  border: '1px solid currentColor',
-                  borderRadius: 2,
-                  fontSize: 12,
-                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    display: 'inline-block', width: 6, height: 6, borderRadius: 999,
-                    background: 'currentColor',
-                    animation: 'cloxPulse 1.4s ease-in-out infinite',
-                  }}
-                />
-                <span style={{ flex: 1 }}>{inFlightToolPreview}</span>
-                <style>{`@keyframes cloxPulse { 0%,100%{opacity:1} 50%{opacity:.25} }`}</style>
-              </div>
-            )}
             {progressEvents.length > 0 && (
               // Progress timeline. Rendered above the tool-invocation
               // pills because conceptually it's "what happened in the
@@ -1630,139 +1667,12 @@ export default function TextPage() {
             {browserInvocations.length > 0 && (
               <BrowserPanel invocations={browserInvocations} progress={browserProgress} live={isInFlight} />
             )}
-            {toolInvocations.some(inv => inv.toolName !== 'browser') && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {toolInvocations.filter(inv => inv.toolName !== 'browser').map((inv, ti) => {
-                const name = String(inv.toolName ?? 'tool')
-                const isRunning = inv.state !== 'result'
-                // Pretty-print the tool call header so users see exactly
-                // what the model asked for. We special-case the two
-                // tools we ship — generic args dumps work but read as
-                // noise; tailored summaries read as feedback.
-                let title: string
-                let detail: string | null = null
-                if (name === 'web_search') {
-                  const q = String(inv.args?.query ?? '')
-                  title = isRunning ? `Searching the web…` : `Searched the web`
-                  detail = q ? `“${q}”` : null
-                } else if (name === 'run_javascript') {
-                  title = isRunning ? `Running JavaScript…` : `Ran JavaScript`
-                  const code = String(inv.args?.code ?? '')
-                  // Show the first non-empty line as the detail so the
-                  // user gets a hint of what executed without us
-                  // dumping the whole snippet into the chat.
-                  const firstLine = code.split('\n').find(l => l.trim().length > 0) ?? ''
-                  detail = firstLine ? firstLine.slice(0, 80) : null
-                } else if (name === 'bash') {
-                  title = isRunning ? `Running shell…` : `Ran shell`
-                  const cmd = String(inv.args?.command ?? '')
-                  // Show the first non-empty line so the user can scan
-                  // what the model asked the sandbox to do (e.g.
-                  // `pdfinfo /mnt/user-data/uploads/x.pdf`).
-                  const firstLine = cmd.split('\n').find(l => l.trim().length > 0) ?? ''
-                  detail = firstLine ? firstLine.slice(0, 80) : null
-                } else if (name === 'python') {
-                  title = isRunning ? `Running Python…` : `Ran Python`
-                  const code = String(inv.args?.code ?? '')
-                  const firstLine = code.split('\n').find(l => l.trim().length > 0) ?? ''
-                  detail = firstLine ? firstLine.slice(0, 80) : null
-                } else if (name === 'read_skill') {
-                  // `read_skill` is the model's "go fetch the full
-                  // system_prompt for skill X" call. The internal
-                  // tool name is fine for the backend, but in the
-                  // chat surface it reads as opaque jargon ("CALLED
-                  // READ_SKILL"). Translate to a human label, and
-                  // resolve the skill_id to a friendly name so the
-                  // user sees which specialist the model is loading
-                  // (e.g. "Loading PPTX (read & write)…").
-                  const skillId = String(inv.args?.skill_id ?? '')
-                  const skillName =
-                    dbSkills.skills.find(s => s.id === skillId)?.name ?? null
-                  const label = skillName ?? 'skill'
-                  title = isRunning ? `Loading ${label}…` : `Loaded ${label}`
-                } else {
-                  title = isRunning ? `Calling ${name}…` : `Called ${name}`
-                }
-
-                // Result preview — a small, readable summary line under
-                // the title once the tool has finished. We deliberately
-                // keep it terse; the model's prose answer is still the
-                // primary surface.
-                let preview: string | null = null
-                if (!isRunning && inv.result) {
-                  if (name === 'web_search') {
-                    const r = inv.result
-                    if (r?.error) preview = `Error: ${String(r.error).slice(0, 120)}`
-                    else if (Array.isArray(r?.results)) {
-                      preview = `${r.results.length} result${r.results.length === 1 ? '' : 's'}`
-                    }
-                  } else if (name === 'run_javascript') {
-                    const r = inv.result
-                    if (r?.ok === false) preview = `Error: ${String(r.error ?? '').slice(0, 120)}`
-                    else if (r?.result !== undefined) preview = `→ ${String(r.result).slice(0, 120)}`
-                  } else if (name === 'bash' || name === 'python') {
-                    // Sandbox tools share the same result envelope:
-                    //   { ok, exitCode, stdout, stderr, ... }
-                    // Surface either the first line of stdout (success
-                    // case) or the truncated stderr (failure case) so
-                    // the user gets a clear at-a-glance signal of what
-                    // happened without scrolling.
-                    const r = inv.result
-                    if (r?.ok === false) {
-                      const errLine = String(r?.stderr ?? '').split('\n').find((l: string) => l.trim()) ?? ''
-                      preview = errLine
-                        ? `Error (exit ${r?.exitCode ?? '?'}): ${errLine.slice(0, 120)}`
-                        : `Error (exit ${r?.exitCode ?? '?'})`
-                    } else if (r?.stdout) {
-                      const firstOut = String(r.stdout).split('\n').find((l: string) => l.trim()) ?? ''
-                      preview = firstOut ? `→ ${firstOut.slice(0, 120)}` : `→ exit ${r?.exitCode ?? 0}`
-                    } else if (r?.exitCode !== undefined) {
-                      preview = `→ exit ${r.exitCode}`
-                    }
-                  }
-                }
-
-                return (
-                  <div
-                    key={inv.toolCallId ?? ti}
-                    style={{
-                      display: 'flex', flexDirection: 'column', gap: 2,
-                      padding: '6px 10px',
-                      border: '1px solid currentColor',
-                      borderRadius: 2,
-                      opacity: isRunning ? 0.75 : 0.95,
-                      fontSize: 12,
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-                      fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
-                    }}>
-                      <span>{title}</span>
-                      {isRunning && (
-                        <span style={{ opacity: 0.7 }}>●</span>
-                      )}
-                    </div>
-                    {detail && (
-                      <div style={{ opacity: 0.85, fontStyle: 'italic' }}>
-                        {detail}
-                      </div>
-                    )}
-                    {preview && (
-                      <div style={{
-                        opacity: 0.7, fontSize: 11,
-                        fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-                      }}>
-                        {preview}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            {interleaved ? replySegments : (
+              <>
+                {workSteps.length > 0 && <WorkLog steps={workSteps} live={isInFlight} skillName={skillName} />}
+                {body}
+              </>
             )}
-            {body}
             {showContinueButton && (
               // Click-to-continue affordance. Three failure modes
               // resolve to the same UI: (a) explicit timeout from the
@@ -1873,7 +1783,7 @@ export default function TextPage() {
                 Auto-compacted {compactionAnnotation.compactedCount} earlier turns
               </div>
             )}
-            {outputFiles.length > 0 && <DownloadStrip files={outputFiles} defaultPreview={isLastMessage} />}
+            {turnFiles.length > 0 && <DownloadStrip files={turnFiles} defaultPreview={isLastMessage} />}
           </div>
         )
       }

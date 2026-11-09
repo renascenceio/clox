@@ -34,6 +34,8 @@ import Avatar from '@/shared/ui/components/Avatar'
 import { BlobAvatar } from './BlobAvatar'
 import { useDictation, type DictationState } from './useDictation'
 import { useFileDrop } from './useFileDrop'
+import { PageGhost } from './PageGhost'
+import { NAV_ID_BY_PATH } from './nav-pending'
 import {
   PALETTES,
   MONO_STACK,
@@ -271,6 +273,8 @@ export interface ChatWorkspaceProps {
   /** Set by WorkspaceHost: the main column is rebuilt when it changes,
    *  the rail stays mounted. */
   pageKey?: string
+  /** Set by WorkspaceHost: the path being opened, while it loads. */
+  navPending?: string | null
 }
 
 /* =====================================================================
@@ -340,6 +344,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     initialPaletteOpen = false,
     initialCmdkOpen = false,
     pageKey,
+    navPending = null,
   } = props
 
   const p = PALETTES[theme]
@@ -421,7 +426,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
         serif={serif}
         brandName={brandName}
         brandVersion={brandVersion}
-        nav={nav}
+        nav={navPending ? nav.map(n => ({ ...n, active: NAV_ID_BY_PATH[navPending] === n.id })) : nav}
         recent={recent}
         recentLabel={recentLabel}
         user={user}
@@ -459,6 +464,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
           position: 'relative',
         }}
       >
+        {navPending && <PageGhost p={p} />}
         <TopStrip
           p={p}
           mono={mono}
