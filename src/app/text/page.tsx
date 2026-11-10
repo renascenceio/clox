@@ -9,6 +9,8 @@ import { CodeArtifact } from '@/shared/ui/components/CodeArtifact'
 import { DownloadStrip, type DownloadStripFile } from '@/shared/ui/components/DownloadStrip'
 import { BrowserPanel, type BrowserInvocation, type BrowserProgressEvent } from '@/shared/ui/components/BrowserPanel'
 import { WorkLog, type WorkStep } from '@/shared/ui/chat/WorkLog'
+import { SandboxStatus, StatusLine } from '@/shared/ui/chat/SandboxStatus'
+import { closePreview } from '@/shared/ui/chat/preview-store'
 import useSWR from 'swr'
 
 import WorkspaceSlot from '@/shared/ui/chat/workspace-host'
@@ -636,6 +638,15 @@ export default function TextPage() {
   }, [activeChatId, setMessages, resumeTick])
 
   const isStreaming = liveStreaming || resumingRun
+
+  // Files open in the side preview by themselves only when a reply was
+  // made while the chat was open here — not when an old chat is reopened.
+  const [streamedHere, setStreamedHere] = useState(false)
+  if (isStreaming && !streamedHere) setStreamedHere(true)
+  useEffect(() => {
+    setStreamedHere(false)
+    closePreview()
+  }, [activeChatId])
 
   // This chat's files, so a reply always offers what it made even when the
   // "file ready" note from the server didn't reach the tab.
@@ -1597,72 +1608,21 @@ export default function TextPage() {
               // event or tool invocation comes through (the
               // `progressEvents.length === 0 && !inFlightTool` guard
               // collapses this away once richer signal arrives).
-              <div
-                role="status"
-                aria-live="polite"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '6px 10px',
-                  border: '1px dashed currentColor',
-                  borderRadius: 2,
-                  opacity: 0.75,
-                  fontSize: 11,
-                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    display: 'inline-block', width: 6, height: 6, borderRadius: 999,
-                    background: 'currentColor',
-                    animation: 'cloxPulse 1.4s ease-in-out infinite',
-                  }}
-                />
-                <span>Working — the first step can take 30–60s on a cold start</span>
-                {/* Inline keyframes — declared here so we don't have
-                    to add a new globals.css rule for a one-off
-                    animation that's only used by this fallback. */}
+              <div role="status" aria-live="polite">
                 <style>{`@keyframes cloxPulse { 0%,100%{opacity:1} 50%{opacity:.25} }`}</style>
+                <StatusLine state="pending" text="Working · the first step can take up to a minute" />
               </div>
             )}
             {progressEvents.length > 0 && (
-              // Progress timeline. Rendered above the tool-invocation
-              // pills because conceptually it's "what happened in the
-              // sandbox before the model could even start its tool
-              // calls" — boot, dep install, etc. Visually it's a
-              // dashed monospace strip so it reads as system status,
-              // distinct from the bordered tool pills below.
-              <div
-                role="status"
-                aria-live="polite"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 2,
-                  padding: '6px 10px',
-                  border: '1px dashed currentColor',
-                  borderRadius: 2,
-                  opacity: 0.75,
-                  fontSize: 11,
-                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-                }}
-              >
-                {progressEvents.map((e, idx) => {
-                  const text = formatProgress(e)
-                  const isFailure = e.phase === 'sandbox-failed' || e.phase === 'deps-failed'
-                  const isPending = e.phase === 'sandbox-booting' || e.phase === 'deps-installing'
-                  return (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ opacity: 0.55 }}>
-                        {isPending ? '◇' : isFailure ? '✕' : '◆'}
-                      </span>
-                      <span style={{ color: isFailure ? 'var(--accent, #b00020)' : undefined }}>
-                        {text}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
+              <SandboxStatus
+                live={isInFlight}
+                lines={progressEvents.map(e => ({
+                  text: formatProgress(e),
+                  state: e.phase === 'sandbox-failed' || e.phase === 'deps-failed'
+                    ? 'failed'
+                    : e.phase === 'sandbox-booting' || e.phase === 'deps-installing' ? 'pending' : 'done',
+                }))}
+              />
             )}
             {browserInvocations.length > 0 && (
               <BrowserPanel invocations={browserInvocations} progress={browserProgress} live={isInFlight} />
@@ -1687,9 +1647,9 @@ export default function TextPage() {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 6,
-                padding: '8px 10px',
-                border: '1px solid var(--accent, #b00020)',
-                borderRadius: 2,
+                padding: '10px 12px',
+                borderRadius: 12,
+                background: 'color-mix(in oklab, var(--accent, #b00020) 9%, transparent)',
                 fontSize: 12,
               }}>
                 <div style={{
@@ -1715,10 +1675,10 @@ export default function TextPage() {
                   disabled={isStreaming}
                   style={{
                     alignSelf: 'flex-start',
-                    padding: '4px 12px',
-                    border: '1px solid currentColor',
-                    borderRadius: 2,
-                    background: 'transparent',
+                    padding: '6px 14px',
+                    border: 0,
+                    borderRadius: 999,
+                    background: 'color-mix(in oklab, currentColor 12%, transparent)',
                     color: 'inherit',
                     cursor: isStreaming ? 'not-allowed' : 'pointer',
                     fontFamily: 'ui-monospace, SFMono-Regular, monospace',
@@ -1742,9 +1702,8 @@ export default function TextPage() {
                   fontFamily: 'ui-monospace, SFMono-Regular, monospace',
                   fontSize: 12,
                   lineHeight: 1.5,
-                  border: '1px solid var(--accent, currentColor)',
-                  borderRadius: 2,
-                  background: 'color-mix(in oklab, var(--accent, currentColor) 8%, transparent)',
+                  borderRadius: 12,
+                  background: 'color-mix(in oklab, var(--accent, currentColor) 9%, transparent)',
                 }}
               >
                 <div
@@ -1765,14 +1724,8 @@ export default function TextPage() {
               <div
                 style={{
                   alignSelf: 'flex-start',
-                  padding: '4px 10px',
-                  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-                  fontSize: 10,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  border: '1px dashed var(--hairline, currentColor)',
-                  borderRadius: 2,
-                  opacity: 0.7,
+                  fontSize: 12,
+                  opacity: 0.55,
                 }}
                 title={
                   `Auto-compacted ${compactionAnnotation.compactedCount} older turns ` +
@@ -1783,7 +1736,7 @@ export default function TextPage() {
                 Auto-compacted {compactionAnnotation.compactedCount} earlier turns
               </div>
             )}
-            {turnFiles.length > 0 && <DownloadStrip files={turnFiles} defaultPreview={isLastMessage} />}
+            {turnFiles.length > 0 && <DownloadStrip files={turnFiles} autoOpen={isLastMessage && streamedHere} />}
           </div>
         )
       }
