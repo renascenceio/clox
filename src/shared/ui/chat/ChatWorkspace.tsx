@@ -36,6 +36,8 @@ import { useDictation, type DictationState } from './useDictation'
 import { useFileDrop } from './useFileDrop'
 import { PageGhost } from './PageGhost'
 import { NAV_ID_BY_PATH } from './nav-pending'
+import PreviewPanel from './PreviewPanel'
+import { closePreview, usePreview } from './preview-store'
 import {
   PALETTES,
   MONO_STACK,
@@ -371,6 +373,16 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     setConfigOpen(initialConfigOpen)
     setCmdkOpen(false)
   }
+  useEffect(() => { closePreview() }, [pageKey])
+
+  // The file preview and the config drawer share the right edge.
+  const preview = usePreview()
+  useEffect(() => {
+    if (preview) setConfigOpen(false)
+  }, [preview])
+  useEffect(() => {
+    if (configOpen) closePreview()
+  }, [configOpen])
 
   // Page-level drag-and-drop. Files dropped anywhere on the chat
   // surface (header, transcript, composer) flow into the same
@@ -631,6 +643,8 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
           </div>
         )}
       </main>
+
+      <PreviewPanel p={p} />
 
       <ConfigDrawer
         p={p}
@@ -1124,13 +1138,13 @@ function TopStrip({
 }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '14px 32px',
-      borderBottom: `1px solid ${p.hairlineSoft}`,
-      fontFamily: SANS_STACK,
-      color: p.ink,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+  padding: '14px 32px',
+  borderBottom: `1px solid ${p.hairlineSoft}`,
+  fontFamily: SANS_STACK,
+  color: p.ink,
+  }}>
+  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0, overflow: 'hidden' }}>
         <span style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.16em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{breadcrumb}</span>
         <span style={{ color: p.inkMuted }}>/</span>
         <span style={{ fontFamily: serif, fontSize: 17, fontStyle: 'italic', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
