@@ -50,10 +50,11 @@ export async function checkCredit(opts: { model?: string } = {}): Promise<
   // Company emails start on their company plan (an admin can still move
   // someone to another plan; only the default Free plan is replaced).
   const company = companyPlanFor(caller.domain)
+  let switched = false
   if (credit && company && plan.id === 'free') {
     await sb.from('profiles').update({ plan: company.id, updated_at: new Date().toISOString() }).eq('id', caller.userId)
     plan = company
-    periodOver = true
+    periodOver = switched = true
   }
 
   // Paid plans renew from Stripe's invoice; Free and company plans renew here.
@@ -61,7 +62,7 @@ export async function checkCredit(opts: { model?: string } = {}): Promise<
     const next = new Date()
     next.setUTCMonth(next.getUTCMonth() + 1)
     const { data } = await sb.rpc('renew_credits', {
-      p_user_id: caller.userId, p_grant: plan.credits, p_period_end: next.toISOString(), p_change: false,
+      p_user_id: caller.userId, p_grant: plan.credits, p_period_end: next.toISOString(), p_change: switched,
     })
     if (data != null) balance = Number(data)
     // A company allowance is a fixed monthly limit: last month's leftover
