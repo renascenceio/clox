@@ -5,7 +5,7 @@
  * never expire.
  */
 
-export type PlanId = 'free' | 'go' | 'pro' | 'max'
+export type PlanId = 'free' | 'go' | 'pro' | 'max' | 'team'
 export type BillingCycle = 'monthly' | 'yearly'
 
 export interface Plan {
@@ -20,6 +20,8 @@ export interface Plan {
   /** Free plan: only low-cost models, and a daily cap. */
   lowCostOnly: boolean
   dailyCap?: number
+  /** Given by the company: renews by itself, no carry-over, not on sale. */
+  company?: boolean
   blurb: string
   features: string[]
 }
@@ -66,6 +68,27 @@ export const PLANS: Record<PlanId, Plan> = {
     blurb: 'For heavy use, agents and long builds.',
     features: ['40,000 credits a month', 'Best rate per credit', 'Unused credits carry over a month'],
   },
+  team: {
+    id: 'team',
+    name: 'Gaia team',
+    monthly: 0,
+    yearly: 0,
+    credits: 5_000,
+    lowCostOnly: false,
+    company: true,
+    blurb: 'Given to everyone at Gaia Realty.',
+    features: ['5,000 credits a month (about $5 of AI use)', 'Every model, documents, images and video', 'Renews on the same day each month'],
+  },
+}
+
+/** Email domains whose people get a company plan by default. */
+export const COMPANY_PLANS: Record<string, PlanId> = {
+  'gaiarealty.ae': 'team',
+}
+
+export function companyPlanFor(domain: string | null | undefined): Plan | null {
+  const id = domain ? COMPANY_PLANS[domain.toLowerCase()] : undefined
+  return id ? PLANS[id] : null
 }
 
 export const PAID_PLANS: PlanId[] = ['go', 'pro', 'max']

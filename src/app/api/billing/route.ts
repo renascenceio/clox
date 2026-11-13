@@ -1,7 +1,7 @@
 import { getCallerForLogging } from '@/lib/projects/usage'
 import { getServiceClient } from '@/lib/projects/server'
-import { isUncharged } from '@/lib/credits'
-import { planFor } from '@/lib/plans'
+import { checkCredit, isUncharged } from '@/lib/credits'
+import { companyPlanFor, planFor } from '@/lib/plans'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +9,8 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const caller = await getCallerForLogging()
   if (!caller) return Response.json({ error: 'signin' }, { status: 401 })
+  // Starts a company plan or a new month first, so the figures are current.
+  if (companyPlanFor(caller.domain)) await checkCredit()
   const sb = getServiceClient()
   const [{ data: profile }, { data: credit }] = await Promise.all([
     sb.from('profiles').select('plan, role').eq('id', caller.userId).maybeSingle(),

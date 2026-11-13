@@ -22,6 +22,7 @@ import {
   type ReactNode,
 } from 'react'
 import { I } from './icons'
+import { APP_VERSION } from '@/lib/version'
 import { openPreferences } from '@/lib/consent/store'
 // Profile avatar (Dicebear-backed). Renders the same SVG the /settings
 // "Regenerate avatar" button persists into `profiles.avatar_seed`, so the
@@ -289,7 +290,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     variant = 'chip',
     onChangeTheme,
     brandName = 'Clox',
-    brandVersion = '0.4',
+    brandVersion = APP_VERSION,
     user,
     onOpenSettings,
     language = 'en',

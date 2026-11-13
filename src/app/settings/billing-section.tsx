@@ -112,7 +112,7 @@ export default function BillingSection({ p, mono, serif }: { p: Palette; mono: s
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-          {Object.values(PLANS).map(plan => {
+          {Object.values(PLANS).filter(plan => !plan.company || plan.id === current.id).map(plan => {
             const isCurrent = plan.id === current.id
             const price = cycle === 'monthly' ? plan.monthly : plan.yearly
             return (

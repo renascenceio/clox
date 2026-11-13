@@ -3,7 +3,7 @@ import { getCallerForLogging } from '@/lib/projects/usage'
 import { FREE_DOMAINS } from '@/domains/text-generation/services/pricing'
 import { TEXT_PRICES } from '@/lib/gateway/prices.generated'
 import { AUTO_MODEL_ID } from '@/lib/auto-model'
-import { LOW_COST_LIMIT, creditsFor, planFor, type Plan } from '@/lib/plans'
+import { LOW_COST_LIMIT, companyPlanFor, creditsFor, planFor, type Plan } from '@/lib/plans'
 
 type Caller = NonNullable<Awaited<ReturnType<typeof getCallerForLogging>>>
 
@@ -41,19 +41,41 @@ export async function checkCredit(opts: { model?: string } = {}): Promise<
     sb.from('credits').select('balance_credits, period_end, subscription_status').eq('user_id', caller.userId).maybeSingle(),
   ])
   if (profile && profile.is_active === false) return block(403, 'This account is suspended.', 'suspended')
-  const plan = planFor(profile?.plan)
+  let plan = planFor(profile?.plan)
   if (profile?.role === 'super_admin' || isUncharged(caller.domain)) return { caller, plan, blocked: null }
 
   let balance = Number(credit?.balance_credits ?? 0)
-  const periodOver = !credit?.period_end || new Date(credit.period_end).getTime() <= Date.now()
-  // Paid plans renew from Stripe's invoice; the Free plan renews here.
-  if (credit && periodOver && plan.id === 'free') {
+  let periodOver = !credit?.period_end || new Date(credit.period_end).getTime() <= Date.now()
+
+  // Company emails start on their company plan (an admin can still move
+  // someone to another plan; only the default Free plan is replaced).
+  const company = companyPlanFor(caller.domain)
+  let switched = false
+  if (credit && company && plan.id === 'free') {
+    await sb.from('profiles').update({ plan: company.id, updated_at: new Date().toISOString() }).eq('id', caller.userId)
+    plan = company
+    periodOver = switched = true
+  }
+
+  // Paid plans renew from Stripe's invoice; Free and company plans renew here.
+  if (credit && periodOver && (plan.id === 'free' || plan.company)) {
     const next = new Date()
     next.setUTCMonth(next.getUTCMonth() + 1)
     const { data } = await sb.rpc('renew_credits', {
-      p_user_id: caller.userId, p_grant: plan.credits, p_period_end: next.toISOString(), p_change: false,
+      p_user_id: caller.userId, p_grant: plan.credits, p_period_end: next.toISOString(), p_change: switched,
     })
     if (data != null) balance = Number(data)
+    // A company allowance is a fixed monthly limit: last month's leftover
+    // doesn't carry over.
+    if (plan.company) {
+      const { data: row } = await sb
+        .from('credits')
+        .update({ carry_credits: 0 })
+        .eq('user_id', caller.userId)
+        .select('balance_credits')
+        .maybeSingle()
+      if (row) balance = Number(row.balance_credits)
+    }
   }
 
   if (plan.lowCostOnly && opts.model && !isLowCostModel(opts.model)) {

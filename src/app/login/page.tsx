@@ -105,6 +105,22 @@ function SignIn() {
           Sign in
         </PrimaryButton>
       </form>
+      <div className="mt-6 flex flex-col gap-3">
+        <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.1em] text-ink-muted" aria-hidden>
+          <span className="h-px flex-1 bg-current opacity-20" />
+          or
+          <span className="h-px flex-1 bg-current opacity-20" />
+        </div>
+        {['invalid', 'used', 'failed', 'off'].includes(params.get('sso') ?? '') ? (
+          <Notice>We couldn&apos;t sign you in through Gaia CRM. Try again, or sign in with your password.</Notice>
+        ) : null}
+        <a
+          href={`/auth/gaia/start?next=${encodeURIComponent(next)}`}
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-sharp border border-ink bg-transparent font-mono text-[11.5px] uppercase tracking-[0.1em] text-ink transition-colors hover:bg-ink hover:text-surface"
+        >
+          Continue with Gaia CRM
+        </a>
+      </div>
     </AuthShell>
   )
 }

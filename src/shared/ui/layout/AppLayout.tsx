@@ -300,7 +300,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
   }
 
   const isSuperAdmin = profile.role === 'super_admin'
-  const isFreeDomain = ['renascence.io', 'gaiarealty.ae', 'clox.ai'].some(d => profile.email.endsWith('@' + d))
+  const isFreeDomain = ['renascence.io', 'clox.ai'].some(d => profile.email.endsWith('@' + d))
 
   const roleLabel =
     profile.role === 'super_admin' ? 'Emperor'
