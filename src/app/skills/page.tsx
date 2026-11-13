@@ -214,7 +214,6 @@ export default function SkillsPage() {
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
         brandName="Clox"
-        brandVersion="0.5"
         user={chrome.user}
         language={chrome.language}
         onChangeLanguage={chrome.handleChangeLanguage}

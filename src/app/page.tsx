@@ -19,6 +19,7 @@
  */
 
 import Link from 'next/link'
+import { APP_VERSION, APP_VERSION_DATE } from '@/lib/version'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import CookieSettingsLink from '@/components/cookie-consent/CookieSettingsLink'
 
@@ -606,7 +607,7 @@ export default function LandingPage() {
         <div className="mx-auto flex max-w-[1240px] items-center gap-8 px-6 py-4 md:px-8">
           <Link href="/" className="flex items-baseline gap-2.5">
             <span className="font-serif text-[22px] italic tracking-[-0.01em]">Clox</span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">v0.4</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">v{APP_VERSION}</span>
           </Link>
           <nav className="hidden flex-1 items-center gap-6 text-[13.5px] text-ink-soft md:flex">
             <a href="#modes" className="hover:text-ink">Modes</a>
@@ -670,7 +671,7 @@ export default function LandingPage() {
               <span aria-hidden>·</span>
               <span>SOC 2 · GDPR</span>
               <span aria-hidden>·</span>
-              <span>v0.4 · march</span>
+              <span>v{APP_VERSION} · {APP_VERSION_DATE}</span>
             </div>
           </div>
           <HeroComposer />

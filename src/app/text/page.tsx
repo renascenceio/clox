@@ -2337,7 +2337,6 @@ export default function TextPage() {
         theme={theme}
         variant="chip"
         brandName="Clox"
-        brandVersion="0.5"
         user={user}
         onOpenSettings={() => router.push('/settings')}
         onChangeTheme={handleThemeChange}
