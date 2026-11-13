@@ -46,7 +46,6 @@ export function calcCostUsd(
  */
 export const FREE_DOMAINS: string[] = [
   'renascence.io',
-  'gaiarealty.ae',
   'clox.ai',
 ]
 
