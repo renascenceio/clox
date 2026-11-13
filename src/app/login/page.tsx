@@ -111,6 +111,9 @@ function SignIn() {
           or
           <span className="h-px flex-1 bg-current opacity-20" />
         </div>
+        {params.get('sso') === 'denied' ? (
+          <Notice>Your Gaia CRM account doesn&apos;t include Clox yet. Ask an administrator to turn it on in Admin, Users &amp; seats.</Notice>
+        ) : null}
         {['invalid', 'used', 'failed', 'off'].includes(params.get('sso') ?? '') ? (
           <Notice>We couldn&apos;t sign you in through Gaia CRM. Try again, or sign in with your password.</Notice>
         ) : null}

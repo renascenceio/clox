@@ -22,7 +22,9 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
   const next = safeNext(params.get('next'))
   const ticket = params.get('ticket')
-  if (!ticket) return toLogin(next, params.get('sso') === 'none' ? 'none' : 'missing')
+  // none = not signed in to the CRM; denied = an administrator hasn't given them Clox.
+  const sso = params.get('sso')
+  if (!ticket) return toLogin(next, sso === 'none' || sso === 'denied' ? sso : 'missing')
 
   const claims = verifyTicket(ticket)
   if (!claims) return toLogin(next, 'invalid')
