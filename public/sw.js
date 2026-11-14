@@ -8,7 +8,7 @@
  * - Icons and brand files: cache, refreshed in the background.
  * - Everything else (API calls, streams, uploads) is never touched.
  */
-const VERSION = 'omma-v1'
+const VERSION = 'omma-v2'
 const SHELL = `${VERSION}-shell`
 const STATIC = `${VERSION}-static`
 const PRECACHE = ['/offline.html', '/icons/icon-192.png', '/icons/icon-512.png', '/brand/omma-mark-primary.svg']
