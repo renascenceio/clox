@@ -527,8 +527,9 @@ body {
   [data-omma-desktop-only] { display: none !important; }
   [data-omma-mobile-only] { display: inline-flex !important; }
 
-  /* The shell follows the visual viewport so the keyboard never covers the composer. */
-  [data-omma-host] {
+  /* Pinned to the screen edges; only while the keyboard is up does the shell
+     follow the visual viewport, so the keyboard never covers the composer. */
+  html[data-omma-keyboard] [data-omma-host] {
     top: var(--omma-vtop, 0px) !important;
     bottom: auto !important;
     height: var(--omma-vh, 100dvh) !important;
@@ -584,8 +585,10 @@ body {
 
   [data-omma-composer] {
     padding: 8px 10px !important;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+    /* Sits just above the home indicator, like the ChatGPT and Claude apps. */
+    padding-bottom: max(8px, calc(env(safe-area-inset-bottom) - 12px)) !important;
   }
+  html[data-omma-keyboard] [data-omma-composer] { padding-bottom: 8px !important; }
   [data-omma-composer-box] { border-radius: 18px !important; }
   [data-omma-chips] {
     flex-wrap: nowrap !important;

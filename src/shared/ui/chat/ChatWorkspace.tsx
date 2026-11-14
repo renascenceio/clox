@@ -380,22 +380,40 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
   }
 
   // iOS Safari ignores `interactive-widget`, so the keyboard would cover the
-  // composer. Follow the visual viewport instead: the shell is exactly as tall
-  // as the part of the screen the keyboard leaves free.
+  // composer. While the keyboard is up the shell follows the visual viewport.
+  // The rest of the time it stays pinned to the screen edges (fixed, inset 0):
+  // an installed iOS app reports a viewport short by the status bar, so
+  // sizing the shell from it left an empty strip under the composer.
   useEffect(() => {
     const vv = window.visualViewport
     if (!vv) return
     const root = document.documentElement
+    let tallest = 0
+    let width = 0
     const sync = () => {
-      root.style.setProperty('--omma-vh', `${Math.round(vv.height)}px`)
-      root.style.setProperty('--omma-vtop', `${Math.round(vv.offsetTop)}px`)
+      if (vv.width !== width) { width = vv.width; tallest = 0 }
+      tallest = Math.max(tallest, vv.height)
+      const typing = document.activeElement instanceof HTMLElement && document.activeElement.matches('textarea, input, [contenteditable="true"]')
+      const keyboardUp = typing && vv.scale <= 1.01 && tallest - vv.height > 120
+      if (keyboardUp) {
+        root.dataset.ommaKeyboard = 'true'
+        root.style.setProperty('--omma-vh', `${Math.round(vv.height)}px`)
+        root.style.setProperty('--omma-vtop', `${Math.round(vv.offsetTop)}px`)
+      } else if (root.dataset.ommaKeyboard) {
+        delete root.dataset.ommaKeyboard
+        root.style.removeProperty('--omma-vh')
+        root.style.removeProperty('--omma-vtop')
+      }
     }
     sync()
     vv.addEventListener('resize', sync)
     vv.addEventListener('scroll', sync)
+    document.addEventListener('focusout', sync)
     return () => {
       vv.removeEventListener('resize', sync)
       vv.removeEventListener('scroll', sync)
+      document.removeEventListener('focusout', sync)
+      delete root.dataset.ommaKeyboard
     }
   }, [])
   useEffect(() => { closePreview() }, [pageKey])
