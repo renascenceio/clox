@@ -1,6 +1,6 @@
 /** Settings for signing in from Sota OS, safe to use in the middleware. */
 
-export const CRM_ORIGIN = (process.env.GAIA_CRM_URL || 'https://crm.gaiarealty.ae').replace(/\/$/, '')
+export const CRM_ORIGIN = (process.env.GAIA_CRM_URL || 'https://sota.gaiarealty.ae').replace(/\/$/, '')
 
 /** Omma's own address. */
 export const OMMA_ORIGIN = 'https://omma.gaiarealty.ae'
