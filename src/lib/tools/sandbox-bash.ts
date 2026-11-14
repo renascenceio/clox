@@ -32,7 +32,7 @@ import {
 } from '@/lib/sandbox/manager'
 
 /** Per-command wall-clock cap. Most file-handling commands (`ls`,
- *  `pdfinfo`, `file`, `head`, `unzip`) finish in well under a second.
+ *  `pdfinfo`, `head`, `unzip`) finish in well under a second.
  *  The reason this cap is generous is `pip install <pkg>` calls — the
  *  python tool's description tells the model to install on-demand
  *  packages (pdfplumber, pandas, numpy, weasyprint, …) via this tool.
@@ -110,11 +110,15 @@ export function makeBashTool(chatId: string, onProgress?: SandboxProgressCallbac
     description: [
       'Run a shell command inside the conversation-scoped Linux microVM.',
       'Use this for filesystem operations, listing files, examining',
-      'uploads, running CLI utilities (pdfinfo, pdftotext, qpdf, file,',
+      'uploads, running CLI utilities (pdfinfo, pdftotext, qpdf,',
       'unzip, ls, cat, head, tail, grep, sed, awk, find), and for',
       'installing on-demand Python packages with',
       '`pip install --prefer-binary <pkg>` when the python tool tells',
       'you a needed package is not pre-installed.',
+      'The `file` command is NOT installed: to see what a file is, use',
+      'python (PIL.Image.open for images), pdfinfo for PDFs, or',
+      '`head -c 16 <path> | od -c` for its first bytes. For deck fonts pass',
+      'fonts=(display, body) to clox_kit instead of downloading them yourself.',
       'Uploads are at /mnt/user-data/uploads/. Write deliverables to',
       '/mnt/user-data/outputs/ — files there are surfaced as downloads',
       'in the chat. Bundled Anthropic skill assets live at /mnt/skills/',

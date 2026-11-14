@@ -19,7 +19,13 @@ d = Deck("q3-board-review", theme="studio", title="Q3 Board Review", brand="Acme
   Two series on very different scales (price 1,500 vs yield 7%) → two charts, never one.
 
 Slide types (every one takes kicker= — a small label above the title — and notes= for speaker notes):
-  d.cover(title, subtitle, kicker=, meta="Board update · Oct 2026", image="/path.jpg")
+  d.cover(title, subtitle, kicker=, meta="Board update · Oct 2026", image="/path.jpg", layout=)
+    layout = a COMPOSITION (not a colour): orbs · frame · split · poster (huge type) · band · grid (Swiss) ·
+    duo (two colour fields for "A vs B", sides=("Dubai", "Abu Dhabi")) · shapes (geometric) · center · photo
+    (full-bleed, needs image=). None = the theme's own. Pick the one that fits the subject: a comparison → duo,
+    a bold claim → poster, formal → center/band, design-led → grid/shapes, a real photo → photo.
+  d.cover_options(title, subtitle, kicker=, meta=, sides=, image=, n=5, themes=["navy", "noir", ...])
+    → a separate <name>-cover-options deck + PDF, every option a DIFFERENT layout (themes= varies palette too).
   d.agenda(["Where we are", "What changed", "What we ask"])
   d.section("What changed", "Two shifts in Q3", number=2)
   d.statement("We grew 38% while cutting burn in half.", kicker="The headline", bg="hero"|"surface")
@@ -44,6 +50,17 @@ Fix everything it lists. Amend requests ("make slide 4 punchier", "use our brand
 Read an existing deck: from pptx import Presentation; walk p.slides → shapes → text_frame / has_chart / notes.
 Restyle an uploaded deck: extract its content, then rebuild it with Deck (much better than patching shapes).`
 
+const VARIATIONS = `VERSIONS / OPTIONS / ALTERNATIVES of a slide ("give me 5 versions of the title slide"):
+  - Each version must differ in COMPOSITION — where the type sits, its scale, the shapes and panels. Recolouring
+    one layout is NOT a version; the user will rightly call three same-layout slides "the same design".
+  - Title slides: d.cover_options(...) does this in one call; pass themes= with 2-5 contrasting themes only if
+    the user wants palette options too. Show the PDF and name each option (layout + mood) in one line each.
+  - Other slides: vary the slide TYPE (stat vs feature vs statement vs kpis vs cards) and its arguments, not just
+    restyle(). check() flags repeated cover layouts.
+  - Images: only use image= with a real or genuinely photographic picture that fits the subject. Never place a
+    weak/illustrative/AI image with text baked in just to add variety — a typographic or geometric layout
+    (poster, grid, shapes, duo) is more designed than a poor picture.`
+
 const SHAPE = `DECK SHAPE (adapt to the brief; a 10-slide default):
   1 cover �� 2 agenda or statement · 3-8 content (kpis, chart, cards/compare/timeline, table, quote) with a section
   divider before each part of a longer deck · last: closing with a clear ask or next step.
@@ -67,6 +84,8 @@ ${THEMES}
 ${PREMIUM}
 
 ${SHAPE}
+
+${VARIATIONS}
 
 ${CRAFT}
 

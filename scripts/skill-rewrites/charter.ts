@@ -18,7 +18,7 @@
 //      one chart per scale.
 // v5 — style axis (bold | luxe), premium themes noir + ivory, PREMIUM rules:
 //      "premium" is a style (restraint, hairlines, space), not a colour pick.
-export const CHARTER_VERSION = 6
+export const CHARTER_VERSION = 7
 
 export const PRECEDENCE = `The user's brief wins: colours, fonts, brand, length, file name, tone and structure they specify override every default below.`
 
