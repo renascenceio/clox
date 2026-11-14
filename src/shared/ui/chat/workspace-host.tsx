@@ -75,7 +75,7 @@ export function WorkspaceHost({ children }: { children: ReactNode }) {
     <HostContext.Provider value={register}>
       <HostReady />
       {entry && (
-        <div className="fixed inset-0 isolate">
+        <div data-omma-host className="fixed inset-0 isolate">
           <ChatWorkspace {...entry.props} pageKey={pathname} navPending={navPending} />
         </div>
       )}
@@ -118,7 +118,7 @@ export default function WorkspaceSlot(props: ChatWorkspaceProps) {
 
   if (inline) {
     return (
-      <div className="fixed inset-0 isolate">
+      <div data-omma-host className="fixed inset-0 isolate">
         <ChatWorkspace {...props} />
       </div>
     )

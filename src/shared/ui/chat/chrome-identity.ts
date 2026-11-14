@@ -46,7 +46,7 @@ export function loadIdentity(force = false): Promise<ChromeIdentity | null> {
 
     const first = (profile.data?.first_name ?? '').trim()
     const last = (profile.data?.last_name ?? '').trim()
-    const fallback = authUser.email?.split('@')[0] ?? 'Clox user'
+    const fallback = authUser.email?.split('@')[0] ?? 'Omma user'
     const name = [first, last].filter(Boolean).join(' ').trim() || fallback
     const planName = planFor(profile.data?.plan as string | null | undefined).name.toLowerCase()
 

@@ -5,7 +5,7 @@ import LegalShell, { type LegalSection } from '@/components/legal/LegalShell'
 export const metadata: Metadata = {
   title: 'Privacy Policy',
   description:
-    'How Clox collects, uses, retains, and protects personal data, and the rights available to people in the EEA, UK, California, Brazil, Quebec, and elsewhere.',
+    'How Omma collects, uses, retains, and protects personal data, and the rights available to people in the EEA, UK, California, Brazil, Quebec, and elsewhere.',
 }
 
 const EFFECTIVE = 'May 2026'
@@ -17,14 +17,14 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <p>
-          Clox (&ldquo;Clox&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;) operates the workspace at <strong>clox.studio</strong>{' '}
+          Omma (&ldquo;Omma&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;) operates the workspace at <strong>omma.gaiarealty.ae</strong>{' '}
           and the related applications. For the purposes of the EU General Data Protection Regulation (GDPR), the UK GDPR,
-          Brazil&rsquo;s LGPD, and Quebec&rsquo;s Law 25, Clox is the controller of the personal data described in this notice.
+          Brazil&rsquo;s LGPD, and Quebec&rsquo;s Law 25, Omma is the controller of the personal data described in this notice.
         </p>
         <p>
           Questions about this notice or the data we hold about you can be sent to{' '}
-          <a className="underline decoration-hairline hover:decoration-ink" href="mailto:privacy@clox.studio">
-            privacy@clox.studio
+          <a className="underline decoration-hairline hover:decoration-ink" href="mailto:privacy@gaiarealty.ae">
+            privacy@gaiarealty.ae
           </a>
           .
         </p>
@@ -116,8 +116,8 @@ const SECTIONS: LegalSection[] = [
         </ul>
         <p>
           A current list with regions and contact details is available on request from{' '}
-          <a className="underline decoration-hairline hover:decoration-ink" href="mailto:privacy@clox.studio">
-            privacy@clox.studio
+          <a className="underline decoration-hairline hover:decoration-ink" href="mailto:privacy@gaiarealty.ae">
+            privacy@gaiarealty.ae
           </a>
           .
         </p>
@@ -193,8 +193,8 @@ const SECTIONS: LegalSection[] = [
         </ul>
         <p>
           To exercise any right, email{' '}
-          <a className="underline decoration-hairline hover:decoration-ink" href="mailto:privacy@clox.studio">
-            privacy@clox.studio
+          <a className="underline decoration-hairline hover:decoration-ink" href="mailto:privacy@gaiarealty.ae">
+            privacy@gaiarealty.ae
           </a>
           . We respond within 30 days.
         </p>
@@ -217,9 +217,9 @@ const SECTIONS: LegalSection[] = [
     title: 'Children',
     body: (
       <p>
-        Clox is not directed to children under 16. If you believe we hold data about a minor, write to{' '}
-        <a className="underline decoration-hairline hover:decoration-ink" href="mailto:privacy@clox.studio">
-          privacy@clox.studio
+        Omma is not directed to children under 16. If you believe we hold data about a minor, write to{' '}
+        <a className="underline decoration-hairline hover:decoration-ink" href="mailto:privacy@gaiarealty.ae">
+          privacy@gaiarealty.ae
         </a>{' '}
         and we will delete it.
       </p>

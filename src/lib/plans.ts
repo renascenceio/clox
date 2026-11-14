@@ -1,5 +1,5 @@
 /**
- * Clox plans. One credit = $0.001 of model cost at the gateway's real
+ * Omma plans. One credit = $0.001 of model cost at the gateway's real
  * price (cache reads included), so a plan's credits are its model budget.
  * Unused monthly credits carry over for one more month; credit packs
  * never expire.
@@ -35,7 +35,7 @@ export const PLANS: Record<PlanId, Plan> = {
     credits: 300,
     lowCostOnly: true,
     dailyCap: 100,
-    blurb: 'Try Clox with fast models.',
+    blurb: 'Try Omma with fast models.',
     features: ['300 credits a month', 'Auto, Haiku, Gemini Flash and other fast models', 'Up to 100 credits a day'],
   },
   go: {

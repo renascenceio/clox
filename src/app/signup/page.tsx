@@ -108,7 +108,7 @@ function CreateAccount() {
   return (
     <AuthShell
       eyebrow="Create account"
-      title="Start with Clox."
+      title="Start with Omma."
       lede="Every new account comes with $10 of credit to try every mode — no card needed."
       footer={
         <>

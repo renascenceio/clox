@@ -1,5 +1,5 @@
 /**
- * Server-side access to the Vercel AI Gateway — the only route Clox uses
+ * Server-side access to the Vercel AI Gateway — the only route Omma uses
  * to reach any model.
  *
  * Auth: `AI_GATEWAY_API_KEY` when set, otherwise the deployment's Vercel

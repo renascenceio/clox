@@ -101,7 +101,7 @@ export function useChatChrome(active: ActiveRail) {
   }
   async function handleDeleteAccount() {
     const ok = typeof window !== 'undefined'
-      && window.confirm('Permanently delete your Clox account? This cannot be undone.')
+      && window.confirm('Permanently delete your Omma account? This cannot be undone.')
     if (!ok) return
     try {
       const res = await fetch('/api/account/delete', { method: 'POST' })

@@ -74,7 +74,7 @@ export default function UsageChart({ days }: { days: Day[] }) {
       // Top stroke connecting bar tops.
       let line = ''
       days.forEach((d, i) => (line += (i ? 'L' : 'M') + x(i) + ',' + y(d.spend) + ' '))
-      inner += `<path d="${line}" fill="none" stroke="#A8472A" stroke-width="1.2"/>`
+      inner += `<path d="${line}" fill="none" stroke="#36B5AC" stroke-width="1.2"/>`
     }
 
     return { svgInner: inner, total, isEmpty }

@@ -183,7 +183,7 @@ export default function HistoryPage() {
     <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
-        brandName="Clox"
+        brandName="Omma"
         user={chrome.user}
         language={chrome.language}
         onChangeLanguage={chrome.handleChangeLanguage}
@@ -209,7 +209,7 @@ export default function HistoryPage() {
         onInputChange={() => undefined}
         onSend={() => undefined}
         bodySlot={
-          <div style={{ padding: '28px 56px 64px', maxWidth: 920, margin: '0 auto', fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
+          <div data-omma-page style={{ padding: '28px 56px 64px', maxWidth: 920, margin: '0 auto', fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
             {/* Filter rail + search */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 16,

@@ -8,7 +8,7 @@ import LegalShell, { type LegalSection } from '@/components/legal/LegalShell'
 export const metadata: Metadata = {
   title: 'Cookie Policy',
   description:
-    'What cookies and similar storage Clox uses, what each category does, how long they live, and how to change your consent at any time.',
+    'What cookies and similar storage Omma uses, what each category does, how long they live, and how to change your consent at any time.',
 }
 
 const EFFECTIVE = 'November 2026'
@@ -21,7 +21,7 @@ const SECTIONS: LegalSection[] = [
       <p>
         When we say &ldquo;cookies&rdquo; we mean cookies in the strict sense plus other client-side storage like
         localStorage, sessionStorage, and IndexedDB — the same compliance principles apply. Cookies set by{' '}
-        <strong>clox.studio</strong> are first-party. Anything set by a service provider (such as Stripe checkout pages)
+        <strong>omma.gaiarealty.ae</strong> are first-party. Anything set by a service provider (such as Stripe checkout pages)
         is a third-party cookie governed by their own policy.
       </p>
     ),
@@ -153,8 +153,8 @@ const SECTIONS: LegalSection[] = [
           </li>
           <li>
             Email{' '}
-            <a className="underline decoration-hairline hover:decoration-ink" href="mailto:privacy@clox.studio">
-              privacy@clox.studio
+            <a className="underline decoration-hairline hover:decoration-ink" href="mailto:privacy@gaiarealty.ae">
+              privacy@gaiarealty.ae
             </a>{' '}
             and we&rsquo;ll do it for you.
           </li>
@@ -198,7 +198,7 @@ export default function CookiesPage() {
           .
         </>
       }
-      lead="A plain-language inventory of every cookie and similar local-storage entry Clox uses, grouped by category. You can change your consent at any time from the footer."
+      lead="A plain-language inventory of every cookie and similar local-storage entry Omma uses, grouped by category. You can change your consent at any time from the footer."
       effective={EFFECTIVE}
       sections={SECTIONS}
     />

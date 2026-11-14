@@ -206,13 +206,13 @@ function SpendByDayChart({
   let area = `M${x(0)},${y(0)} `
   days.forEach((d, i) => area += `L${x(i)},${y(d.spend)} `)
   area += `L${x(days.length - 1)},${y(0)} Z`
-  svg += `<path d="${area}" fill="rgba(168,71,42,0.10)"/>`
+  svg += `<path d="${area}" fill="rgba(54,181,172,0.10)"/>`
   let line = ''
   days.forEach((d, i) => line += `${i ? 'L' : 'M'}${x(i)},${y(d.spend)} `)
-  svg += `<path d="${line}" fill="none" stroke="#A8472A" stroke-width="1.4"/>`
+  svg += `<path d="${line}" fill="none" stroke="#36B5AC" stroke-width="1.4"/>`
   // Endpoint dot.
   const last = days[days.length - 1]
-  svg += `<circle cx="${x(days.length - 1)}" cy="${y(last.spend)}" r="3" fill="#FAF9F4" stroke="#A8472A" stroke-width="1.4"/>`
+  svg += `<circle cx="${x(days.length - 1)}" cy="${y(last.spend)}" r="3" fill="#FAF9F4" stroke="#36B5AC" stroke-width="1.4"/>`
 
   return (
     <div className="p-[18px]">

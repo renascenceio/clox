@@ -5,7 +5,7 @@ import LegalShell, { type LegalSection } from '@/components/legal/LegalShell'
 export const metadata: Metadata = {
   title: 'Terms of Service',
   description:
-    'The terms that govern your use of the Clox workspace, including content ownership, acceptable use, billing, and termination.',
+    'The terms that govern your use of the Omma workspace, including content ownership, acceptable use, billing, and termination.',
 }
 
 const EFFECTIVE = 'May 2026'
@@ -17,13 +17,13 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <p>
-          These Terms form a binding agreement between you and Clox (&ldquo;Clox&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;)
-          for your use of the workspace at <strong>clox.studio</strong> and any related applications (the &ldquo;Service&rdquo;).
+          These Terms form a binding agreement between you and Omma (&ldquo;Omma&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;)
+          for your use of the workspace at <strong>omma.gaiarealty.ae</strong> and any related applications (the &ldquo;Service&rdquo;).
           By creating an account or using the Service you accept these Terms; if you don&rsquo;t agree, don&rsquo;t use the
           Service.
         </p>
         <p>
-          If you&rsquo;re using Clox on behalf of an organisation, you represent that you have authority to bind that
+          If you&rsquo;re using Omma on behalf of an organisation, you represent that you have authority to bind that
           organisation, and &ldquo;you&rdquo; in these Terms means both you and the organisation.
         </p>
       </>
@@ -47,8 +47,8 @@ const SECTIONS: LegalSection[] = [
       <p>
         You are responsible for the security of your credentials, for everything that happens under your account, and for
         keeping your contact details accurate. Notify us at{' '}
-        <a className="underline decoration-hairline hover:decoration-ink" href="mailto:security@clox.studio">
-          security@clox.studio
+        <a className="underline decoration-hairline hover:decoration-ink" href="mailto:security@gaiarealty.ae">
+          security@gaiarealty.ae
         </a>{' '}
         immediately if you suspect unauthorised access.
       </p>
@@ -168,7 +168,7 @@ const SECTIONS: LegalSection[] = [
     title: 'Indemnity',
     body: (
       <p>
-        You will indemnify and hold harmless Clox and its affiliates from third-party claims arising out of (i) Your
+        You will indemnify and hold harmless Omma and its affiliates from third-party claims arising out of (i) Your
         Content, (ii) your breach of these Terms, or (iii) your violation of applicable law. We&rsquo;ll let you know
         promptly about any such claim and let you control the defence (with our reasonable cooperation), so long as the
         defence and any settlement don&rsquo;t admit fault on our behalf without consent.
@@ -225,8 +225,8 @@ const SECTIONS: LegalSection[] = [
     body: (
       <p>
         Questions about these Terms? Write to{' '}
-        <a className="underline decoration-hairline hover:decoration-ink" href="mailto:legal@clox.studio">
-          legal@clox.studio
+        <a className="underline decoration-hairline hover:decoration-ink" href="mailto:legal@gaiarealty.ae">
+          legal@gaiarealty.ae
         </a>
         .
       </p>
@@ -248,7 +248,7 @@ export default function TermsPage() {
           .
         </>
       }
-      lead="What you agree to when you use Clox: who owns what, how billing works, what is and isn't allowed, and what happens when something goes wrong."
+      lead="What you agree to when you use Omma: who owns what, how billing works, what is and isn't allowed, and what happens when something goes wrong."
       effective={EFFECTIVE}
       sections={SECTIONS}
     />

@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * /settings — profile + preferences inside the editorial Clox chrome.
+ * /settings — profile + preferences inside the editorial Omma chrome.
  *
  * The page is opened from the avatar dropdown ("Settings"), so it must use the
  * exact same rail + topstrip + theme as /history, /gallery and /skills. All
@@ -218,7 +218,7 @@ export default function SettingsPage() {
     <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
-        brandName="Clox"
+        brandName="Omma"
         user={chrome.user}
         language={chrome.language}
         onChangeLanguage={chrome.handleChangeLanguage}
@@ -299,6 +299,7 @@ function SettingsBody({
 
   return (
     <form
+      data-omma-page
       onSubmit={onSubmit}
       style={{
         maxWidth: 760, margin: '0 auto',
@@ -315,17 +316,17 @@ function SettingsBody({
           Profile settings
         </h1>
         <p style={{ fontSize: 13.5, color: p.inkSoft, lineHeight: 1.55, maxWidth: 520, margin: 0 }}>
-          Manage your name, contact details, and how Clox is set up for the kind of work you do.
+          Manage your name, contact details, and how Omma is set up for the kind of work you do.
         </p>
       </header>
 
       {/* Identity card */}
       <Section p={p} mono={mono} serif={serif} eyebrow="01" title="Identity">
-        <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr auto', gap: 24, alignItems: 'center' }}>
+        <div data-omma-identity style={{ display: 'grid', gridTemplateColumns: '88px 1fr auto', gap: 24, alignItems: 'center' }}>
           <Avatar seed={previewSeed || email} size={80} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontFamily: serif, fontSize: 18, lineHeight: 1.3, color: p.ink, marginBottom: 2 }}>
-              {form.first_name || email.split('@')[0] || 'Clox user'}
+              {form.first_name || email.split('@')[0] || 'Omma user'}
               {form.last_name ? ` ${form.last_name}` : ''}
             </div>
             <div style={{ fontFamily: mono, fontSize: 11, color: p.inkMuted, letterSpacing: '0.06em', marginBottom: 12 }}>
@@ -390,7 +391,7 @@ function SettingsBody({
         <Field p={p} mono={mono} label="Job title">
           <Input p={p} value={form.job_title} onChange={v => setField('job_title', v)} placeholder="CEO, Designer, Researcher…" />
         </Field>
-        <Field p={p} mono={mono} label="How do you use Clox?">
+        <Field p={p} mono={mono} label="How do you use Omma?">
           <Select p={p} value={form.use_case} onChange={v => setField('use_case', v)} options={['', ...USE_CASES]} placeholder="Select primary use case" />
         </Field>
       </Section>
@@ -487,7 +488,7 @@ function Section({
 
 function Grid2({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+    <div data-omma-pair style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
       {children}
     </div>
   )

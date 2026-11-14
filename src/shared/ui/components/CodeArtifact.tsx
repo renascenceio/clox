@@ -350,7 +350,7 @@ function ArtifactCard({ code, lang }: { code: string; lang: string }) {
       const docx = await import('docx')
       const children = buildDocxChildren(docx, code, lang)
       const doc = new docx.Document({
-        creator: 'Clox',
+        creator: 'Omma',
         styles: defaultDocxStyles(),
         sections: [{ properties: {}, children }],
       })

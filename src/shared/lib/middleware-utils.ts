@@ -1,9 +1,9 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { AUTO_SSO_HOSTS, SSO_TRIED_COOKIE, crmSignInUrl, safeNext } from '@/lib/gaia-sso-config'
+import { AUTO_SSO_HOSTS, LEGACY_HOSTS, OMMA_ORIGIN, SSO_TRIED_COOKIE, crmSignInUrl, safeNext } from '@/lib/gaia-sso-config'
 
 /** Pages anyone can open without signing in. */
-const PUBLIC_PREFIXES = ['/login', '/signup', '/forgot-password', '/auth/', '/invite/', '/privacy', '/cookies', '/terms', '/api/']
+const PUBLIC_PREFIXES = ['/login', '/signup', '/forgot-password', '/auth/', '/invite/', '/privacy', '/cookies', '/terms', '/api/', '/manifest.webmanifest', '/sw.js', '/offline.html', '/icons/', '/brand/']
 
 /** Account screens a signed-in person doesn't need — send them into the app. */
 const SIGNED_OUT_ONLY = ['/login', '/signup', '/forgot-password']
@@ -13,6 +13,13 @@ function isPublic(pathname: string) {
 }
 
 export async function updateSession(request: NextRequest) {
+  // Clox is now Omma: the old address keeps working by moving to the new one
+  // (308 keeps POSTs, so older Sota OS deployments can still make accounts).
+  const requestHost = (request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '').split(':')[0]
+  if (LEGACY_HOSTS.includes(requestHost)) {
+    return NextResponse.redirect(`${OMMA_ORIGIN}${request.nextUrl.pathname}${request.nextUrl.search}`, 308)
+  }
+
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
@@ -40,7 +47,7 @@ export async function updateSession(request: NextRequest) {
     return res
   }
 
-  // On Clox's own address, a signed-out visit first asks Gaia CRM whether
+  // On Omma's own address, a signed-out visit first asks Sota OS whether
   // they're signed in there (once per browser session).
   const host = (request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '').split(':')[0]
   if (

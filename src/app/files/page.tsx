@@ -54,7 +54,7 @@ export default function FilesPage() {
     <WorkspaceSlot
       theme={chrome.theme}
       onChangeTheme={chrome.handleThemeChange}
-      brandName="Clox"
+      brandName="Omma"
       user={chrome.user}
       language={chrome.language}
       onChangeLanguage={chrome.handleChangeLanguage}

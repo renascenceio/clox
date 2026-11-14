@@ -22,6 +22,7 @@ import {
   type ReactNode,
 } from 'react'
 import { I } from './icons'
+import { OmmaLockup } from '@/shared/ui/brand/OmmaLogo'
 import { APP_VERSION } from '@/lib/version'
 import { openPreferences } from '@/lib/consent/store'
 // Profile avatar (Dicebear-backed). Renders the same SVG the /settings
@@ -289,7 +290,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     theme,
     variant = 'chip',
     onChangeTheme,
-    brandName = 'Clox',
+    brandName = 'Omma',
     brandVersion = APP_VERSION,
     user,
     onOpenSettings,
@@ -365,6 +366,8 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
   const [openMenu, setOpenMenu] = useState<'mode' | 'model' | 'skills' | 'tools' | null>(null)
   const [configOpen, setConfigOpen] = useState(initialConfigOpen)
   const [cmdkOpen, setCmdkOpen] = useState(initialCmdkOpen)
+  // Phones only: the left rail slides in over the chat (CSS in globals.css).
+  const [railOpen, setRailOpen] = useState(false)
 
   // The shell outlives page changes; menus and panels belong to the page.
   const [shownPage, setShownPage] = useState(pageKey)
@@ -373,7 +376,28 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
     setOpenMenu(null)
     setConfigOpen(initialConfigOpen)
     setCmdkOpen(false)
+    setRailOpen(false)
   }
+
+  // iOS Safari ignores `interactive-widget`, so the keyboard would cover the
+  // composer. Follow the visual viewport instead: the shell is exactly as tall
+  // as the part of the screen the keyboard leaves free.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const root = document.documentElement
+    const sync = () => {
+      root.style.setProperty('--omma-vh', `${Math.round(vv.height)}px`)
+      root.style.setProperty('--omma-vtop', `${Math.round(vv.offsetTop)}px`)
+    }
+    sync()
+    vv.addEventListener('resize', sync)
+    vv.addEventListener('scroll', sync)
+    return () => {
+      vv.removeEventListener('resize', sync)
+      vv.removeEventListener('scroll', sync)
+    }
+  }, [])
   useEffect(() => { closePreview() }, [pageKey])
 
   // The file preview and the config drawer share the right edge.
@@ -422,6 +446,8 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
 
   return (
     <div
+      data-omma-shell
+      data-rail-open={railOpen ? 'true' : 'false'}
       style={{
         width: '100%',
         height: '100%',
@@ -433,7 +459,9 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
         position: 'relative',
       }}
     >
+      <div data-omma-scrim aria-hidden="true" onClick={() => setRailOpen(false)} />
       <LeftRail
+        onRequestClose={() => setRailOpen(false)}
         p={p}
         mono={mono}
         serif={serif}
@@ -467,6 +495,7 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
         // covers exactly the chat surface and respects the config
         // panel's right margin so it doesn't bleed under it.
         {...dropHandlers}
+        data-omma-main
         style={{
           flex: 1,
           display: 'flex',
@@ -488,6 +517,8 @@ export default function ChatWorkspace(props: ChatWorkspaceProps) {
           modelLabel={models.find(m => m.id === modelId)?.short ?? modelId}
           onOpenConfig={() => setConfigOpen(v => !v)}
           onShare={onShare}
+          onOpenRail={() => setRailOpen(true)}
+          onNewChat={onNewChat}
         />
 
         {bodySlot ? (
@@ -701,7 +732,9 @@ function LeftRail({
   theme, onChangeTheme,
   language = 'en', onChangeLanguage,
   onOpenSuperAdmin, onOpenSkills, onSignOut, onDeleteAccount,
+  onRequestClose,
 }: {
+  onRequestClose?: () => void
   p: Palette
   mono: string
   serif: string
@@ -726,7 +759,14 @@ function LeftRail({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   return (
-    <aside style={{
+    <aside
+      data-omma-rail
+      aria-label="Workspace navigation"
+      // On phones the rail is a drawer: picking a page, chat or action closes it.
+      onClick={e => {
+        if ((e.target as HTMLElement).closest('[data-rail-close]')) onRequestClose?.()
+      }}
+      style={{
       width: 248, flex: '0 0 248px',
       background: p.rail,
       borderRight: `1px solid ${p.hairline}`,
@@ -757,18 +797,17 @@ function LeftRail({
             visible body to read as a shape — at 22px on a retina
             screen the curves smoothed out into a brown smudge.
           */}
-          <BlobAvatar size={28} interactive={false} ariaLabel={brandName} />
-          <span style={{ fontFamily: serif, fontSize: 19, fontStyle: 'italic', letterSpacing: '-0.01em' }}>{brandName}</span>
+          <OmmaLockup size={22} title={brandName} className="text-ink" />
           <span style={{ fontFamily: mono, fontSize: 9.5, color: p.inkMuted, letterSpacing: '0.14em', textTransform: 'uppercase' }}>{brandVersion}</span>
         </div>
-        <button title="New chat (⌘N)" onClick={onNewChat} style={iconBtn(p)}>
+        <button data-rail-close title="New chat (⌘N)" onClick={onNewChat} style={iconBtn(p)}>
           {I.plus}
         </button>
       </div>
 
       {/* search / cmd-k */}
       <div style={{ padding: '4px 14px 10px' }}>
-        <button onClick={onOpenCmdK} style={{
+        <button data-rail-close onClick={onOpenCmdK} style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '7px 10px',
           background: p.railSoft,
@@ -788,6 +827,7 @@ function LeftRail({
         {nav.map(n => (
           <button
             key={n.id}
+            data-rail-close
             onClick={n.onClick}
             style={{
               display: 'flex', width: '100%', alignItems: 'center', gap: 10,
@@ -820,6 +860,7 @@ function LeftRail({
             {recentLabel ?? 'recent'}
           </span>
           <button
+            data-rail-close
             onClick={onSeeAllRecent}
             style={{ background: 'none', border: 'none', padding: 0, fontFamily: mono, fontSize: 9.5, color: p.inkMuted, letterSpacing: '0.06em', cursor: 'pointer' }}
           >
@@ -830,6 +871,7 @@ function LeftRail({
           {recent.map(it => (
             <button
               key={it.id}
+              data-rail-close
               onClick={it.onClick}
               style={{
                 display: 'block', width: '100%', textAlign: 'left',
@@ -1125,7 +1167,7 @@ function UserMenuRow({
 
 function TopStrip({
   p, mono, serif, breadcrumb, title, modeLabel, modelLabel,
-  onShare, onOpenConfig,
+  onShare, onOpenConfig, onOpenRail, onNewChat,
 }: {
   p: Palette
   mono: string
@@ -1136,25 +1178,37 @@ function TopStrip({
   modelLabel: string
   onShare?: () => void
   onOpenConfig: () => void
+  onOpenRail: () => void
+  onNewChat?: () => void
 }) {
   return (
-    <div style={{
+    <div data-omma-top style={{
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
   padding: '14px 32px',
   borderBottom: `1px solid ${p.hairlineSoft}`,
   fontFamily: SANS_STACK,
   color: p.ink,
   }}>
-  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0, overflow: 'hidden' }}>
-        <span style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.16em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{breadcrumb}</span>
-        <span style={{ color: p.inkMuted }}>/</span>
-        <span style={{ fontFamily: serif, fontSize: 17, fontStyle: 'italic', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, overflow: 'hidden' }}>
+        <button data-omma-mobile-only onClick={onOpenRail} style={iconBtn(p, 40)} aria-label="Open menu" title="Menu">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M3 5.5h12M3 9h12M3 12.5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </button>
+        <span data-omma-desktop-only style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.16em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{breadcrumb}</span>
+        <span data-omma-desktop-only style={{ color: p.inkMuted }}>/</span>
+        <span data-omma-title style={{ fontFamily: serif, fontSize: 17, fontStyle: 'italic', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <span style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>
+        <span data-omma-desktop-only style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>
           {modeLabel} · {modelLabel}
         </span>
-        <span style={{ width: 1, height: 12, background: p.hairline, margin: '0 6px' }} />
+        <span data-omma-desktop-only style={{ width: 1, height: 12, background: p.hairline, margin: '0 6px' }} />
+        {onNewChat && (
+          <button data-omma-mobile-only onClick={onNewChat} style={iconBtn(p, 40)} aria-label="New chat" title="New chat">
+            {I.plus}
+          </button>
+        )}
         <button onClick={onShare} style={iconBtn(p)} title="Share">{I.share}</button>
         <button onClick={onOpenConfig} style={iconBtn(p)} title="Configure (⌘.)">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
@@ -1261,7 +1315,7 @@ function Messages({
   }, [isStreaming])
 
   return (
-    <div ref={scrollRef} style={{
+    <div ref={scrollRef} data-omma-messages style={{
       flex: 1, overflow: 'auto',
       padding: '24px 56px 18px',
       fontFamily: SANS_STACK,
@@ -1279,7 +1333,7 @@ function Messages({
             <div style={{ fontFamily: serif, fontStyle: 'italic', fontSize: 32, lineHeight: 1.1, letterSpacing: '-0.01em', color: p.ink, maxWidth: 520, margin: '0 auto' }}>
               Ask, draft, or paste a passage to refine.
             </div>
-            <div style={{ marginTop: 16, fontFamily: mono, fontSize: 11, color: p.inkMuted, letterSpacing: '0.04em' }}>
+            <div data-omma-desktop-only style={{ marginTop: 16, fontFamily: mono, fontSize: 11, color: p.inkMuted, letterSpacing: '0.04em' }}>
               press <kbd style={kbdStyle(p, mono)}>⌘K</kbd> to jump · <kbd style={kbdStyle(p, mono)}>⌘.</kbd> to configure
             </div>
           </div>
@@ -1330,13 +1384,13 @@ function ThinkingIndicator({ p, mono, serif }: { p: Palette; mono: string; serif
         the assistant being alive and working, which is exactly the
         affordance this indicator is trying to communicate.
       */}
-      <BlobAvatar size={40} ariaLabel="Clox is thinking" />
+      <BlobAvatar size={40} ariaLabel="Omma is thinking" />
       <div style={{ paddingTop: 6 }}>
         <div style={{
           fontFamily: mono, fontSize: 10.5, letterSpacing: '0.18em',
           textTransform: 'uppercase', color: p.inkMuted, marginBottom: 4,
         }}>
-          clox · status
+          omma · status
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span
@@ -1386,7 +1440,7 @@ function YouMsg({
 }: { p: Palette; mono: string; m: TranscriptMessage; userInitial: string; userName: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-      <div style={{ maxWidth: '78%' }}>
+      <div data-omma-you style={{ maxWidth: '78%' }}>
         <div style={{
           fontFamily: mono, fontSize: 9.5, letterSpacing: '0.16em', textTransform: 'uppercase',
           color: p.inkMuted, marginBottom: 6, textAlign: 'right',
@@ -1425,13 +1479,13 @@ function AiMsg({
         gives ~26px of visible body — comparable to the avatars on
         Claude.ai and ChatGPT.
       */}
-      <BlobAvatar size={40} ariaLabel="Clox" />
+      <span data-omma-ai-avatar style={{ display: 'contents' }}><BlobAvatar size={40} ariaLabel="Omma" /></span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontFamily: mono, fontSize: 9.5, letterSpacing: '0.16em', textTransform: 'uppercase',
           color: p.inkMuted, marginBottom: 6,
         }}>
-          <span style={{ color: p.accent }}>clox</span>&nbsp;·&nbsp;<span>{m.model}</span>&nbsp;·&nbsp;<span>{m.time}</span>
+          <span style={{ color: p.accent }}>omma</span>&nbsp;·&nbsp;<span>{m.model}</span>&nbsp;·&nbsp;<span>{m.time}</span>
         </div>
         <div style={
           m.isPullquote
@@ -1513,13 +1567,13 @@ function ComposerChip({
   const modeLabel = modes.find(m => m.id === mode)?.label.toLowerCase() ?? mode
 
   return (
-    <div style={{
+    <div data-omma-composer style={{
       borderTop: `1px solid ${p.hairlineSoft}`,
       padding: '18px 56px 22px',
       background: p.bg,
     }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
-        <div style={{
+        <div data-omma-composer-box style={{
           background: p.surface,
           border: `1px solid ${showSlash ? p.ink : p.hairline}`,
           borderRadius: 4,
@@ -1527,7 +1581,7 @@ function ComposerChip({
           transition: 'border-color .15s',
         }}>
           {/* chip row */}
-          <div style={{
+          <div data-omma-chips style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '10px 12px 0',
             flexWrap: 'wrap',
@@ -1612,7 +1666,7 @@ function ComposerChip({
               }}
             />
             <div style={{ flex: 1 }} />
-            <span style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>⌘.&nbsp;config</span>
+            <span data-omma-desktop-only style={{ fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em' }}>⌘.&nbsp;config</span>
           </div>
 
           {/* Attachment chips — render between the chip row and textarea so
@@ -1632,11 +1686,14 @@ function ComposerChip({
               ref={taRef}
               value={inputValue}
               onChange={e => onInputChange(e.target.value)}
+              enterKeyHint="send"
               onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  onSend()
-                }
+                if (e.key !== 'Enter' || e.shiftKey) return
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                // On phones Return adds a line, like ChatGPT and Claude; the send button sends.
+                if (window.matchMedia('(pointer: coarse)').matches) return
+                e.preventDefault()
+                onSend()
               }}
               rows={1}
               placeholder="A line. A draft. A question. Anything."
@@ -1654,18 +1711,21 @@ function ComposerChip({
               onChange={onInputChange}
               fillOnRecord
             />
-            <button onClick={onSend} disabled={!inputValue.trim()} style={{
+            <button data-omma-send onClick={onSend} disabled={!inputValue.trim()} aria-label="Send" style={{
               padding: '8px 14px',
               background: p.ink, color: p.bg,
               border: 'none', borderRadius: 2,
               fontFamily: mono, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', cursor: inputValue.trim() ? 'pointer' : 'not-allowed',
               opacity: inputValue.trim() ? 1 : 0.4,
-              display: 'inline-flex', alignItems: 'center', gap: 7,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
               height: 34,
             }}>
-              send
-              <span style={{ opacity: 0.6 }}>⏎</span>
+              <span data-omma-desktop-only>send</span>
+              <span data-omma-desktop-only style={{ opacity: 0.6 }}>⏎</span>
+              <svg data-omma-mobile-only width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
           </div>
 
@@ -1719,7 +1779,7 @@ function ComposerChip({
           marginTop: 10, display: 'flex', justifyContent: 'space-between',
           fontFamily: mono, fontSize: 10, color: p.inkMuted, letterSpacing: '0.04em',
         }}>
-          <span>shift + ⏎  newline</span>
+          <span data-omma-desktop-only>shift + ⏎  newline</span>
           {tokenEstimate && <span>{tokenEstimate.tokens.toLocaleString()} tokens · {tokenEstimate.cost}</span>}
         </div>
       </div>
@@ -1838,7 +1898,7 @@ function ModelMenu({ p, mono, serif, models, model, setModel, left = 12 }: {
     ? models.filter(m => `${m.label} ${m.id} ${m.group ?? ''}`.toLowerCase().includes(q))
     : models
   return (
-    <div style={{
+    <div data-omma-pop style={{
       position: 'absolute', bottom: 'calc(100% + 6px)', left,
       width: 300, background: p.surface,
       border: `1px solid ${p.hairline}`, borderRadius: 3,
@@ -1921,7 +1981,7 @@ function ModeMenu({ p, mono, modes, mode, setMode, left = 12 }: {
   modes: ModeOption[]; mode: string; setMode: (id: string) => void; left?: number
 }) {
   return (
-    <div style={{
+    <div data-omma-pop style={{
       position: 'absolute', bottom: 'calc(100% + 6px)', left,
       width: 240, background: p.surface,
       border: `1px solid ${p.hairline}`, borderRadius: 3,
@@ -1975,7 +2035,7 @@ function ToolsMenu({ p, mono, toolsState, onToggleTool, left = 12 }: {
   }
 
   return (
-    <div style={{
+    <div data-omma-pop style={{
       position: 'absolute', bottom: 'calc(100% + 6px)', left,
       width: 320, background: p.surface,
       border: `1px solid ${p.hairline}`, borderRadius: 3,
@@ -2089,6 +2149,7 @@ function SkillsMenu({
       <div
         role="listbox"
         aria-multiselectable="true"
+        data-omma-pop
         style={{
           position: 'absolute', bottom: 'calc(100% + 6px)', left,
           width: 320, maxHeight: 400, overflow: 'auto',
@@ -2647,7 +2708,7 @@ function CommandK({
           <span><kbd style={kbdStyle(p, mono)}>⏎</kbd>&nbsp;open</span>
           <span><kbd style={kbdStyle(p, mono)}>⌘⏎</kbd>&nbsp;new tab</span>
           <span style={{ flex: 1 }} />
-          <span>clox · ⌘K</span>
+          <span>omma · ⌘K</span>
         </div>
       </div>
     </div>
@@ -2718,7 +2779,7 @@ function ConfigDrawer({
   const showSystemPrompt = capability?.kind !== 'image' && capability?.kind !== 'video' && capability?.kind !== 'audio'
 
   return (
-    <div style={{
+    <div data-omma-drawer style={{
       position: 'absolute', top: 0, right: 0, bottom: 0, width: 340,
       background: p.surface,
       borderLeft: `1px solid ${p.hairline}`,

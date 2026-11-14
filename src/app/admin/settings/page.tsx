@@ -46,7 +46,7 @@ interface SettingsPayload {
 }
 
 const DEFAULTS: SettingsPayload = {
-  site: { name: 'Clox', support_email: 'support@clox.com', timezone: 'UTC' },
+  site: { name: 'Omma', support_email: 'support@clox.com', timezone: 'UTC' },
   registration: {
     open: true,
     invite_only: false,

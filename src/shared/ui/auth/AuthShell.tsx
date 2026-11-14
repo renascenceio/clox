@@ -1,6 +1,8 @@
 'use client'
 
 import Link from 'next/link'
+import { OmmaLockup } from '@/shared/ui/brand/OmmaLogo'
+import { APP_VERSION } from '@/lib/version'
 import type { ReactNode, InputHTMLAttributes } from 'react'
 import CookieSettingsLink from '@/components/cookie-consent/CookieSettingsLink'
 
@@ -26,9 +28,9 @@ export function AuthShell({
     <div className="min-h-screen bg-bg text-ink flex flex-col">
       <header className="border-b border-hairline-soft">
         <div className="mx-auto flex max-w-[1240px] items-center px-6 py-4 md:px-8">
-          <Link href="/" className="flex items-baseline gap-2.5">
-            <span className="font-serif text-[22px] italic tracking-[-0.01em]">Clox</span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">v0.4</span>
+          <Link href="/" className="flex items-center gap-2.5">
+            <OmmaLockup size={24} />
+            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">v{APP_VERSION}</span>
           </Link>
         </div>
       </header>

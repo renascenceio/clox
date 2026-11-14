@@ -168,7 +168,7 @@ export default function ProjectsIndexPage() {
   // The previous Tailwind `px-8 py-12 max-w-[1100px]` was just close
   // enough to look "off" without obviously being wrong.
   const body = (
-    <div style={{ padding: '28px 56px 64px', maxWidth: 1140, margin: '0 auto' }}>
+    <div data-omma-page style={{ padding: '28px 56px 64px', maxWidth: 1140, margin: '0 auto' }}>
 
           {/* eyebrow + heading */}
           <div className="border-b border-hairline pb-6 mb-8">
@@ -281,7 +281,7 @@ export default function ProjectsIndexPage() {
     <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
-        brandName="Clox"
+        brandName="Omma"
         user={chrome.user}
         language={chrome.language}
         onChangeLanguage={chrome.handleChangeLanguage}

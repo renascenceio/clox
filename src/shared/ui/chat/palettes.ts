@@ -48,7 +48,7 @@ export const PALETTES: Record<PaletteKey, Palette> = {
     inkMuted: '#8A8270',
     hairline: 'rgba(22,20,16,0.18)',
     hairlineSoft: 'rgba(22,20,16,0.09)',
-    accent: '#A8472A',
+    accent: '#36B5AC',
     youInk: '#161410',
     youBg: '#161410',
     youFg: '#F6F1E3',
@@ -65,7 +65,7 @@ export const PALETTES: Record<PaletteKey, Palette> = {
     inkMuted: '#8E8C86',
     hairline: 'rgba(24,24,26,0.14)',
     hairlineSoft: 'rgba(24,24,26,0.07)',
-    accent: '#A8472A',
+    accent: '#36B5AC',
     youInk: '#18181A',
     youBg: '#18181A',
     youFg: '#FAF9F4',
@@ -82,7 +82,7 @@ export const PALETTES: Record<PaletteKey, Palette> = {
     inkMuted: '#94928A',
     hairline: 'rgba(26,26,27,0.12)',
     hairlineSoft: 'rgba(26,26,27,0.05)',
-    accent: '#A8472A',
+    accent: '#36B5AC',
     youInk: '#1A1A1B',
     youBg: '#1A1A1B',
     youFg: '#FCFBF7',
@@ -99,7 +99,7 @@ export const PALETTES: Record<PaletteKey, Palette> = {
     inkMuted: '#8B8C86',
     hairline: 'rgba(23,24,25,0.13)',
     hairlineSoft: 'rgba(23,24,25,0.06)',
-    accent: '#A04428',
+    accent: '#36B5AC',
     youInk: '#171819',
     youBg: '#171819',
     youFg: '#F9F9F6',
@@ -116,7 +116,7 @@ export const PALETTES: Record<PaletteKey, Palette> = {
     inkMuted: '#8A8C8D',
     hairline: 'rgba(22,23,26,0.16)',
     hairlineSoft: 'rgba(22,23,26,0.08)',
-    accent: '#9A4F32',
+    accent: '#36B5AC',
     youInk: '#16171A',
     youBg: '#16171A',
     youFg: '#F7F6F0',
@@ -133,7 +133,7 @@ export const PALETTES: Record<PaletteKey, Palette> = {
     inkMuted: '#80898B',
     hairline: 'rgba(21,24,26,0.16)',
     hairlineSoft: 'rgba(21,24,26,0.07)',
-    accent: '#8A4A2C',
+    accent: '#36B5AC',
     youInk: '#15181A',
     youBg: '#15181A',
     youFg: '#F0F2EE',
@@ -150,7 +150,7 @@ export const PALETTES: Record<PaletteKey, Palette> = {
     inkMuted: '#7C8186',
     hairline: 'rgba(19,22,26,0.16)',
     hairlineSoft: 'rgba(19,22,26,0.07)',
-    accent: '#955036',
+    accent: '#36B5AC',
     youInk: '#13161A',
     youBg: '#13161A',
     youFg: '#EEEFF0',
@@ -167,7 +167,7 @@ export const PALETTES: Record<PaletteKey, Palette> = {
     inkMuted: '#79828B',
     hairline: 'rgba(17,22,27,0.16)',
     hairlineSoft: 'rgba(17,22,27,0.07)',
-    accent: '#8A4A36',
+    accent: '#36B5AC',
     youInk: '#11161B',
     youBg: '#11161B',
     youFg: '#F1F3F5',
@@ -184,7 +184,7 @@ export const PALETTES: Record<PaletteKey, Palette> = {
     inkMuted: '#6E675A',
     hairline: 'rgba(236,229,211,0.14)',
     hairlineSoft: 'rgba(236,229,211,0.06)',
-    accent: '#D27452',
+    accent: '#36B5AC',
     youInk: '#ECE5D3',
     youBg: '#ECE5D3',
     youFg: '#14130E',
@@ -192,9 +192,9 @@ export const PALETTES: Record<PaletteKey, Palette> = {
   },
 }
 
-export const MONO_STACK = "'Geist Mono', ui-monospace, Menlo, monospace"
-export const SERIF_STACK = "Newsreader, ui-serif, Georgia, serif"
-export const SANS_STACK = "Geist, ui-sans-serif, system-ui, sans-serif"
+export const MONO_STACK = "var(--font-geist-mono), 'Geist Mono', ui-monospace, Menlo, monospace"
+export const SERIF_STACK = "var(--font-newsreader), Newsreader, ui-serif, Georgia, serif"
+export const SANS_STACK = "var(--font-geist-sans), Geist, ui-sans-serif, system-ui, sans-serif"
 
 /** Read the active palette key from localStorage. SSR-safe. */
 export function getStoredPalette(fallback: PaletteKey = 'pearl'): PaletteKey {

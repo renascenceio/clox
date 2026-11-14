@@ -1,5 +1,5 @@
 /**
- * Every model Clox offers, derived from the Vercel AI Gateway catalogue
+ * Every model Omma offers, derived from the Vercel AI Gateway catalogue
  * (`catalog.generated.ts`, refreshed by `scripts/sync-gateway-models.mjs`).
  *
  * All generation goes through the gateway, so a model is listed here if

@@ -187,7 +187,7 @@ export default function GalleryPage() {
     <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
-        brandName="Clox"
+        brandName="Omma"
         user={chrome.user}
         language={chrome.language}
         onChangeLanguage={chrome.handleChangeLanguage}
@@ -213,7 +213,7 @@ export default function GalleryPage() {
         onInputChange={() => undefined}
         onSend={() => undefined}
         bodySlot={
-          <div style={{ padding: '28px 56px 64px', maxWidth: 1140, margin: '0 auto' }}>
+          <div data-omma-page style={{ padding: '28px 56px 64px', maxWidth: 1140, margin: '0 auto' }}>
             {/* Top tab strip — kind filter (all / images / video / voice). */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 16,
