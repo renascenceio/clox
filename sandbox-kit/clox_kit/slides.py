@@ -675,7 +675,7 @@ def s_kpis(cv, ctx, title, items, kicker=None, note=None, highlight=None):
             neg = ds.strip().startswith(("-", "−", "▼", "↓"))
             pos = ds.strip().startswith(("+", "▲", "↑"))
             dcol = ink if hi else (t.negative if neg else t.positive if pos else t.accent)
-            from .text import width as tw
+            from .text import text_width as tw
             pw = tw(ds, t.font("semibold"), 22) + 40
             if t.luxe:
                 cv.text(x, top + 8, cw, 30, ds, role="medium", size=21, color=dcol, max_lines=1, tracking=0.08)
@@ -799,7 +799,7 @@ def _is_num(v):
 
 def s_table(cv, ctx, title, columns, rows, kicker=None, highlight=None, highlight_row=None, fmt=None, note=None):
     from .charts import fmt_value
-    from .text import width as tw
+    from .text import text_width as tw
     t = ctx.t
     cv.background(t.bg)
     y0 = _header(cv, ctx, kicker, title)

@@ -17,10 +17,10 @@ import json
 import os
 import re
 import tempfile
-from html import escape
+from html import escape, unescape
 
 from . import text as T
-from .canvas import register_pdf_fonts
+from .canvas import pdf_family, pdf_line, register_pdf_fonts
 from .slides import _resolve, _state_dir, _theme_from_json, _theme_to_json, _pair, _is_num, jsonable
 from .theme import Theme, contrast, mix, on, theme as _theme
 
@@ -151,9 +151,9 @@ class Report:
                                         TableStyle)
         from .charts import fmt_value, png
 
-        register_pdf_fonts()
         t = self.theme
         f = t.font
+        register_pdf_fonts(t)
         registerFontFamily(f("body"), normal=f("body"), bold=f("bold"), italic=f("italic"), boldItalic=f("bold"))
         page = letter if str(self.meta.get("size", "A4")).lower() == "letter" else A4
         PW, PH = page
@@ -182,6 +182,25 @@ class Report:
             "quote": ParagraphStyle("quote", fontName=f("italic") if serif else f("display_soft"), fontSize=17 if serif else 14.5,
                                     leading=23 if serif else 20.5, textColor=ink),
         }
+
+        def P(markup, style):
+            """A Paragraph in a font that can write its text (Arabic, Japanese, …),
+            shaped and right to left when the script needs it."""
+            plain = unescape(re.sub(r"<[^>]+>", "", markup))
+            font, flow = T.resolve(plain, style.fontName)
+            if font == style.fontName and not (flow.shaped or flow.rtl or flow.cjk):
+                return Paragraph(markup, style)
+            kw = {"fontName": pdf_family(font)}
+            if flow.shaped:
+                kw["shaping"] = 1
+            if flow.cjk:
+                kw["wordWrap"] = "CJK"
+            if flow.rtl:
+                kw["wordWrap"] = "RTL"
+                if style.alignment == TA_LEFT:
+                    kw["alignment"] = TA_RIGHT
+            return Paragraph(markup, ParagraphStyle(style.name + "-x", parent=style, **kw))
+
         title = self.meta.get("title") or ""
         brand = self.meta.get("author") or ""
         has_cover = any(b["kind"] == "cover" for b in self.blocks)
@@ -210,35 +229,29 @@ class Report:
                 c.circle(PW * 0.92, PH * 0.86, PW * 0.52, fill=1, stroke=0)
                 c.setFillColor(_hx(mix(t.hero, t.hero_ink, 0.08)))
                 c.circle(PW * 1.02, PH * 0.42, PW * 0.24, fill=1, stroke=0)
-            hink, hmut = _hx(t.hero_ink), _hx(t.hero_muted)
+            hink, hmut = t.hero_ink, t.hero_muted
             x = ML
-            if cover_args.get("kicker"):
-                c.setFillColor(hink)
-                c.setFont(f("semibold"), 9)
-                c.drawString(x, PH - MT - 4, str(cover_args["kicker"]).upper())
             tw_ = CW * (0.86 if not img else 1)
+            if cover_args.get("kicker"):
+                pdf_line(c, x, PH - MT - 4, tw_, str(cover_args["kicker"]).upper(), f("semibold"), 9, hink)
             ttl = cover_args.get("title") or title
-            size, lines, _ = T.fit(ttl, f("display"), tw_ * 2, PH * 0.42 * 2, 112, 48, lh=1.02)
+            tf = T.resolve(str(ttl), f("display"))[0]
+            size, lines, _ = T.fit(ttl, tf, tw_ * 2, PH * 0.42 * 2, 112, 48, lh=1.02)
             size_pt = size / 2
             sub = cover_args.get("subtitle")
             y = MB + 70
             if sub:
-                s2, l2, _ = T.fit(sub, f("body"), tw_ * 2, 120 * 2, 32, 22, lh=1.3)
-                c.setFillColor(hmut)
+                sf = T.resolve(str(sub), f("body"))[0]
+                s2, l2, _ = T.fit(sub, sf, tw_ * 2, 120 * 2, 32, 22, lh=1.3)
                 for ln in reversed(l2):
-                    c.setFont(f("body"), s2 / 2)
-                    c.drawString(x, y, ln)
+                    pdf_line(c, x, y, tw_, ln, sf, s2 / 2, hmut)
                     y += s2 / 2 * 1.3
                 y += 18
-            c.setFillColor(hink)
             for ln in reversed(lines):
-                c.setFont(f("display"), size_pt)
-                c.drawString(x, y, ln)
+                pdf_line(c, x, y, tw_, ln, tf, size_pt, hink)
                 y += size_pt * 1.02
             if cover_args.get("meta"):
-                c.setFillColor(hmut)
-                c.setFont(f("medium"), 9)
-                c.drawString(x, MB, str(cover_args["meta"]))
+                pdf_line(c, x, MB, tw_, str(cover_args["meta"]), f("medium"), 9, hmut)
             c.restoreState()
 
         def draw_page(c, doc):
@@ -247,15 +260,15 @@ class Report:
             c.rect(0, 0, PW, PH, fill=1, stroke=0)
             c.setFillColor(_hx(t.accent))
             c.rect(ML, PH - 13 * mm, 5, 5, fill=1, stroke=0)
-            c.setFillColor(muted)
-            c.setFont(f("medium"), 7.6)
-            c.drawString(ML + 11, PH - 13 * mm, title[:90])
+            pdf_line(c, ML + 11, PH - 13 * mm, CW - 11, title[:90], f("medium"), 7.6, t.muted)
             c.setStrokeColor(_hx(t.rule))
             c.setLineWidth(0.6)
             c.line(ML, MB - 8 * mm + 6, PW - MR, MB - 8 * mm + 6)
             if brand:
-                c.drawString(ML, MB - 8 * mm - 6, brand[:80])
+                pdf_line(c, ML, MB - 8 * mm - 6, CW - 40, brand[:80], f("medium"), 7.6, t.muted)
             n = doc.page - (1 if has_cover else 0)
+            c.setFillColor(muted)
+            c.setFont(f("medium"), 7.6)
             c.drawRightString(PW - MR, MB - 8 * mm - 6, f"{n:02d}")
             c.restoreState()
 
@@ -283,16 +296,16 @@ class Report:
             if k == "h1":
                 parts = []
                 if a.get("kicker"):
-                    parts.append(Paragraph(escape(str(a["kicker"])).upper(), S["kicker"]))
-                parts.append(Paragraph(_inline(a["text"]), S["h1"]))
+                    parts.append(P(escape(str(a["kicker"])).upper(), S["kicker"]))
+                parts.append(P(_inline(a["text"]), S["h1"]))
                 story += [CondPageBreak(120)] + [KeepTogether(parts)]
             elif k == "h2":
-                story += [CondPageBreak(80), Paragraph(_inline(a["text"]), S["h2"])]
+                story += [CondPageBreak(80), P(_inline(a["text"]), S["h2"])]
             elif k in ("p", "lead"):
                 for para in re.split(r"\n\s*\n", str(a["text"]).strip()):
-                    story.append(Paragraph(_inline(para.replace("\n", " ")), S[k if k == "lead" else "body"]))
+                    story.append(P(_inline(para.replace("\n", " ")), S[k if k == "lead" else "body"]))
             elif k == "bullets":
-                items = [ListItem(Paragraph(_inline(i if isinstance(i, str) else f"**{_pair(i)[0]}** — {_pair(i)[1] or ''}"),
+                items = [ListItem(P(_inline(i if isinstance(i, str) else f"**{_pair(i)[0]}** — {_pair(i)[1] or ''}"),
                                             S["body"]), leftIndent=14) for i in a["items"]]
                 story.append(ListFlowable(items, bulletType="1" if a.get("numbered") else "bullet",
                                           start=None if a.get("numbered") else "■", bulletFontName=f("semibold"),
@@ -303,14 +316,14 @@ class Report:
                 base, fill = tone_colors(a.get("tone", "accent"))
                 inner = []
                 if a.get("title"):
-                    inner.append(Paragraph(escape(str(a["title"])).upper(),
+                    inner.append(P(escape(str(a["title"])).upper(),
                                            ParagraphStyle("ct", parent=S["kicker"], textColor=_hx(base if contrast(base, fill) > 2.4 else t.ink))))
                 if k == "takeaways":
                     for i, it in enumerate(a["items"], 1):
-                        inner.append(Paragraph(f'<font name="{f("semibold")}" color="{base}">{i:02d}</font>&nbsp;&nbsp;{_inline(it)}',
+                        inner.append(P(f'<font name="{f("semibold")}" color="{base}">{i:02d}</font>&nbsp;&nbsp;{_inline(it)}',
                                                ParagraphStyle("tk", parent=S["body"], fontSize=10.6, leading=15.5, spaceAfter=4)))
                 else:
-                    inner.append(Paragraph(_inline(a["text"]), ParagraphStyle("cb", parent=S["body"], spaceAfter=0)))
+                    inner.append(P(_inline(a["text"]), ParagraphStyle("cb", parent=S["body"], spaceAfter=0)))
                 tb = Table([[inner]], colWidths=[CW])
                 tb.setStyle(TableStyle([
                     ("BACKGROUND", (0, 0), (-1, -1), _hx(fill)), ("LEFTPADDING", (0, 0), (-1, -1), 16),
@@ -335,9 +348,9 @@ class Report:
                             col = t.negative if neg else t.positive
                             d = f'<font name="{f("semibold")}" size="8" color="{col}">{escape(str(delta))}</font><br/>'
                         vsize = 22 if per >= 4 else 26
-                        cells.append([Paragraph(f'{d}<font name="{f("display")}" size="{vsize}">{escape(str(value))}</font>',
+                        cells.append([P(f'{d}<font name="{f("display")}" size="{vsize}">{escape(str(value))}</font>',
                                                 ParagraphStyle("kv", parent=S["body"], leading=vsize * 1.08, spaceAfter=4)),
-                                      Paragraph(escape(str(label or "")), ParagraphStyle("kl", parent=S["cap"], spaceBefore=0, spaceAfter=0))])
+                                      P(escape(str(label or "")), ParagraphStyle("kl", parent=S["cap"], spaceBefore=0, spaceAfter=0))])
                     inner = []
                     for cell in cells:
                         ct = Table([[cell]], colWidths=[cw_])
@@ -367,13 +380,13 @@ class Report:
                 body = [[cell(ci, v) for ci, v in enumerate(r)] for r in a["rows"]]
                 numeric = [all(_is_num(r[ci]) for r in body if r[ci] != "") and any(r[ci] for r in body)
                            for ci in range(len(cols))]
-                data = [[Paragraph(escape(str(c)).upper(), S["headr" if numeric[ci] else "head"]) for ci, c in enumerate(cols)]]
+                data = [[P(escape(str(c)).upper(), S["headr" if numeric[ci] else "head"]) for ci, c in enumerate(cols)]]
                 for r in body:
-                    data.append([Paragraph(_inline(v), S["cellr" if numeric[ci] else "cell"]) for ci, v in enumerate(r)])
+                    data.append([P(_inline(v), S["cellr" if numeric[ci] else "cell"]) for ci, v in enumerate(r)])
                 if a.get("widths"):
                     widths = [CW * w_ / sum(a["widths"]) for w_ in a["widths"]]
                 else:
-                    nat = [max([T.width(str(c).upper(), f("semibold"), 7.4)] + [T.width(r[ci], f("body"), 8.8) for r in body]) + 16
+                    nat = [max([T.text_width(str(c).upper(), f("semibold"), 7.4)] + [T.text_width(r[ci], f("body"), 8.8) for r in body]) + 16
                            for ci, c in enumerate(cols)]
                     nat = [min(max(n_, 40), CW * 0.5) for n_ in nat]
                     widths = [CW * n_ / sum(nat) for n_ in nat]
@@ -386,9 +399,9 @@ class Report:
                     style.append(("BACKGROUND", (hl, 0), (hl, -1), _hx(mix(t.bg, t.accent, 0.1))))
                 tb.setStyle(TableStyle(style))
                 if a.get("title"):
-                    story.append(Paragraph(_inline(a["title"]), S["h2"]))
+                    story.append(P(_inline(a["title"]), S["h2"]))
                 story += [tb]
-                story.append(Paragraph(_inline(a["caption"]), S["cap"]) if a.get("caption") else Spacer(1, 12))
+                story.append(P(_inline(a["caption"]), S["cap"]) if a.get("caption") else Spacer(1, 12))
             elif k == "chart":
                 hpx = CW * 2 * float(a.get("height", 0.5))
                 out = os.path.join(tmp, f"c{bi}.png")
@@ -396,22 +409,22 @@ class Report:
                     labels=a.get("labels"), legend=a.get("legend"), transparent=True)
                 parts = []
                 if a.get("title"):
-                    parts.append(Paragraph(_inline(a["title"]), S["h2"]))
+                    parts.append(P(_inline(a["title"]), S["h2"]))
                 parts.append(Image(out, width=CW, height=CW * float(a.get("height", 0.5))))
-                parts.append(Paragraph(_inline(a["caption"]), S["cap"]) if a.get("caption") else Spacer(1, 12))
+                parts.append(P(_inline(a["caption"]), S["cap"]) if a.get("caption") else Spacer(1, 12))
                 story.append(KeepTogether(parts))
             elif k == "image":
                 from PIL import Image as PI
                 iw, ih = PI.open(a["path"]).size
                 wd = CW * float(a.get("width", 1.0))
                 parts = [Image(a["path"], width=wd, height=wd * ih / iw)]
-                parts.append(Paragraph(_inline(a["caption"]), S["cap"]) if a.get("caption") else Spacer(1, 12))
+                parts.append(P(_inline(a["caption"]), S["cap"]) if a.get("caption") else Spacer(1, 12))
                 story.append(KeepTogether(parts))
             elif k == "quote":
-                inner = [Paragraph(_inline(a["text"]), S["quote"])]
+                inner = [P(_inline(a["text"]), S["quote"])]
                 if a.get("who"):
                     inner.append(Spacer(1, 6))
-                    inner.append(Paragraph(escape("— " + str(a["who"])), S["cap"]))
+                    inner.append(P(escape("— " + str(a["who"])), S["cap"]))
                 tb = Table([[inner]], colWidths=[CW])
                 tb.setStyle(TableStyle([("LINEBEFORE", (0, 0), (0, -1), 2.5, acc), ("LEFTPADDING", (0, 0), (-1, -1), 16),
                                         ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))

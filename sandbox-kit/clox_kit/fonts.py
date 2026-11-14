@@ -24,6 +24,28 @@ _NAMES: dict[str, tuple[str, bool, bool]] = {}   # stem -> (family name inside t
 _FAMILY: dict[str, str] = {}                      # stem -> Google family
 
 
+def library_dir() -> str | None:
+    """The font library baked into the sandbox image (see library.py), if any."""
+    for d in (os.environ.get("CLOX_FONT_LIBRARY"), "/opt/clox-fonts"):
+        if d and os.path.isdir(d):
+            return d
+    return None
+
+
+def find(stem: str) -> str | None:
+    """Path of a Google font file: the built-in library first, then the download cache."""
+    lib = library_dir()
+    if lib:
+        p = os.path.join(lib, stem + ".ttf")
+        if os.path.exists(p):
+            return p
+    try:
+        p = os.path.join(cache_dir(), stem + ".ttf")
+    except OSError:
+        return None
+    return p if os.path.exists(p) else None
+
+
 def cache_dir() -> str:
     for d in (os.environ.get("CLOX_FONTS"), os.path.expanduser("~/.clox/fonts"), "/tmp/.clox/fonts"):
         if not d:
@@ -65,7 +87,7 @@ _FACE = re.compile(r"font-style:\s*(\w+);\s*font-weight:\s*(\d+);[^}]*?src:\s*ur
 
 
 def _remember(stem: str, family: str):
-    path = os.path.join(cache_dir(), stem + ".ttf")
+    path = find(stem) or os.path.join(cache_dir(), stem + ".ttf")
     try:
         from fontTools.ttLib import TTFont
         names = TTFont(path, lazy=True)["name"]
@@ -77,39 +99,61 @@ def _remember(stem: str, family: str):
     _FAMILY[stem] = family
 
 
-def fetch(family: str, weights=WEIGHTS, italic: bool = True) -> dict[tuple[int, bool], str]:
-    """Download the family's static TTFs. Returns {(weight, italic): stem} for what exists."""
-    family = family.strip()
+def _download(family: str, missing: list[tuple[int, bool]], out: dict, dest: str) -> bool:
+    faces: list[tuple[str, str, str]] = []
+    try:
+        faces = _FACE.findall(_css(family, missing))
+    except urllib.error.HTTPError as e:
+        if e.code != 400:
+            raise
+        # Google answers 400 when ANY variant is missing — ask one at a time.
+        for v in missing:
+            try:
+                faces += _FACE.findall(_css(family, [v]))
+            except urllib.error.HTTPError:
+                continue
+    for style, w, url in faces:
+        key = (int(w), style == "italic")
+        stem = _stem(family, *key)
+        tmp = os.path.join(dest, stem + ".ttf.part")
+        with open(tmp, "wb") as f:
+            f.write(_get(url))
+        os.replace(tmp, os.path.join(dest, stem + ".ttf"))
+        out[key] = stem
+    return bool(faces)
+
+
+def fetch(family: str, weights=WEIGHTS, italic: bool = True, dest: str | None = None) -> dict[tuple[int, bool], str]:
+    """The family's static TTFs — from the built-in library when it has them,
+    else downloaded once into the cache. Returns {(weight, italic): stem}."""
+    from .library import canonical, known
+    family = canonical(family.strip())
     want = [(w, False) for w in weights] + ([(400, True)] if italic else [])
+    info = known(family)
+    if info:
+        # We know which weights Google has; never ask for the others.
+        want = [(w, i) for w, i in want if w in (info["italics"] if i else info["available"])] or want
     out: dict[tuple[int, bool], str] = {}
     missing = []
     for w, i in want:
         stem = _stem(family, w, i)
-        if os.path.exists(os.path.join(cache_dir(), stem + ".ttf")):
+        if find(stem) and not dest:
             out[(w, i)] = stem
         else:
             missing.append((w, i))
     if missing:
-        faces: list[tuple[str, str, str]] = []
-        try:
-            faces = _FACE.findall(_css(family, missing))
-        except urllib.error.HTTPError as e:
-            if e.code != 400:
-                raise
-            # Google answers 400 when ANY variant is missing — ask one at a time.
-            for v in missing:
-                try:
-                    faces += _FACE.findall(_css(family, [v]))
-                except urllib.error.HTTPError:
-                    continue
-        if not faces and not out:
+        target = dest or cache_dir()
+        if out:
+            # The library has this family, just not every weight. Fetch the
+            # extras when the network allows; otherwise use what is on disk.
+            try:
+                _download(family, missing, out, target)
+            except (OSError, urllib.error.HTTPError):
+                pass
+        elif not _download(family, missing, out, target):
             raise ValueError(f"Google Fonts has no family called {family!r} — check the spelling on fonts.google.com")
-        for style, w, url in faces:
-            key = (int(w), style == "italic")
-            stem = _stem(family, *key)
-            with open(os.path.join(cache_dir(), stem + ".ttf"), "wb") as f:
-                f.write(_get(url))
-            out[key] = stem
+    if dest:
+        return out
     for stem in out.values():
         if stem not in _NAMES:
             _remember(stem, family)
