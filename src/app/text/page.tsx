@@ -592,6 +592,25 @@ export default function TextPage() {
   const liveStreamingRef = useRef(liveStreaming)
   liveStreamingRef.current = liveStreaming
 
+  // Requests from outside the composer (the preview's font picker). The
+  // sender learns whether it went through: not while a reply is running.
+  const chatRef = useRef(chat)
+  chatRef.current = chat
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      const detail = (e as CustomEvent<{ text?: string; accepted?: boolean }>).detail
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const append = (chatRef.current as any)?.append as
+        | ((message: { role: 'user'; content: string }) => Promise<unknown>)
+        | undefined
+      if (!detail?.text || liveStreamingRef.current || !append) return
+      detail.accepted = true
+      void append({ role: 'user', content: detail.text })
+    }
+    window.addEventListener('clox-ask', onAsk)
+    return () => window.removeEventListener('clox-ask', onAsk)
+  }, [])
+
   // The server keeps generating when this tab reloads or closes, and saves
   // the reply as it grows. On opening a chat we pick that reply up and
   // follow it until it finishes.
