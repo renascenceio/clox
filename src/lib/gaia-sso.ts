@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 export { safeNext } from './gaia-sso-config'
 
 /**
- * Sign-in from Sota OS (crm.gaiarealty.ae). The two apps use different
+ * Sign-in from Sota OS (sota.gaiarealty.ae). The two apps use different
  * Supabase projects, so they can't share a session. Instead Omma sends a
  * signed-out visitor to the CRM's /auth/clox; when they're signed in there,
  * the CRM sends them back to /auth/gaia with a short-lived ticket signed
