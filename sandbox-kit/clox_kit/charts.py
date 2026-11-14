@@ -13,6 +13,7 @@ fmt:   None | "int" | "1dp" | "2dp" | "pct" (0.34→34%) | "%" (34→34%) |
 from __future__ import annotations
 
 import os
+import re
 
 from .theme import Theme, mix, on, theme as _theme
 
@@ -279,9 +280,13 @@ def _scripts_for_mpl(t: Theme, plt, cats, ser, title):
     fam = plt.rcParams["font.family"]
     plt.rcParams["font.family"] = (list(fam) if isinstance(fam, list) else [fam]) + extra
 
+    import matplotlib
+    native = tuple(int(x) for x in re.findall(r"\d+", matplotlib.__version__)[:2]) >= (3, 11)
+
     def vis(s):
         s = str(s)
-        if not T.resolve(s, body)[1].rtl:
+        # matplotlib 3.11+ shapes text itself (libraqm); doing it again reverses it.
+        if native or not T.resolve(s, body)[1].rtl:
             return s
         try:
             import arabic_reshaper

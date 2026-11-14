@@ -20,7 +20,7 @@ import tempfile
 from html import escape, unescape
 
 from . import text as T
-from .canvas import pdf_family, pdf_line, register_pdf_fonts
+from .canvas import pdf_family, pdf_line, register_pdf_fonts, shaping_engine
 from .slides import _resolve, _state_dir, _theme_from_json, _theme_to_json, _pair, _is_num, jsonable
 from .theme import Theme, contrast, mix, on, theme as _theme
 
@@ -191,7 +191,7 @@ class Report:
             if font == style.fontName and not (flow.shaped or flow.rtl or flow.cjk):
                 return Paragraph(markup, style)
             kw = {"fontName": pdf_family(font)}
-            if flow.shaped:
+            if flow.shaped and shaping_engine():
                 kw["shaping"] = 1
             if flow.cjk:
                 kw["wordWrap"] = "CJK"

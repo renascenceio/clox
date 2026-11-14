@@ -327,6 +327,19 @@ def pdf_family(font: str) -> str:
     return font
 
 
+def shaping_engine() -> bool:
+    """HarfBuzz for reportlab. reportlab only looks for it when it is first
+    imported, so a late install is handed to it directly."""
+    from reportlab.pdfbase import ttfonts
+    if getattr(ttfonts, "uharfbuzz", None) is None:
+        from ._deps import ensure
+        hb = ensure("uharfbuzz")
+        if hb is None:
+            return False
+        ttfonts.uharfbuzz = hb
+    return True
+
+
 def shaped_line(c, x_pt, base_pt, w_pt, text, font, size_pt, color, align, rtl):
     """One line of Arabic, Hebrew, Indic or Thai text: shaped and, for RTL
     scripts, laid out right to left (reportlab's Paragraph does the bidi work)."""
@@ -336,11 +349,12 @@ def shaped_line(c, x_pt, base_pt, w_pt, text, font, size_pt, color, align, rtl):
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import Paragraph
     pdf_family(font)
+    shaping = 1 if shaping_engine() else 0
     extra = size_pt * 4   # room so reportlab never re-wraps a line we already broke
     al = {"left": TA_LEFT, "center": TA_CENTER, "right": TA_RIGHT}[align]
     x0 = x_pt - (extra if align == "right" else extra / 2 if align == "center" else 0)
     st = ParagraphStyle("l", fontName=font, fontSize=size_pt, leading=size_pt, textColor=HexColor(color),
-                        alignment=al, wordWrap="RTL" if rtl else None, shaping=1)
+                        alignment=al, wordWrap="RTL" if rtl else None, shaping=shaping)
     p = Paragraph(escape(text, quote=False), st)
     p.wrap(w_pt + extra, size_pt * 4)
     # One line with leading = font size: its baseline sits on the bottom edge.
