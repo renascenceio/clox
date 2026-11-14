@@ -1,13 +1,14 @@
 /**
  * Shared editorial shell for /privacy, /terms, /cookies.
  *
- *   - Top bar: Clox logomark + back link
+ *   - Top bar: Omma logomark + back link
  *   - Header band: numeral + eyebrow + serif italic title + lead
  *   - Sticky TOC + section column with hairline dividers
  *   - Slim mono footer with cross-links + cookie-settings link
  */
 
 import Link from 'next/link'
+import { OmmaLockup } from '@/shared/ui/brand/OmmaLogo'
 import CookieSettingsLink from '@/components/cookie-consent/CookieSettingsLink'
 
 export interface LegalSection {
@@ -36,8 +37,8 @@ export default function LegalShell({
       {/* ---- top bar ---- */}
       <header className="border-b border-hairline">
         <div className="mx-auto flex max-w-[1080px] items-center justify-between px-6 py-5 md:px-10">
-          <Link href="/" className="font-serif italic text-[20px] text-ink hover:text-accent">
-            Clox
+          <Link href="/" className="text-ink">
+            <OmmaLockup size={22} />
           </Link>
           <Link
             href="/"
@@ -119,7 +120,7 @@ export default function LegalShell({
       {/* ---- footer cross-links ---- */}
       <footer className="border-t border-hairline">
         <div className="mx-auto flex max-w-[1080px] flex-wrap items-center justify-between gap-4 px-6 py-7 font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink-muted md:px-10">
-          <span>© {new Date().getFullYear()} Clox</span>
+          <span>© {new Date().getFullYear()} Omma</span>
           <nav className="flex flex-wrap gap-6">
             <Link href="/privacy" className="hover:text-ink">Privacy</Link>
             <Link href="/cookies" className="hover:text-ink">Cookies</Link>

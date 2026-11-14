@@ -3,7 +3,7 @@ import { crmSignInUrl, safeNext } from '@/lib/gaia-sso-config'
 
 export const dynamic = 'force-dynamic'
 
-/** GET /auth/gaia/start?next=… — "Continue with Gaia CRM": goes to the
+/** GET /auth/gaia/start?next=… — "Continue with Sota OS": goes to the
  *  CRM, which asks them to sign in there if needed, then comes back. */
 export async function GET(request: NextRequest) {
   const next = safeNext(request.nextUrl.searchParams.get('next'))

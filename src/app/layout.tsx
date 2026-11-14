@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { PwaClient } from "@/components/pwa/PwaClient";
 import localFont from "next/font/local";
 import { Newsreader } from "next/font/google";
 import "./globals.css";
@@ -27,13 +28,29 @@ const newsreader = Newsreader({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Clox Studio – AI Aggregator", template: "%s | Clox Studio" },
-  description: "Generate text, images, video, and audio with 50+ AI models in one workspace.",
-  keywords: ["AI aggregator", "image generation", "text AI", "video AI", "audio AI"],
-  openGraph: { type: "website", locale: "en_US", images: ["/og-image.png"] },
-  twitter: { card: "summary_large_image" },
+  metadataBase: new URL("https://omma.gaiarealty.ae"),
+  applicationName: "Omma",
+  title: { default: "Omma", template: "%s | Omma" },
+  description: "Gaia’s AI workspace: chat, research, files, images, video and audio with 50+ models in one place.",
+  keywords: ["Omma", "Gaia", "AI workspace", "image generation", "text AI", "video AI", "audio AI"],
+  openGraph: { type: "website", locale: "en_US", siteName: "Omma", images: ["/icons/icon-512.png"] },
+  twitter: { card: "summary" },
   robots: { index: true, follow: true },
-  alternates: { canonical: "https://clox.studio" }
+  alternates: { canonical: "https://omma.gaiarealty.ae" },
+  appleWebApp: { capable: true, title: "Omma", statusBarStyle: "black-translucent" },
+  formatDetection: { telephone: false },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  // The on-screen keyboard shrinks the layout instead of covering the composer.
+  interactiveWidget: "resizes-content",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F1EFE9" },
+    { media: "(prefers-color-scheme: dark)", color: "#14130E" },
+  ],
 };
 
 export default function RootLayout({
@@ -112,6 +129,7 @@ export default function RootLayout({
         <WorkspaceHost>{children}</WorkspaceHost>
         <CookieConsent />
         <ConsentScripts />
+        <PwaClient />
       </body>
     </html>
   );

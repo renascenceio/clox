@@ -25,6 +25,7 @@
 import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { OmmaLockup } from '@/shared/ui/brand/OmmaLogo'
 
 // ---------------------------------------------------------------------------
 // Rail nav definition. Routes that don't exist yet are wired to '#' and get
@@ -240,8 +241,8 @@ export default function AdminShell({
       {/* ============================== rail ============================== */}
       <aside className="bg-rail border-r border-hairline flex flex-col overflow-hidden">
         {/* brand */}
-        <div className="flex items-baseline justify-between px-[18px] pt-4 pb-3">
-          <div className="font-serif italic text-[19px] tracking-[-0.01em]">Clox</div>
+        <div className="flex items-center justify-between px-[18px] pt-4 pb-3">
+          <OmmaLockup size={20} />
           <div className="font-mono text-[9.5px] tracking-[0.16em] uppercase text-accent">admin</div>
         </div>
 
@@ -364,7 +365,7 @@ export default function AdminShell({
               type="button"
               onClick={() => router.push('/text')}
               className="inline-flex items-center gap-2 px-3 h-[30px] font-mono text-[10.5px] tracking-[0.08em] uppercase border border-hairline hover:border-ink rounded-sharp transition-colors"
-              title="Return to the Clox app"
+              title="Return to the Omma app"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
                 <path d="M9 6H3M6 3 3 6l3 3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />

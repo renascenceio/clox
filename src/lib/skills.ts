@@ -1,7 +1,7 @@
 /**
  * Skills helper module — single source of truth for the chat composer.
  *
- * Every skill in Clox now lives in `public.skills` (Supabase). This file
+ * Every skill in Omma now lives in `public.skills` (Supabase). This file
  * has no hard-coded skill list of its own — it just provides the helpers
  * that turn a `Skill` row into:
  *

@@ -67,10 +67,10 @@ function PreviewBody() {
         return
       }
       // Update the document title so browser history / bookmarks /
-      // tab-overflow menus show something meaningful — `Clox · <title>`
+      // tab-overflow menus show something meaningful — `Omma · <title>`
       // makes it clear which artifact this tab is hosting.
       const safeTitle = (parsed.title ?? titleParam).slice(0, 120)
-      document.title = `Clox · ${safeTitle}`
+      document.title = `Omma · ${safeTitle}`
       setState({ status: 'ready', html: parsed.html, title: safeTitle })
       // Tidy up — single-shot read, no stale payloads.
       try { sessionStorage.removeItem(key) } catch {}
@@ -215,7 +215,7 @@ function PreviewShell({
             {title}
           </span>
         </span>
-        <span style={{ fontSize: 11, opacity: 0.7 }}>clox.app</span>
+        <span style={{ fontSize: 11, opacity: 0.7 }}>omma.gaiarealty.ae</span>
       </div>
       <div style={{ flex: '1 1 auto', minHeight: 0, position: 'relative' }}>
         {body}

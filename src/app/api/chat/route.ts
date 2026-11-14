@@ -336,7 +336,7 @@ function extractAttachmentBuffers(messages: unknown[]): AttachmentToMount[] {
  * Why this exists:
  *   Out of the box most models (Claude in particular) refuse to produce
  *   files, claiming they're "text-only" — which is technically true but
- *   useless to the user. In Clox the renderer turns every fenced code
+ *   useless to the user. In Omma the renderer turns every fenced code
  *   block into a downloadable artifact (Copy / Download / Preview),
  *   but the model has no way to know that. This preamble tells it
  *   exactly what the surface offers so it stops refusing and starts
@@ -358,7 +358,7 @@ function extractAttachmentBuffers(messages: unknown[]): AttachmentToMount[] {
 // pattern, and the cost rationale — so duplicating it here was
 // pure overhead.
 const CLOX_CAPABILITIES_PREAMBLE = [
-  'You are running inside Clox, a full-capability AI workspace. Fenced',
+  'You are running inside Omma, a full-capability AI workspace. Fenced',
   'code blocks in your reply render as downloadable, previewable',
   'artifacts; document-shaped fences (pdf/docx/pptx/csv) build real',
   'binary Office/PDF exports. You CAN produce files — never refuse with',
@@ -552,7 +552,7 @@ export async function POST(req: Request) {
     // We split the system prompt into TWO segments so providers can
     // cache the stable part:
     //
-    //   stableSystem  — the Clox capabilities preamble. ~3.5k tokens,
+    //   stableSystem  — the Omma capabilities preamble. ~3.5k tokens,
     //                   identical on every request, the single biggest
     //                   recurring cost in our input bill.
     //   dynamicSystem — the user-saved system prompt + any auto-detect

@@ -1893,8 +1893,8 @@ export default function TextPage() {
                    'For long deliverables (PPTX, multi-page PDFs), break the work into ' +
                    'smaller follow-up turns instead of one big request.'
           case 'missing_tool':
-            return 'Clox tried to run code to rebuild the file, but the code tools were not attached to that message. ' +
-                   'This was a Clox problem, not the model. It is fixed now: try again and the same request will run.'
+            return 'Omma tried to run code to rebuild the file, but the code tools were not attached to that message. ' +
+                   'This was a Omma problem, not the model. It is fixed now: try again and the same request will run.'
           case 'no_response':
             return 'The model stopped without producing a response. ' +
                    'This usually means the request timed out, hit the token limit, ' +
@@ -2182,7 +2182,7 @@ export default function TextPage() {
 
   async function handleDeleteAccount() {
     const ok = typeof window !== 'undefined'
-      && window.confirm('Permanently delete your Clox account? This cannot be undone.')
+      && window.confirm('Permanently delete your Omma account? This cannot be undone.')
     if (!ok) return
     try {
       const res = await fetch('/api/account/delete', { method: 'POST' })
@@ -2201,8 +2201,8 @@ export default function TextPage() {
     try {
       if (typeof navigator !== 'undefined' && 'share' in navigator) {
         await (navigator as Navigator & { share: (d: ShareData) => Promise<void> }).share({
-          title: topTitle || 'Clox conversation',
-          text: 'Conversation from Clox',
+          title: topTitle || 'Omma conversation',
+          text: 'Conversation from Omma',
           url,
         })
         return
@@ -2271,7 +2271,7 @@ export default function TextPage() {
    *
    * What we count, and why those numbers
    *
-   *   PREAMBLE_FLOOR     — the Clox capabilities preamble lives in
+   *   PREAMBLE_FLOOR     — the Omma capabilities preamble lives in
    *                        the route handler (server-side), so the
    *                        client never sees the exact text. We hard-
    *                        code its approximate size in tokens. After
@@ -2336,7 +2336,7 @@ export default function TextPage() {
     <WorkspaceSlot
         theme={theme}
         variant="chip"
-        brandName="Clox"
+        brandName="Omma"
         user={user}
         onOpenSettings={() => router.push('/settings')}
         onChangeTheme={handleThemeChange}

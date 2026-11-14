@@ -143,7 +143,7 @@ export default function ProjectWorkspacePage({
     // page has a 280px right rail, so we cap a touch wider than the
     // gallery (1140) to give the main column comfortable breathing room.
     body = (
-      <div style={{ padding: '28px 56px 64px', maxWidth: 1200, margin: '0 auto' }}>
+      <div data-omma-page style={{ padding: '28px 56px 64px', maxWidth: 1200, margin: '0 auto' }}>
 
         <ProjectHeader project={project} onChange={load} />
 
@@ -183,7 +183,7 @@ export default function ProjectWorkspacePage({
     <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
-        brandName="Clox"
+        brandName="Omma"
         user={chrome.user}
         language={chrome.language}
         onChangeLanguage={chrome.handleChangeLanguage}

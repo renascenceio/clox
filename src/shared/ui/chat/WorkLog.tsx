@@ -74,7 +74,7 @@ function describe(step: WorkStep, skillName: (id: string) => string | undefined)
     detail = firstLine(name === 'bash' ? step.args?.command : step.args?.code)
     if (!running && r) {
       if (r.ok === false && r.kind === 'use-kit') {
-        return { label, detail, outcome: 'Switched to the clox design kit, nothing was run', failed: false, redirected: true }
+        return { label, detail, outcome: 'Switched to the Omma design kit, nothing was run', failed: false, redirected: true }
       }
       if (r.ok === false) {
         failed = true

@@ -1,9 +1,15 @@
-/** Settings for signing in from Gaia CRM, safe to use in the middleware. */
+/** Settings for signing in from Sota OS, safe to use in the middleware. */
 
 export const CRM_ORIGIN = (process.env.GAIA_CRM_URL || 'https://crm.gaiarealty.ae').replace(/\/$/, '')
 
-/** Addresses where a signed-out visit first checks for a CRM session. */
-export const AUTO_SSO_HOSTS = ['clox.gaiarealty.ae']
+/** Omma's own address. */
+export const OMMA_ORIGIN = 'https://omma.gaiarealty.ae'
+
+/** Old addresses (from when Omma was called Clox) that move to OMMA_ORIGIN. */
+export const LEGACY_HOSTS = ['clox.gaiarealty.ae']
+
+/** Addresses where a signed-out visit first checks for a Sota OS session. */
+export const AUTO_SSO_HOSTS = ['omma.gaiarealty.ae']
 
 /** Set once per browser session, so the check runs once and never loops
  *  (and someone who signs out isn't signed straight back in). */
@@ -18,7 +24,7 @@ export function crmSignInUrl(origin: string, next: string, opts: { prompt?: 'log
   return url.toString()
 }
 
-/** A path inside Clox, never another site. */
+/** A path inside Omma, never another site. */
 export function safeNext(next: string | null | undefined) {
   return next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/text'
 }

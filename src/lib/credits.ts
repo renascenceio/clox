@@ -34,7 +34,7 @@ export async function checkCredit(opts: { model?: string } = {}): Promise<
   | { caller: null; plan: null; blocked: Response }
 > {
   const caller = await getCallerForLogging()
-  if (!caller) return block(401, 'Sign in to use Clox.', 'signin')
+  if (!caller) return block(401, 'Sign in to use Omma.', 'signin')
   const sb = getServiceClient()
   const [{ data: profile }, { data: credit }] = await Promise.all([
     sb.from('profiles').select('role, is_active, plan').eq('id', caller.userId).maybeSingle(),

@@ -40,7 +40,7 @@ const labelClass = 'flex font-mono text-[10.5px] uppercase tracking-[0.12em] tex
 /**
  * Profile setup — shown right after someone confirms their email (and to
  * anyone who signs in without a name on file). Only the name is required;
- * the rest helps us tailor Clox and can be filled in later from Settings.
+ * the rest helps us tailor Omma and can be filled in later from Settings.
  */
 function ProfileSetup() {
   const params = useSearchParams()
@@ -111,7 +111,7 @@ function ProfileSetup() {
     <AuthShell
       eyebrow={welcome ? 'Email confirmed' : 'Your profile'}
       title={welcome ? 'You’re in. One last step.' : 'Tell us who you are.'}
-      lede="Your name is all we need. The rest helps us tune Clox for your work — you can change it any time in Settings."
+      lede="Your name is all we need. The rest helps us tune Omma for your work — you can change it any time in Settings."
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-5">
         <div className="grid grid-cols-2 gap-4">
@@ -148,7 +148,7 @@ function ProfileSetup() {
         </p>
         {error ? <Notice>{error}</Notice> : null}
         <PrimaryButton type="submit" loading={loading} disabled={!userId}>
-          Continue to Clox
+          Continue to Omma
         </PrimaryButton>
       </form>
     </AuthShell>

@@ -11,7 +11,7 @@
  *                                  creates a fresh sandbox
  *
  * Persistence: deliberately none. The plan considered a `chats` table
- * with a `sandbox_id` column, but Clox stores chats client-side
+ * with a `sandbox_id` column, but Omma stores chats client-side
  * (localStorage in `lib/chat-store.ts`). Adding a server-side chat
  * registry just for sandbox tracking would be overkill, so we accept
  * the cold-start cost: a fresh sandbox after deploy or process

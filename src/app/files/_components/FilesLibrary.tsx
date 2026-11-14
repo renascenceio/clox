@@ -111,7 +111,7 @@ export default function FilesLibrary({
   const open = openKey ? items.find(i => i.key === openKey) ?? null : null
 
   return (
-    <div style={{ padding: '28px 56px 64px', maxWidth: 1180, margin: '0 auto' }}>
+    <div data-omma-page style={{ padding: '28px 56px 64px', maxWidth: 1180, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, paddingBottom: 14, borderBottom: `1px solid ${p.hairlineSoft}`, flexWrap: 'wrap' }}>
         <div role="tablist" aria-label="File type" style={{ display: 'flex', flexWrap: 'wrap', fontFamily: mono, fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
           {FILTERS.filter(f => f.id === 'all' || counts.get(f.id)).map(f => (

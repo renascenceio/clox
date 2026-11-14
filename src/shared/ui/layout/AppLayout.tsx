@@ -323,7 +323,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
         <div className="flex items-center justify-between px-[18px] pt-4 pb-3">
           <Link href="/text" className="flex items-baseline gap-2 select-none">
             <span className="font-serif italic text-[19px] tracking-[-0.01em] leading-none text-ink">
-              Clox
+              Omma
             </span>
             <span className="font-mono text-[9.5px] tracking-[0.14em] uppercase text-ink-muted">
               0.4

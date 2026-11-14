@@ -161,7 +161,7 @@ export default function BillingSection({ p, mono, serif }: { p: Palette; mono: s
         background: p.surfaceAlt, border: `1px solid ${p.hairline}`, borderLeft: `3px solid ${p.accent}`,
         borderRadius: 3, padding: '10px 14px',
       }}>
-        Online payments aren’t switched on yet. To change plan or add credits, ask a Clox admin — it takes effect straight away.
+        Online payments aren’t switched on yet. To change plan or add credits, ask a Omma admin — it takes effect straight away.
         One credit is a tenth of a cent of model cost at the provider’s real price, so a short Auto reply uses a few credits
         and a long document build a few hundred.
       </p>

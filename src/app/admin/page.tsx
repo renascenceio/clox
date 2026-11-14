@@ -136,7 +136,7 @@ export default function AdminDashboardPage() {
       here="Dashboard"
       eyebrow={`superadmin · all workspaces · ${activeWindow === '30d' ? 'last 30d' : activeWindow}`}
       heading={<>Everything that happens, <em className="italic">at a glance.</em></>}
-      lead="Live posture of the Clox platform — usage, cost, who's on, what's broken. Calm by default; lean in when something needs you."
+      lead="Live posture of the Omma platform — usage, cost, who's on, what's broken. Calm by default; lean in when something needs you."
       headExtra={(['30d', '7d', '24h'] as const).map(w => (
         <AdminFilter key={w} active={activeWindow === w} onClick={() => setActiveWindow(w)}>
           {w === '30d' ? 'last 30 days' : w}
@@ -198,7 +198,7 @@ export default function AdminDashboardPage() {
             : ''}
           deltaDown={kpis ? kpis.spend_delta_pct > 0 : false}
           spark={sparkSpend}
-          sparkColor="rgb(168 71 42)"
+          sparkColor="rgb(54 181 172)"
         />
         <KpiCell
           label="MRR"
@@ -206,7 +206,7 @@ export default function AdminDashboardPage() {
           delta=""
           spark={[]}
           emphasis
-          sparkColor="rgb(168 71 42)"
+          sparkColor="rgb(54 181 172)"
         />
       </div>
 

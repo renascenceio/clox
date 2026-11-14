@@ -213,7 +213,7 @@ export default function SkillsPage() {
     <WorkspaceSlot
         theme={chrome.theme}
         onChangeTheme={chrome.handleThemeChange}
-        brandName="Clox"
+        brandName="Omma"
         user={chrome.user}
         language={chrome.language}
         onChangeLanguage={chrome.handleChangeLanguage}
@@ -239,7 +239,7 @@ export default function SkillsPage() {
         onInputChange={() => undefined}
         onSend={() => undefined}
         bodySlot={
-          <div style={{ padding: '28px 56px 64px', maxWidth: 920, margin: '0 auto', fontFamily: SANS, color: p.ink }}>
+          <div data-omma-page style={{ padding: '28px 56px 64px', maxWidth: 920, margin: '0 auto', fontFamily: SANS, color: p.ink }}>
             {/* Header row — count, intro, create button */}
             <div style={{
               display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
@@ -376,7 +376,7 @@ export default function SkillsPage() {
                 textTransform: 'uppercase', color: p.inkMuted, marginBottom: 6,
               }}>How skills work</div>
               <div style={{ fontFamily: SERIF, fontSize: 14, lineHeight: 1.6, color: p.inkSoft }}>
-                When you activate a skill, Clox monitors your conversations for relevant
+                When you activate a skill, Omma monitors your conversations for relevant
                 context. If a match is detected, it offers to inject the skill&apos;s system
                 prompt. You can accept or dismiss — you&apos;re always in control.
               </div>

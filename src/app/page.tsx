@@ -1,10 +1,10 @@
 'use client'
 
 /*
- * Clox — landing page.
+ * Omma — landing page.
  *
  * Editorial Pearl × Onyx surface, 1:1 to the reference HTML at
- * `user_read_only_context/text_attachments/Clox-Landing-POO0M.html`.
+ * `user_read_only_context/text_attachments/Omma-Landing-POO0M.html`.
  *
  * Sections, top-down:
  *   i.   Hero with a live typewriter composer that cycles through real prompts
@@ -20,6 +20,7 @@
 
 import Link from 'next/link'
 import { APP_VERSION, APP_VERSION_DATE } from '@/lib/version'
+import { OmmaLockup } from '@/shared/ui/brand/OmmaLogo'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import CookieSettingsLink from '@/components/cookie-consent/CookieSettingsLink'
 
@@ -605,8 +606,8 @@ export default function LandingPage() {
       {/* ============== NAV ============== */}
       <header className="sticky top-0 z-30 border-b border-hairline-soft bg-bg/85 backdrop-blur">
         <div className="mx-auto flex max-w-[1240px] items-center gap-8 px-6 py-4 md:px-8">
-          <Link href="/" className="flex items-baseline gap-2.5">
-            <span className="font-serif text-[22px] italic tracking-[-0.01em]">Clox</span>
+          <Link href="/" className="flex items-center gap-2.5">
+            <OmmaLockup size={24} />
             <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">v{APP_VERSION}</span>
           </Link>
           <nav className="hidden flex-1 items-center gap-6 text-[13.5px] text-ink-soft md:flex">
@@ -642,7 +643,7 @@ export default function LandingPage() {
               to think with <em className="italic text-accent">AI.</em>
             </h1>
             <p className="mt-5 max-w-[480px] text-[18px] leading-[1.55] text-ink-soft text-pretty">
-              Clox is a chat workspace built around the way you actually write — mode first, model second, tools when you
+              Omma is a chat workspace built around the way you actually write — mode first, model second, tools when you
               need them. No fluorescent dashboard. No emoji in the toolbar. Just paper, ink, and a cursor.
             </p>
             <div className="mt-8 flex items-center gap-3">
@@ -700,7 +701,7 @@ export default function LandingPage() {
             before you ask the question.
           </h2>
           <p className="mt-3 max-w-[540px] text-[16px] text-ink-soft">
-              Mode comes first in Clox — chat, research, image, code, voice, video — because it changes what &lsquo;good&rsquo; looks like more than the model does. Click through to watch the workspace re-orient itself.
+              Mode comes first in Omma — chat, research, image, code, voice, video — because it changes what &lsquo;good&rsquo; looks like more than the model does. Click through to watch the workspace re-orient itself.
           </p>
         </SectionHead>
         <ModesShowcase />
@@ -829,7 +830,7 @@ export default function LandingPage() {
               'Concierge onboarding',
             ]}
             cta="Talk to us"
-            ctaHref="mailto:hello@clox.studio"
+            ctaHref="mailto:hello@gaiarealty.ae"
           />
         </div>
       </section>
@@ -841,12 +842,12 @@ export default function LandingPage() {
             <p className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-surface/55">v.</p>
             <h2 className="mt-3 font-serif text-[clamp(48px,6vw,80px)] font-normal leading-[1.02] tracking-[-0.025em]">
               Open the door.<br />
-              Sit down. <em className="italic" style={{ color: '#D27452' }}>Begin.</em>
+              Sit down. <em className="italic" style={{ color: '#36B5AC' }}>Begin.</em>
             </h2>
           </div>
           <div>
             <p className="mb-3 max-w-[380px] text-[17px] text-surface/65">
-              The first chat is on us. You&rsquo;ll know within five minutes whether Clox is the workspace you&rsquo;ve been
+              The first chat is on us. You&rsquo;ll know within five minutes whether Omma is the workspace you&rsquo;ve been
               asking software for, or just another reasonable opinion about chat.
             </p>
             <Link
@@ -865,7 +866,7 @@ export default function LandingPage() {
       {/* ============== FOOTER ============== */}
       <footer className="border-t border-surface/10 bg-ink text-surface/65">
         <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-4 px-6 py-9 font-mono text-[11px] tracking-[0.04em] md:px-8">
-          <div>© 2026 Clox · made on the long form</div>
+          <div>© 2026 Omma · made on the long form</div>
           <div className="flex flex-wrap gap-6">
             <a href="#" className="hover:text-surface">Manifesto</a>
             <a href="#" className="hover:text-surface">Changelog</a>

@@ -4,8 +4,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 export { safeNext } from './gaia-sso-config'
 
 /**
- * Sign-in from Gaia CRM (crm.gaiarealty.ae). The two apps use different
- * Supabase projects, so they can't share a session. Instead Clox sends a
+ * Sign-in from Sota OS (crm.gaiarealty.ae). The two apps use different
+ * Supabase projects, so they can't share a session. Instead Omma sends a
  * signed-out visitor to the CRM's /auth/clox; when they're signed in there,
  * the CRM sends them back to /auth/gaia with a short-lived ticket signed
  * with GAIA_SSO_SECRET (the same value is set in both projects).
@@ -24,7 +24,7 @@ const b64url = (b: Buffer) => b.toString('base64').replace(/\+/g, '-').replace(/
 
 export type ProvisionOp = 'create' | 'disable' | 'enable'
 
-/** Admin › Users & seats in the CRM making, turning off or back on a Clox account. */
+/** Admin › Users & seats in the CRM making, turning off or back on a Omma account. */
 export function verifyProvision(ticket: string): (GaiaTicket & { op: ProvisionOp }) | null {
   const data = readTicket(ticket, 'clox-provision')
   if (!data) return null

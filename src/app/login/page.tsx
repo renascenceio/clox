@@ -61,7 +61,7 @@ function SignIn() {
       lede="Sign in to pick up where you left off."
       footer={
         <>
-          New to Clox?{' '}
+          New to Omma?{' '}
           <Link href={`/signup${suffix}`} className="text-ink underline underline-offset-4">
             Create an account
           </Link>
@@ -112,16 +112,16 @@ function SignIn() {
           <span className="h-px flex-1 bg-current opacity-20" />
         </div>
         {params.get('sso') === 'denied' ? (
-          <Notice>Your Gaia CRM account doesn&apos;t include Clox yet. Ask an administrator to turn it on in Admin, Users &amp; seats.</Notice>
+          <Notice>Your Sota OS account doesn&apos;t include Omma yet. Ask an administrator to turn it on in Admin, Users &amp; seats.</Notice>
         ) : null}
         {['invalid', 'used', 'failed', 'off'].includes(params.get('sso') ?? '') ? (
-          <Notice>We couldn&apos;t sign you in through Gaia CRM. Try again, or sign in with your password.</Notice>
+          <Notice>We couldn&apos;t sign you in through Sota OS. Try again, or sign in with your password.</Notice>
         ) : null}
         <a
           href={`/auth/gaia/start?next=${encodeURIComponent(next)}`}
           className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-sharp border border-ink bg-transparent font-mono text-[11.5px] uppercase tracking-[0.1em] text-ink transition-colors hover:bg-ink hover:text-surface"
         >
-          Continue with Gaia CRM
+          Continue with Sota OS
         </a>
       </div>
     </AuthShell>

@@ -44,36 +44,36 @@ const COPY: Record<ConsentRegion, Copy> = {
   eea: {
     ...EN,
     headline: 'Cookies & tracking',
-    body: 'We use necessary storage to run Clox. With your consent we also measure page views and speed. Nothing optional runs until you choose, and you can change your mind any time.',
+    body: 'We use necessary storage to run Omma. With your consent we also measure page views and speed. Nothing optional runs until you choose, and you can change your mind any time.',
     reject: 'Reject all',
   },
   uk: {
     ...EN,
     headline: 'Cookies & tracking',
-    body: 'We use necessary storage to run Clox. With your consent (PECR and UK GDPR) we also measure page views and speed. Nothing optional runs until you choose.',
+    body: 'We use necessary storage to run Omma. With your consent (PECR and UK GDPR) we also measure page views and speed. Nothing optional runs until you choose.',
     reject: 'Reject all',
   },
   ch: {
     ...EN,
     headline: 'Cookies & tracking',
-    body: 'We use necessary storage to run Clox. With your consent under the revised FADP we also measure page views and speed. Nothing optional runs until you choose.',
+    body: 'We use necessary storage to run Omma. With your consent under the revised FADP we also measure page views and speed. Nothing optional runs until you choose.',
     reject: 'Reject all',
   },
   'us-ca': {
     ...EN,
     headline: 'Your privacy choices',
-    body: 'We use necessary storage to run Clox and, if you agree, anonymous analytics. We do not sell or share personal information, and we honour Global Privacy Control automatically.',
+    body: 'We use necessary storage to run Omma and, if you agree, anonymous analytics. We do not sell or share personal information, and we honour Global Privacy Control automatically.',
     reject: 'Do not sell or share',
   },
   us: {
     ...EN,
     headline: 'Your privacy choices',
-    body: 'We use necessary storage to run Clox and, if you agree, anonymous analytics. Optional tracking stays off until you choose, and Global Privacy Control is honoured.',
+    body: 'We use necessary storage to run Omma and, if you agree, anonymous analytics. Optional tracking stays off until you choose, and Global Privacy Control is honoured.',
     reject: 'Reject optional',
   },
   br: {
     headline: 'Cookies e privacidade',
-    body: 'Usamos armazenamento necessário para o Clox funcionar. Com o seu consentimento (LGPD), também medimos visitas e desempenho. Nada opcional é ativado até você escolher.',
+    body: 'Usamos armazenamento necessário para o Omma funcionar. Com o seu consentimento (LGPD), também medimos visitas e desempenho. Nada opcional é ativado até você escolher.',
     reject: 'Recusar todos',
     accept: 'Aceitar todos',
     customize: 'Personalizar',
@@ -82,7 +82,7 @@ const COPY: Record<ConsentRegion, Copy> = {
   },
   'ca-qc': {
     headline: 'Témoins et vie privée',
-    body: 'Nous utilisons le stockage nécessaire au fonctionnement de Clox. Avec votre consentement (Loi 25), nous mesurons aussi les visites et la performance. Rien d’optionnel n’est activé avant votre choix.',
+    body: 'Nous utilisons le stockage nécessaire au fonctionnement de Omma. Avec votre consentement (Loi 25), nous mesurons aussi les visites et la performance. Rien d’optionnel n’est activé avant votre choix.',
     reject: 'Tout refuser',
     accept: 'Tout accepter',
     customize: 'Personnaliser',
@@ -92,7 +92,7 @@ const COPY: Record<ConsentRegion, Copy> = {
   global: {
     ...EN,
     headline: 'Cookies & tracking',
-    body: 'We use necessary storage to run Clox. With your consent we also measure page views and speed. Nothing optional runs until you choose, and you can change your mind any time.',
+    body: 'We use necessary storage to run Omma. With your consent we also measure page views and speed. Nothing optional runs until you choose, and you can change your mind any time.',
     reject: 'Reject all',
   },
 }

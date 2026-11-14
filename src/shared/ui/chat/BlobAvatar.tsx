@@ -1,9 +1,9 @@
 /**
- * BlobAvatar — Clox brand mark / AI avatar.
+ * BlobAvatar — Omma brand mark / AI avatar.
  *
  * A continuously-deforming amorphous blob rendered on a <canvas>.
  * Replaces the boring "circled C" used as the AI avatar in chat and
- * doubles as the brand mark to the left of the "Clox" wordmark in
+ * doubles as the brand mark to the left of the "Omma" wordmark in
  * the sidebar header.
  *
  * Behaviour
@@ -16,7 +16,7 @@
  *
  * Design tokens
  * ─────────────
- * Clox brand palette already exposes terracotta as the accent (see
+ * Omma brand palette already exposes terracotta as the accent (see
  * src/app/globals.css → `--accent-rgb: 168 71 42`). We mirror that here
  * via the `color` prop default so the avatar matches the rest of the
  * surface chrome without us hard-coding hex everywhere it appears.
@@ -29,7 +29,7 @@ import { useEffect, useRef } from 'react'
 type Props = {
   /** Size in CSS px (square). Default 28 matches the old "circled C". */
   size?: number
-  /** Main fill colour. Default = Clox terracotta. */
+  /** Main fill colour. Default = Omma terracotta. */
   color?: string
   /** Lighter accent for halo + inner highlight. Default derived. */
   colorLight?: string
@@ -46,24 +46,21 @@ type Props = {
   fluidity?: number
   /** Override point count. Default 11 = mildly complex contour. */
   points?: number
-  /** ARIA label (avatar). Default 'Clox'. */
+  /** ARIA label (avatar). Default 'Omma'. */
   ariaLabel?: string
 }
 
 export function BlobAvatar({
   size = 28,
-  // Terracotta from the design tokens. Keeping a literal hex here AND
-  // referencing the token in the JSDoc above means a designer browsing
-  // the file sees both the source-of-truth and the value being used.
-  color = '#A8472A',
-  // Soft peach derived from terracotta @ ~55% lightness — used only
-  // for the halo / inner highlight; never the main mass.
-  colorLight = '#E8A988',
+  // Omma facet teal (logo pack), the same value as the accent token.
+  color = '#36B5AC',
+  // Light teal, used only for the halo / inner highlight.
+  colorLight = '#A6E0DB',
   interactive = true,
   energy = 0.25,
   fluidity = 50,
   points = 11,
-  ariaLabel = 'Clox',
+  ariaLabel = 'Omma',
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 

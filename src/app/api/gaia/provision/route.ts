@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic'
 const json = (body: object, status = 200) => NextResponse.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
 
 /**
- * POST /api/gaia/provision { ticket } — Gaia CRM's Admin › Users & seats makes a
- * Clox account ahead of someone's first visit (create), or turns Clox off and
+ * POST /api/gaia/provision { ticket } — Sota OS's Admin › Users & seats makes a
+ * Omma account ahead of someone's first visit (create), or turns Omma off and
  * back on for them (disable / enable). The ticket is signed with GAIA_SSO_SECRET,
  * audience "clox-provision", single use, valid for 60 seconds.
  */
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   const existed = !!createError && /already|exists|registered/i.test(createError.message)
   if (createError && !existed) {
     console.error('[gaia-provision] createUser failed:', createError.message)
-    return json({ error: "Clox couldn't make the account." }, 502)
+    return json({ error: "Omma couldn't make the account." }, 502)
   }
   if (claims.op === 'create') return json({ ok: true, existed })
 
@@ -39,12 +39,12 @@ export async function POST(request: NextRequest) {
   const id = link?.user?.id
   if (linkError || !id) {
     console.error('[gaia-provision] lookup failed:', linkError?.message)
-    return json({ error: "Clox couldn't find the account." }, 502)
+    return json({ error: "Omma couldn't find the account." }, 502)
   }
   const { error: banError } = await admin.auth.admin.updateUserById(id, { ban_duration: claims.op === 'disable' ? '876000h' : 'none' })
   if (banError) {
     console.error('[gaia-provision] ban switch failed:', banError.message)
-    return json({ error: "Clox couldn't change the account." }, 502)
+    return json({ error: "Omma couldn't change the account." }, 502)
   }
   return json({ ok: true, existed })
 }

@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Models — what the Vercel AI Gateway gives Clox.
+ * Models — what the Vercel AI Gateway gives Omma.
  *
  * Lives at /admin/api-keys but presents itself as "Models" in the
  * super-admin rail. Every model runs through the gateway, so there are no
@@ -81,7 +81,7 @@ export default function ModelsAdminPage() {
       here="Models"
       eyebrow="superadmin · vercel ai gateway"
       heading={<>Every model, <em className="italic">one gateway.</em></>}
-      lead="All text, image, video and audio generation runs through the Vercel AI Gateway — billing, rate limits and failover are handled there, and no provider keys are stored in Clox. Switch a provider off to hide its models from every picker."
+      lead="All text, image, video and audio generation runs through the Vercel AI Gateway — billing, rate limits and failover are handled there, and no provider keys are stored in Omma. Switch a provider off to hide its models from every picker."
       headExtra={
         <>
           {(['all', ...CATEGORY_ORDER] as const).map(cat => (

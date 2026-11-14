@@ -28,7 +28,7 @@ interface User {
 const FILTERS = ['all', 'super_admin', 'member', 'flagged'] as const
 type Filter = (typeof FILTERS)[number]
 
-const AV_BG = ['#2C2A24', '#A8472A', '#2F8F5F', '#1F4663', '#6B5B2F']
+const AV_BG = ['#2C2A24', '#36B5AC', '#2F8F5F', '#1F4663', '#6B5B2F']
 
 export default function RecentUsersTable() {
   const router = useRouter()
