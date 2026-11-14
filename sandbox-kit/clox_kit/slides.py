@@ -94,9 +94,9 @@ def _pair(item, n=2):
 
 
 class Ctx:
-    def __init__(self, deck, page, total):
+    def __init__(self, deck, page, total, theme=None):
         self.deck, self.page, self.total = deck, page, total
-        self.t: Theme = deck.theme
+        self.t: Theme = theme or deck.theme
 
 
 # ─── shared pieces ─────────────────────────────────────────────────
@@ -201,7 +201,7 @@ def _points(cv, t, x, y, w, max_h, items, head=40, body=28, numbered=True, color
         if total <= max_h:
             break
     else:
-        cv.warnings.append("too much text in this list — cut points or split the slide")
+        cv.warnings.append("too much text in this list ��� cut points or split the slide")
     if spread and len(items) > 1 and total < max_h:
         extra = min((max_h - total) / (len(items) - 1) * 0.5, 96 - gap) if gap < 96 else 0
         gap += max(0, extra)
@@ -230,14 +230,66 @@ def _points(cv, t, x, y, w, max_h, items, head=40, body=28, numbered=True, color
 
 # ─── slide types ───────────────────────────────────────────────────
 
-def s_cover(cv, ctx, title, subtitle=None, kicker=None, meta=None, image=None):
+# Cover compositions. Each is a different layout, not a recolour — "versions of the
+# title slide" must differ in structure (where the type sits, how big, what shapes).
+COVER_LAYOUTS = {
+    "orbs":   "colour field with large overlapping circles on the right, title bottom-left",
+    "frame":  "quiet hairline frame inset from the edge, refined title (premium default)",
+    "split":  "two panels: colour panel with the title, light side with an accent block and the details",
+    "poster": "typographic poster: the title set huge across the slide, a colour strip with the subtitle",
+    "band":   "light page crossed by a full-width colour band that carries the title",
+    "grid":   "Swiss grid: rules, details at the top, accent square, big title bottom-left",
+    "duo":    "two colour fields, one per side of a comparison (sides=('Dubai', 'Abu Dhabi')), title below",
+    "shapes": "geometric composition (circle, half-circle, square) on the right, title on the left",
+    "center": "centred, symmetrical title between fine rules — calm and formal",
+    "photo":  "full-bleed photograph with a dark scrim, white title (needs image=)",
+}
+
+
+def default_cover_layout(t: Theme) -> str:
+    if t.luxe:
+        return "frame"
+    return {"swiss": "grid", "editorial": "poster", "navy": "band", "forest": "split"}.get(t.name, "orbs")
+
+
+def _sides(title, sides):
+    if sides and len(sides) >= 2:
+        return [str(sides[0]), str(sides[1])]
+    m = re.split(r"\s+(?:vs\.?|versus|v\.?|×|x|or|&|and)\s+", str(title or ""), maxsplit=1, flags=re.I)
+    if len(m) == 2 and all(0 < len(p.split()) <= 3 for p in m):
+        return [m[0].strip(" :—-"), m[1].strip(" :—-")]
+    return None
+
+
+def _cover_title(cv, t, x, y, w, h, title, size, color, *, align="left", valign="bottom", max_lines=4, lh=None):
+    return cv.text(x, y, w, h, title, role="display" if t.serif or not t.luxe else "display_soft",
+                   size=size, min_size=56, lh=lh or (1.02 if t.luxe else 0.98), color=color, valign=valign,
+                   max_lines=max_lines, align=align)
+
+
+def s_cover(cv, ctx, title, subtitle=None, kicker=None, meta=None, image=None, layout=None, sides=None):
     t = ctx.t
+    layout = (layout or "").lower().strip() or default_cover_layout(t)
+    if layout == "photo" and not image:
+        layout = "poster"
+    if layout == "duo" and not _sides(title, sides):
+        layout = "band"
+    fn = _COVERS.get(layout)
+    if fn is None:
+        cv.warnings.append(f"unknown cover layout {layout!r} — use one of {', '.join(COVER_LAYOUTS)}")
+        layout, fn = "orbs", None
+    if fn:
+        return fn(cv, t, title, subtitle, kicker, meta, image, sides)
+    _cover_classic(cv, t, title, subtitle, kicker, meta, image, "orbs")
+
+
+def _cover_classic(cv, t, title, subtitle, kicker, meta, image, layout):
     cv.background(t.hero)
     tw = 1120
     if image:
         cv.image(image, 1000, 0, 920, H)
         tw = 780
-    elif t.luxe:
+    elif layout == "frame":
         _frame(cv, t)
     else:
         _orbs(cv, t, "right")
@@ -248,7 +300,7 @@ def s_cover(cv, ctx, title, subtitle=None, kicker=None, meta=None, image=None):
         cv.text(MX, 960, tw, 34, meta, role="medium", size=22, color=mut, max_lines=1)
     sub_h = cv.measure(subtitle, "body", 34, tw, 1.3) if subtitle else 0
     bottom = 900 - (sub_h + 52 if subtitle else 0)
-    if t.luxe:
+    if layout == "frame":
         _mark(cv, t, MX, 196, _accent_on(t, t.hero))
     cv.text(MX, 240, tw, bottom - 240, title, role="display" if t.serif or not t.luxe else "display_soft",
             size=124 if t.luxe else 140, min_size=60, lh=1.02 if t.luxe else 1.0, color=ink,
@@ -261,6 +313,231 @@ def _frame(cv, t):
     """Luxe covers: a hairline frame inset from the edge instead of colour blobs."""
     c = mix(t.hero_ink, t.hero, 0.72)
     cv.rect(48, 48, W - 96, H - 96, None, line=c, line_w=1.2)
+
+
+def _pick(t, against, avoid=()):
+    """First theme colour that shows on `against` and isn't one of `avoid`."""
+    av = {a.lower() for a in avoid}
+    for c in (t.accent, t.accent2, t.ink, t.muted):
+        if c.lower() not in av and contrast(c, against) >= 1.35:
+            return c
+    return mix(against, on(against), 0.3)
+
+
+def _field(t):
+    """The cover's colour field: the hero colour, unless it is the page colour too (midnight, noir)."""
+    return t.hero if contrast(t.hero, t.bg) >= 1.35 else _pick(t, t.bg)
+
+
+def _sub(cv, t, x, y, w, subtitle, color, size=32, align="left", max_lines=3):
+    if not subtitle:
+        return 0
+    return cv.text(x, y, w, size * 1.3 * max_lines, subtitle, role="body", size=size, color=color, lh=1.3,
+                   align=align, max_lines=max_lines, min_size=20)
+
+
+def _cover_split(cv, t, title, subtitle, kicker, meta, image, sides):
+    cv.background(t.bg)
+    pw = 1080
+    panel = _field(t)
+    cv.rect(0, 0, pw, H, panel)
+    ink, mut = on(panel), mix(on(panel), panel, 0.38)
+    rx, rw = pw, W - pw
+    tw = pw - MX - 110
+    if image:
+        cv.image(image, rx, 0, rw, H)
+        if kicker:
+            _kicker(cv, t, MX, 100, tw, kicker, _accent_on(t, panel))
+        if meta:
+            cv.text(MX, 960, tw, 34, meta, role="medium", size=22, color=mut, max_lines=1)
+    else:
+        blk = _pick(t, t.bg, avoid=(panel,))
+        cv.rect(rx, 0, rw, 440, blk)
+        if kicker:
+            _kicker(cv, t, rx + 72, 340, rw - 144, kicker, on(blk))
+        cv.line(rx + 72, 860, W - MX, 860, t.rule if not t.dark else mix(t.ink, t.bg, 0.7), 2)
+        if meta:
+            cv.text(rx + 72, 890, rw - 144 - (MX - 72), 80, meta, role="medium", size=26, color=t.ink, lh=1.25,
+                    max_lines=2)
+    sub_h = cv.measure(subtitle, "body", 32, tw, 1.3) if subtitle else 0
+    bottom = 900 - (sub_h + 44 if subtitle else 0)
+    _mark(cv, t, MX, 200, _accent_on(t, panel))
+    _cover_title(cv, t, MX, 250, tw, bottom - 250, title, 120 if not t.luxe else 108, ink)
+    _sub(cv, t, MX, bottom + 44, tw, subtitle, mut)
+
+
+def _cover_poster(cv, t, title, subtitle, kicker, meta, image, sides):
+    cv.background(t.bg)
+    acc = _accent_on(t, t.bg)
+    if kicker:
+        _kicker(cv, t, MX, 84, 1000, kicker, acc)
+    if meta:
+        cv.text(MX + BW - 700, 86, 700, 34, meta, role="medium", size=22, color=t.muted, align="right", max_lines=1)
+    cv.line(MX, 146, MX + BW, 146, t.ink, 3 if not t.luxe else 1.5)
+    strip = _field(t)
+    sh = 230 if subtitle else 120
+    _cover_title(cv, t, MX - 6, 176, BW + 6, H - sh - 176 - 40, title, 250, t.ink, max_lines=3,
+                 lh=0.92 if not t.luxe else 1.0)
+    cv.rect(0, H - sh, W, sh, strip)
+    s_ink = on(strip)
+    if subtitle:
+        _sub(cv, t, MX, H - sh + 58, 1300, subtitle, s_ink, size=34, max_lines=2)
+    dot = _pick(t, strip, avoid=(strip,))
+    d = 72
+    cv.ellipse(MX + BW - d, H - sh / 2 - d / 2, d, d, dot)
+
+
+def _cover_band(cv, t, title, subtitle, kicker, meta, image, sides):
+    cv.background(t.bg)
+    band = _field(t)
+    acc = _accent_on(t, t.bg)
+    if kicker:
+        _kicker(cv, t, MX, 150, 1200, kicker, acc)
+    y1, y2 = 300, 780
+    cv.rect(0, y1, W, y2 - y1, band)
+    tab = _pick(t, band, avoid=(band,))
+    cv.rect(MX + BW - 120, y1 - 60, 120, 120, tab, radius=0 if t.luxe else min(t.radius, 16))
+    _cover_title(cv, t, MX, y1 + 60, 1500, y2 - y1 - 120, title, 150 if not t.luxe else 128, on(band),
+                 valign="middle", max_lines=3)
+    if subtitle:
+        _sub(cv, t, MX, y2 + 50, 1300, subtitle, t.muted, size=32, max_lines=2)
+    if meta:
+        cv.text(MX, 980, BW, 34, meta, role="medium", size=22, color=t.muted, max_lines=1)
+
+
+def _cover_grid(cv, t, title, subtitle, kicker, meta, image, sides):
+    cv.background(t.bg)
+    col = BW / 4
+    rule = t.ink
+    cv.line(MX, 140, MX + BW, 140, rule, 2)
+    cv.line(MX, 960, MX + BW, 960, rule, 2)
+    for k in range(1, 4):
+        cv.line(MX + k * col, 140, MX + k * col, 164, rule, 2)
+    if kicker:
+        _kicker(cv, t, MX, 88, col * 2 - 40, kicker, t.ink, size=20)
+    if meta:
+        cv.text(MX + col * 2, 90, col * 2, 32, meta, role="medium", size=20, color=t.muted, align="right",
+                max_lines=1)
+    sq = 300
+    cv.rect(MX + BW - sq, 200, sq, sq, _pick(t, t.bg))
+    if subtitle:
+        _sub(cv, t, MX, 200, col * 2 - 40, subtitle, t.muted, size=30, max_lines=4)
+    _cover_title(cv, t, MX - 4, 540, BW - sq - 80, 380, title, 150, t.ink, max_lines=3, lh=0.95)
+    cv.text(MX, 990, 400, 30, "01", role="medium", size=18, color=t.muted, max_lines=1)
+
+
+def _cover_duo(cv, t, title, subtitle, kicker, meta, image, sides):
+    a_name, b_name = _sides(title, sides)
+    cv.background(t.bg)
+    a = _field(t)
+    b = _pick(t, a, avoid=(a, t.bg))
+    if contrast(b, t.bg) < 1.2:
+        b = mix(a, on(a), 0.22)
+    top = 700
+    half = W / 2
+    cv.rect(0, 0, half, top, a)
+    cv.rect(half, 0, half, top, b)
+    role = "display" if t.serif or not t.luxe else "display_soft"
+    nw, nh = half - MX - 80, top - 130 - 70
+    lines_for = lambda nm: 1 if len(nm.split()) <= 2 else 2
+    size = min(cv.fit(nm, t.font(role), nw, nh, 190, 72, 0.95, 0, lines_for(nm))[0] for nm in (a_name, b_name))
+    for i, (name, fill) in enumerate(((a_name, a), (b_name, b))):
+        x = (MX if i == 0 else half + 80)
+        cv.text(x, 130, nw, nh, name, role=role, size=size, min_size=72, lh=0.95, color=on(fill), valign="bottom",
+                max_lines=lines_for(name))
+    d = 150
+    cv.ellipse(half - d / 2, top - d / 2, d, d, t.bg)
+    cv.text(half - d / 2, top - 34, d, 60, "vs", role="italic" if t.serif else "display_soft", size=52,
+            color=t.ink, align="center", max_lines=1)
+    y = top + 70
+    if kicker:
+        _kicker(cv, t, MX, y, 1100, kicker, _accent_on(t, t.bg), size=20)
+        y += 44
+    used = cv.text(MX, y, 1400, 150, title, role="display_soft" if not t.serif else "display", size=64, min_size=36,
+                   lh=1.05, color=t.ink, max_lines=2)
+    if subtitle:
+        _sub(cv, t, MX, y + used + 16, 1400, subtitle, t.muted, size=26, max_lines=1)
+    if meta:
+        cv.text(MX + BW - 500, 1000, 500, 30, meta, role="medium", size=20, color=t.muted, align="right",
+                max_lines=1)
+
+
+def _cover_shapes(cv, t, title, subtitle, kicker, meta, image, sides):
+    bg = t.bg
+    cv.background(bg)
+    c1 = _field(t)
+    c2 = _pick(t, bg, avoid=(c1,))
+    c3 = t.ink if contrast(t.ink, bg) > 3 else mix(bg, on(bg), 0.5)
+    cv.ellipse(1190, 110, 600, 600, c1)
+    cv.rect(1060, 640, 330, 330, c3)
+    cv.ellipse(1440, 720, 560, 560, c2)
+    cv.ellipse(1700, 96, 96, 96, c3)
+    tw = 900
+    if kicker:
+        _kicker(cv, t, MX, 110, tw, kicker, _accent_on(t, bg))
+    sub_h = cv.measure(subtitle, "body", 30, tw, 1.3) if subtitle else 0
+    bottom = 880 - (sub_h + 40 if subtitle else 0)
+    _cover_title(cv, t, MX, 220, tw, bottom - 220, title, 128, t.ink)
+    _sub(cv, t, MX, bottom + 40, tw, subtitle, t.muted, size=30)
+    if meta:
+        cv.text(MX, 980, tw, 30, meta, role="medium", size=22, color=t.muted, max_lines=1)
+
+
+def _cover_center(cv, t, title, subtitle, kicker, meta, image, sides):
+    field = t.hero
+    cv.background(field)
+    ink, mut = on(field), mix(on(field), field, 0.4)
+    rule = mix(ink, field, 0.7)
+    cv.line(MX, 96, MX + BW, 96, rule, 1.5)
+    cv.line(MX, 984, MX + BW, 984, rule, 1.5)
+    acc = _accent_on(t, field)
+    role = "display" if t.serif or not t.luxe else "display_soft"
+    size, lines, _ = cv.fit(str(title), t.font(role), W - 520, 400, 120, 56, 1.04, 0, 3)
+    th = len(lines) * size * 1.04
+    sh = cv.measure(subtitle, "body", 30, W - 720, 1.3) if subtitle else 0
+    block = 34 + 34 + 46 + th + (40 + sh if subtitle else 0)
+    y = (H - block) / 2
+    if kicker:
+        cv.text(MX, y, BW, 34, kicker, role="medium", size=20, color=acc, upper=True, tracking=0.3, align="center",
+                max_lines=1)
+    cv.rect(W / 2 - 36, y + 68, 72, 2, acc)
+    y += 114
+    _cover_title(cv, t, 260, y, W - 520, th + 4, title, size, ink, align="center", valign="top", max_lines=3,
+                 lh=1.04)
+    if subtitle:
+        _sub(cv, t, 360, y + th + 40, W - 720, subtitle, mut, size=30, align="center", max_lines=2)
+    if meta:
+        cv.text(MX, 1010, BW, 30, meta, role="medium", size=18, color=mut, upper=True, tracking=0.2, align="center",
+                max_lines=1)
+
+
+def _cover_photo(cv, t, title, subtitle, kicker, meta, image, sides):
+    cv.background("#000000")
+    cv.image(image, 0, 0, W, H)
+    # Stacked thin layers approximate a gradient (no gradient fills in the canvas).
+    for i in range(14):
+        y = 320 + i * 50
+        cv.rect(0, y, W, H - y, "#000000", alpha=0.075)
+    for i in range(4):
+        cv.rect(0, 0, W, 220 - i * 50, "#000000", alpha=0.08)
+    if kicker:
+        _kicker(cv, t, MX, 84, 1100, kicker, "#FFFFFF", size=20)
+    if meta:
+        cv.text(MX + BW - 700, 86, 700, 30, meta, role="medium", size=20, color="#E9E9EE", align="right",
+                max_lines=1)
+    sub_h = cv.measure(subtitle, "body", 32, 1400, 1.3) if subtitle else 0
+    bottom = 950 - (sub_h + 36 if subtitle else 0)
+    _mark(cv, t, MX, bottom - 380, t.accent if contrast(t.accent, "#000000") > 3 else "#FFFFFF")
+    _cover_title(cv, t, MX, bottom - 340, 1500, 340, title, 132, "#FFFFFF", max_lines=3)
+    _sub(cv, t, MX, bottom + 36, 1400, subtitle, "#E9E9EE", size=32, max_lines=2)
+
+
+_COVERS = {
+    "split": _cover_split, "poster": _cover_poster, "band": _cover_band, "grid": _cover_grid,
+    "duo": _cover_duo, "shapes": _cover_shapes, "center": _cover_center, "photo": _cover_photo,
+    "orbs": lambda cv, t, ti, su, k, m, im, sd: _cover_classic(cv, t, ti, su, k, m, im, "orbs"),
+    "frame": lambda cv, t, ti, su, k, m, im, sd: _cover_classic(cv, t, ti, su, k, m, im, "frame"),
+}
 
 
 def s_closing(cv, ctx, title="Thank you", subtitle=None, contact=None):
@@ -880,6 +1157,9 @@ class Deck:
             json.dump({"theme": _theme_to_json(self.theme), "title": self.title, "brand": self.brand,
                        "fonts": self.fonts, "pdf": self.make_pdf, "slides": self.slides}, f)
 
+    def _slide_theme(self, spec):
+        return _theme_from_json(spec["theme"]) if spec.get("theme") else self.theme
+
     def _section_no(self, page):
         return sum(1 for s in self.slides[:page] if s["kind"] == "section")
 
@@ -915,10 +1195,11 @@ class Deck:
         total = len(self.slides)
         for i, spec in enumerate(self.slides):
             slide = prs.slides.add_slide(prs.slide_layouts[6])
-            cv = PptxCanvas(self.theme, prs, slide, self.fonts)
+            th = self._slide_theme(spec)
+            cv = PptxCanvas(th, prs, slide, self.fonts)
             args = dict(spec["args"])
             notes = args.pop("notes", None)
-            KINDS[spec["kind"]](cv, Ctx(self, i + 1, total), **args)
+            KINDS[spec["kind"]](cv, Ctx(self, i + 1, total, th), **args)
             cv.notes(notes)
             if cv.warnings:
                 warnings[i + 1] = sorted(set(cv.warnings))
@@ -940,10 +1221,11 @@ class Deck:
         total = len(self.slides)
         with tempfile.TemporaryDirectory() as tmp:
             for i, spec in enumerate(self.slides):
-                cv = PdfCanvas(self.theme, c, tmp)
+                th = self._slide_theme(spec)
+                cv = PdfCanvas(th, c, tmp)
                 args = dict(spec["args"])
                 args.pop("notes", None)
-                KINDS[spec["kind"]](cv, Ctx(self, i + 1, total), **args)
+                KINDS[spec["kind"]](cv, Ctx(self, i + 1, total, th), **args)
                 c.showPage()
             c.save()
         if not quiet:
@@ -1004,6 +1286,13 @@ class Deck:
             return
         if kinds[0] != "cover":
             issues.append("start with d.cover(...)")
+        covers = [s for s in self.slides if s["kind"] == "cover"]
+        if len(covers) >= 2:
+            lays = [(s["args"].get("layout") or default_cover_layout(self._slide_theme(s))) for s in covers]
+            if len(set(lays)) < len(lays):
+                issues.append(f"{len(covers)} cover slides but only {len(set(lays))} layout(s) ({', '.join(lays)}) — "
+                              "options must differ in composition, not colour: d.cover_options(...) or "
+                              f"layout= one of {', '.join(COVER_LAYOUTS)}")
         if len(kinds) >= 6 and not {"section", "statement", "stat", "feature"} & set(kinds):
             issues.append("add a section, statement, stat or feature slide to pace a longer deck")
         plain = 0
@@ -1050,10 +1339,57 @@ class Deck:
         return issues
 
     # ── slide types ──
-    def cover(self, title, subtitle=None, *, kicker=None, meta=None, image=None, notes=None):
+    def cover(self, title, subtitle=None, *, kicker=None, meta=None, image=None, layout=None, sides=None,
+              notes=None):
+        """layout: one of COVER_LAYOUTS (orbs, frame, split, poster, band, grid, duo, shapes, center, photo).
+        None = the theme's own. sides=("Dubai", "Abu Dhabi") for layout="duo" (else read from "A vs B")."""
         if not self.title:
             self.title = title
-        return self._add("cover", title=title, subtitle=subtitle, kicker=kicker, meta=meta, image=image, notes=notes)
+        return self._add("cover", title=title, subtitle=subtitle, kicker=kicker, meta=meta, image=image,
+                         layout=layout, sides=list(sides) if sides else None, notes=notes)
+
+    def cover_options(self, title, subtitle=None, *, kicker=None, meta=None, image=None, sides=None, n=5,
+                      layouts=None, themes=None):
+        """Several genuinely different title slides in a separate file (<name>-cover-options.pptx/.pdf).
+        Each option is a different COMPOSITION; themes=[...] also varies the palette per option.
+        Pick one, then: d.cover(..., layout="poster") or d.edit(1, layout="poster")."""
+        if layouts is None:
+            order = [default_cover_layout(self.theme)]
+            if _sides(title, sides):
+                order.append("duo")
+            if image:
+                order.append("photo")
+            for k in ("poster", "split", "shapes", "grid", "band", "center", "orbs", "frame"):
+                if k not in order:
+                    order.append(k)
+            layouts = order[:max(1, n)]
+        base = os.path.basename(self.path)[:-5]
+        opts = Deck(f"{base}-cover-options", theme=self.theme, title=f"{self.title or title} — cover options",
+                    brand=self.brand, new=True)
+        opts.fonts = self.fonts
+        names = []
+        for i, lay in enumerate(layouts):
+            args = {k: jsonable(v) for k, v in dict(title=title, subtitle=subtitle, kicker=kicker, meta=meta,
+                                                     image=image, layout=lay, sides=list(sides) if sides else None,
+                                                     notes=f"Option {i + 1}: {lay} — {COVER_LAYOUTS.get(lay, '')}"
+                                                     ).items() if v is not None}
+            spec = {"kind": "cover", "args": args}
+            th = themes[i % len(themes)] if themes else None
+            if th is not None:
+                th = _theme(th) if not isinstance(th, Theme) else th
+                spec["theme"] = _theme_to_json(th)   # this option has its own palette
+            names.append(th.name if th is not None else None)
+            opts.slides.append(spec)
+        warnings = opts.save()
+        opts.pdf(quiet=True)
+        print("cover options (" + os.path.basename(opts.path) + "):")
+        for i, lay in enumerate(layouts, 1):
+            th = f" · {names[i - 1]}" if names[i - 1] else ""
+            print(f"  {i}. {lay}{th} — {COVER_LAYOUTS.get(lay, '')}")
+            for w in warnings.get(i, []):
+                print(f"     ! {w}")
+        print('apply one: d.cover(..., layout="<name>") on a new deck, or d.edit(1, layout="<name>")')
+        return opts
 
     def section(self, title, subtitle=None, *, number=None, notes=None):
         return self._add("section", title=title, subtitle=subtitle, number=number, notes=notes)
