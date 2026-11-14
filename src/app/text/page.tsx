@@ -56,6 +56,7 @@ import {
 } from '@/lib/token-estimate'
 import { useAvailableModels } from '@/lib/use-available-models'
 import { createClient } from '@/lib/supabase/client'
+import { markSignedOut } from '@/lib/gaia-sso-config'
 import {
   createChat,
   ensureActiveChat,
@@ -2173,6 +2174,7 @@ export default function TextPage() {
   async function handleSignOut() {
     try {
       const supabase = createClient()
+      markSignedOut()
       await supabase.auth.signOut()
     } catch (e) {
       console.error('[v0] sign-out error:', e)
