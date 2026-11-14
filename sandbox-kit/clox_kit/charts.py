@@ -13,6 +13,7 @@ fmt:   None | "int" | "1dp" | "2dp" | "pct" (0.34→34%) | "%" (34→34%) |
 from __future__ import annotations
 
 import os
+import re
 
 from .theme import Theme, mix, on, theme as _theme
 
@@ -257,6 +258,46 @@ def _mpl(t: Theme):
     return plt
 
 
+def _scripts_for_mpl(t: Theme, plt, cats, ser, title):
+    """Labels in Arabic, Japanese, Cyrillic… : add library fonts that can write
+    them as matplotlib fallbacks, and pre-shape right-to-left text (matplotlib
+    draws letters one by one, so Arabic would come out unjoined and reversed)."""
+    from matplotlib import font_manager
+    from . import text as T
+    from .fonts import pptx_name
+    texts = list(cats) + [str(nm) for nm, _ in ser] + ([str(title)] if title else [])
+    body = t.font("body")
+    extra = []
+    for s in texts:
+        stem, flow = T.resolve(s, body)
+        if stem != body:
+            fam = pptx_name(stem)[0] if stem.startswith("gf-") else stem
+            if fam not in extra:
+                font_manager.fontManager.addfont(T.font_path(stem))
+                extra.append(fam)
+    if not extra:
+        return cats, ser, title
+    fam = plt.rcParams["font.family"]
+    plt.rcParams["font.family"] = (list(fam) if isinstance(fam, list) else [fam]) + extra
+
+    import matplotlib
+    native = tuple(int(x) for x in re.findall(r"\d+", matplotlib.__version__)[:2]) >= (3, 11)
+
+    def vis(s):
+        s = str(s)
+        # matplotlib 3.11+ shapes text itself (libraqm); doing it again reverses it.
+        if native or not T.resolve(s, body)[1].rtl:
+            return s
+        try:
+            import arabic_reshaper
+            from bidi import get_display
+        except ImportError:
+            return s
+        return get_display(arabic_reshaper.reshape(s))
+
+    return [vis(c) for c in cats], [(vis(nm), v) for nm, v in ser], vis(title) if title else title
+
+
 def _short_cats(cats):
     """'Jan 2026'…'Dec 2026' → 'Jan'…'Dec' when every label shares the year."""
     import re
@@ -285,11 +326,13 @@ def png(kind, categories, series, path, theme=None, *, w=1600, h=900, fmt=None, 
     kind = "bar" if kind == "column" else kind
     ser = _norm(series, categories)
     multi = len(ser) > 1
+    cats = _short_cats([str(c) for c in (categories or [])])
+    # Before the figure exists: tick labels take their fonts when the axes are made.
+    cats, ser, title = _scripts_for_mpl(t, plt, cats, ser, title)
     fig, ax = plt.subplots(figsize=(w * 0.5 / 72, h * 0.5 / 72))
     if not transparent:
         fig.patch.set_facecolor(t.bg)
         fig.patch.set_alpha(1)
-    cats = _short_cats([str(c) for c in (categories or [])])
     n = len(cats)
     import numpy as np
     idx = np.arange(n)

@@ -1,0 +1,2448 @@
+{
+ "fonts": [
+  {
+   "family": "Inter",
+   "kind": "sans",
+   "note": "Neutral workhorse, superb at every size",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Inter Tight",
+   "kind": "sans",
+   "note": "Inter cut tighter for big headlines",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Geist",
+   "kind": "sans",
+   "note": "Crisp, technical, very current",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Manrope",
+   "kind": "sans",
+   "note": "Geometric and warm, great for product decks",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "DM Sans",
+   "kind": "sans",
+   "note": "Low-contrast geometric, friendly and clear",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900,
+    1000
+   ]
+  },
+  {
+   "family": "Plus Jakarta Sans",
+   "kind": "sans",
+   "note": "Modern geometric with soft curves",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Outfit",
+   "kind": "sans",
+   "note": "Rounded geometric, bold display feel",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Sora",
+   "kind": "sans",
+   "note": "Wide, techy geometric",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Figtree",
+   "kind": "sans",
+   "note": "Clean and friendly, easy to read",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Onest",
+   "kind": "sans",
+   "note": "Modern grotesque with strong Cyrillic",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Urbanist",
+   "kind": "sans",
+   "note": "Sharp geometric, fashion and real estate",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Work Sans",
+   "kind": "sans",
+   "note": "Grotesque with character at large sizes",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "IBM Plex Sans",
+   "kind": "sans",
+   "note": "Engineered, corporate, very legible",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Albert Sans",
+   "kind": "sans",
+   "note": "Scandinavian geometric",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Hanken Grotesk",
+   "kind": "sans",
+   "note": "Quiet grotesque for long text",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Instrument Sans",
+   "kind": "sans",
+   "note": "Precise neo-grotesque",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Schibsted Grotesk",
+   "kind": "sans",
+   "note": "Newsroom grotesque, punchy",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Bricolage Grotesque",
+   "kind": "sans",
+   "note": "Quirky grotesque with personality",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Space Grotesk",
+   "kind": "sans",
+   "note": "Retro-tech grotesque",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Archivo",
+   "kind": "sans",
+   "note": "Sturdy grotesque, great in bold",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Mona Sans",
+   "kind": "sans",
+   "note": "Strong, versatile grotesque",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Host Grotesk",
+   "kind": "sans",
+   "note": "Calm contemporary grotesque",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Familjen Grotesk",
+   "kind": "sans",
+   "note": "Grotesque with lively details",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Red Hat Display",
+   "kind": "sans",
+   "note": "Confident display sans",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Epilogue",
+   "kind": "sans",
+   "note": "Elegant grotesque for editorial work",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Public Sans",
+   "kind": "sans",
+   "note": "Strong, neutral, institutional",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Lexend",
+   "kind": "sans",
+   "note": "Built for reading ease",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Montserrat",
+   "kind": "sans",
+   "note": "Classic geometric, wide caps",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Poppins",
+   "kind": "sans",
+   "note": "Geometric, very popular, Devanagari too",
+   "scripts": [
+    "devanagari",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Rubik",
+   "kind": "sans",
+   "note": "Soft rounded corners; Latin, Cyrillic, Arabic, Hebrew",
+   "scripts": [
+    "arabic",
+    "cyrillic",
+    "hebrew",
+    "latin"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Golos Text",
+   "kind": "sans",
+   "note": "Modern Cyrillic-first grotesque",
+   "scripts": [
+    "cyrillic",
+    "latin"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Commissioner",
+   "kind": "sans",
+   "note": "Flexible grotesque, Cyrillic and Greek",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Geologica",
+   "kind": "sans",
+   "note": "Geometric with Cyrillic and Greek",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Raleway",
+   "kind": "sans",
+   "note": "Elegant thin-to-bold sans",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Jost",
+   "kind": "sans",
+   "note": "Futura-like geometric",
+   "scripts": [
+    "cyrillic",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Source Sans 3",
+   "kind": "sans",
+   "note": "Clear humanist, huge language range",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Libre Franklin",
+   "kind": "sans",
+   "note": "American gothic, newspaper feel",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Barlow",
+   "kind": "sans",
+   "note": "Slightly rounded, California road-sign feel",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Open Sans",
+   "kind": "sans",
+   "note": "Universal humanist, Hebrew and Greek too",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "hebrew",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Roboto",
+   "kind": "sans",
+   "note": "Android's sans, every language",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "PT Sans",
+   "kind": "sans",
+   "note": "Humanist with excellent Cyrillic",
+   "scripts": [
+    "cyrillic",
+    "latin"
+   ],
+   "available": [
+    400,
+    700
+   ]
+  },
+  {
+   "family": "Noto Sans",
+   "kind": "sans",
+   "note": "Universal fallback: Latin, Cyrillic, Greek, Vietnamese",
+   "scripts": [
+    "cyrillic",
+    "devanagari",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Syne",
+   "kind": "display",
+   "note": "Art-gallery display, wide and bold",
+   "scripts": [
+    "greek",
+    "latin"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Unbounded",
+   "kind": "display",
+   "note": "Wide, rounded, loud; Cyrillic too",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Funnel Display",
+   "kind": "display",
+   "note": "Modern display grotesque",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Bebas Neue",
+   "kind": "display",
+   "note": "Tall condensed caps for posters",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Anton",
+   "kind": "display",
+   "note": "Heavy condensed headline face",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Archivo Black",
+   "kind": "display",
+   "note": "Ultra-bold grotesque",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Oswald",
+   "kind": "display",
+   "note": "Condensed gothic, Cyrillic too",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Alumni Sans",
+   "kind": "display",
+   "note": "Tall condensed, elegant in light weights",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Tenor Sans",
+   "kind": "display",
+   "note": "Refined small-caps feel, luxury",
+   "scripts": [
+    "cyrillic",
+    "latin"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Italiana",
+   "kind": "display",
+   "note": "Thin high-fashion display",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Cinzel",
+   "kind": "display",
+   "note": "Roman inscription capitals",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Marcellus",
+   "kind": "display",
+   "note": "Flared classical capitals",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Playfair Display",
+   "kind": "serif",
+   "note": "High-contrast editorial serif",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Fraunces",
+   "kind": "serif",
+   "note": "Soft, characterful old-style display serif",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Cormorant Garamond",
+   "kind": "serif",
+   "note": "Delicate Garamond for luxury",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "DM Serif Display",
+   "kind": "serif",
+   "note": "Bold high-contrast headline serif",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Instrument Serif",
+   "kind": "serif",
+   "note": "Condensed modern editorial serif",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Newsreader",
+   "kind": "serif",
+   "note": "Made for reading news and reports",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "EB Garamond",
+   "kind": "serif",
+   "note": "Classic book Garamond",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Libre Caslon Text",
+   "kind": "serif",
+   "note": "Traditional Caslon for long text",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400,
+    700
+   ]
+  },
+  {
+   "family": "Lora",
+   "kind": "serif",
+   "note": "Balanced contemporary serif",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Young Serif",
+   "kind": "serif",
+   "note": "Warm heavy old-style display",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Gloock",
+   "kind": "serif",
+   "note": "Dramatic high-contrast display serif",
+   "scripts": [
+    "cyrillic",
+    "latin"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Bodoni Moda",
+   "kind": "serif",
+   "note": "Fashion Bodoni",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Spectral",
+   "kind": "serif",
+   "note": "Elegant screen-first serif",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Source Serif 4",
+   "kind": "serif",
+   "note": "Robust serif for reports",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Literata",
+   "kind": "serif",
+   "note": "Book serif with wide language support",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Crimson Pro",
+   "kind": "serif",
+   "note": "Classic book serif, compact",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Libre Baskerville",
+   "kind": "serif",
+   "note": "Baskerville for body text",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Merriweather",
+   "kind": "serif",
+   "note": "Sturdy serif, very readable",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "PT Serif",
+   "kind": "serif",
+   "note": "Humanist serif with excellent Cyrillic",
+   "scripts": [
+    "cyrillic",
+    "latin"
+   ],
+   "available": [
+    400,
+    700
+   ]
+  },
+  {
+   "family": "IBM Plex Serif",
+   "kind": "serif",
+   "note": "Engineered companion to Plex Sans",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Petrona",
+   "kind": "serif",
+   "note": "Lively contemporary text serif",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Prata",
+   "kind": "serif",
+   "note": "Didone display with Cyrillic",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Gilda Display",
+   "kind": "serif",
+   "note": "Graceful didone for hospitality",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400
+   ]
+  },
+  {
+   "family": "Roboto Slab",
+   "kind": "serif",
+   "note": "Friendly slab serif",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Zilla Slab",
+   "kind": "serif",
+   "note": "Contemporary slab with flair",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Noto Serif",
+   "kind": "serif",
+   "note": "Universal serif fallback",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Serif Display",
+   "kind": "serif",
+   "note": "High-contrast universal display serif",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "JetBrains Mono",
+   "kind": "mono",
+   "note": "Code and data, very clear",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "IBM Plex Mono",
+   "kind": "mono",
+   "note": "Engineered mono",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Geist Mono",
+   "kind": "mono",
+   "note": "Technical mono to pair with Geist",
+   "scripts": [
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "DM Mono",
+   "kind": "mono",
+   "note": "Soft geometric mono",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    300,
+    400,
+    500
+   ]
+  },
+  {
+   "family": "Space Mono",
+   "kind": "mono",
+   "note": "Retro mono with character",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    700
+   ]
+  },
+  {
+   "family": "IBM Plex Sans Arabic",
+   "kind": "sans",
+   "note": "Modern corporate Arabic with matching Latin",
+   "scripts": [
+    "arabic",
+    "cyrillic",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Noto Sans Arabic",
+   "kind": "sans",
+   "note": "Clean universal Arabic sans",
+   "scripts": [
+    "arabic",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Kufi Arabic",
+   "kind": "sans",
+   "note": "Geometric Kufi for headlines",
+   "scripts": [
+    "arabic",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Naskh Arabic",
+   "kind": "serif",
+   "note": "Traditional Naskh for reading",
+   "scripts": [
+    "arabic",
+    "latin"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Readex Pro",
+   "kind": "sans",
+   "note": "Modern Arabic + Latin, very legible",
+   "scripts": [
+    "arabic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Alexandria",
+   "kind": "sans",
+   "note": "Geometric Arabic + Latin, contemporary",
+   "scripts": [
+    "arabic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Cairo",
+   "kind": "sans",
+   "note": "Popular modern Arabic + Latin",
+   "scripts": [
+    "arabic",
+    "latin"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900,
+    1000
+   ]
+  },
+  {
+   "family": "Tajawal",
+   "kind": "sans",
+   "note": "Light, airy Arabic + Latin",
+   "scripts": [
+    "arabic",
+    "latin"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Almarai",
+   "kind": "sans",
+   "note": "Simple, crisp Arabic",
+   "scripts": [
+    "arabic",
+    "latin"
+   ],
+   "available": [
+    300,
+    400,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Vazirmatn",
+   "kind": "sans",
+   "note": "Arabic and Persian, neutral",
+   "scripts": [
+    "arabic",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Changa",
+   "kind": "sans",
+   "note": "Condensed Kufi-style display",
+   "scripts": [
+    "arabic",
+    "latin"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ]
+  },
+  {
+   "family": "Reem Kufi",
+   "kind": "display",
+   "note": "Elegant Fatimid Kufi display",
+   "scripts": [
+    "arabic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Amiri",
+   "kind": "serif",
+   "note": "Classical Naskh book face, Latin too",
+   "scripts": [
+    "arabic",
+    "latin"
+   ],
+   "available": [
+    400,
+    700
+   ]
+  },
+  {
+   "family": "Markazi Text",
+   "kind": "serif",
+   "note": "Editorial Arabic serif",
+   "scripts": [
+    "arabic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Noto Sans Hebrew",
+   "kind": "sans",
+   "note": "Universal Hebrew sans",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "hebrew",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Heebo",
+   "kind": "sans",
+   "note": "Modern Hebrew + Latin",
+   "scripts": [
+    "hebrew",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Frank Ruhl Libre",
+   "kind": "serif",
+   "note": "Classic Hebrew serif",
+   "scripts": [
+    "hebrew",
+    "latin"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Sans JP",
+   "kind": "sans",
+   "note": "Japanese gothic, standard choice",
+   "scripts": [
+    "cyrillic",
+    "japanese",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Serif JP",
+   "kind": "serif",
+   "note": "Japanese mincho",
+   "scripts": [
+    "cyrillic",
+    "japanese",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Zen Kaku Gothic New",
+   "kind": "sans",
+   "note": "Modern Japanese gothic",
+   "scripts": [
+    "cyrillic",
+    "japanese",
+    "latin"
+   ],
+   "available": [
+    300,
+    400,
+    500,
+    700,
+    900
+   ]
+  },
+  {
+   "family": "IBM Plex Sans JP",
+   "kind": "sans",
+   "note": "Corporate Japanese to pair with Plex",
+   "scripts": [
+    "cyrillic",
+    "japanese",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Noto Sans KR",
+   "kind": "sans",
+   "note": "Korean gothic, standard choice",
+   "scripts": [
+    "cyrillic",
+    "korean",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Serif KR",
+   "kind": "serif",
+   "note": "Korean myeongjo",
+   "scripts": [
+    "cyrillic",
+    "korean",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "IBM Plex Sans KR",
+   "kind": "sans",
+   "note": "Corporate Korean to pair with Plex",
+   "scripts": [
+    "korean",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Noto Sans SC",
+   "kind": "sans",
+   "note": "Simplified Chinese sans",
+   "scripts": [
+    "chinese-simplified",
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Serif SC",
+   "kind": "serif",
+   "note": "Simplified Chinese serif",
+   "scripts": [
+    "chinese-simplified",
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Sans TC",
+   "kind": "sans",
+   "note": "Traditional Chinese sans",
+   "scripts": [
+    "chinese-traditional",
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Serif TC",
+   "kind": "serif",
+   "note": "Traditional Chinese serif",
+   "scripts": [
+    "chinese-traditional",
+    "cyrillic",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Sans Devanagari",
+   "kind": "sans",
+   "note": "Hindi, Marathi, Nepali",
+   "scripts": [
+    "devanagari",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Serif Devanagari",
+   "kind": "serif",
+   "note": "Devanagari serif",
+   "scripts": [
+    "devanagari",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Sans Bengali",
+   "kind": "sans",
+   "note": "Bengali",
+   "scripts": [
+    "bengali",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Sans Tamil",
+   "kind": "sans",
+   "note": "Tamil",
+   "scripts": [
+    "latin",
+    "tamil"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Sans Thai",
+   "kind": "sans",
+   "note": "Thai",
+   "scripts": [
+    "latin",
+    "thai"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Kanit",
+   "kind": "sans",
+   "note": "Modern Thai + Latin",
+   "scripts": [
+    "latin",
+    "thai",
+    "vietnamese"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Sans Armenian",
+   "kind": "sans",
+   "note": "Armenian",
+   "scripts": [
+    "armenian",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Noto Sans Georgian",
+   "kind": "sans",
+   "note": "Georgian",
+   "scripts": [
+    "cyrillic",
+    "georgian",
+    "greek",
+    "latin"
+   ],
+   "available": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ]
+  },
+  {
+   "family": "Carlito",
+   "kind": "sans",
+   "note": "Same widths as Calibri",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    700
+   ]
+  },
+  {
+   "family": "Caladea",
+   "kind": "serif",
+   "note": "Same widths as Cambria",
+   "scripts": [
+    "latin"
+   ],
+   "available": [
+    400,
+    700
+   ]
+  },
+  {
+   "family": "Arimo",
+   "kind": "sans",
+   "note": "Same widths as Arial",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "hebrew",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  {
+   "family": "Tinos",
+   "kind": "serif",
+   "note": "Same widths as Times New Roman",
+   "scripts": [
+    "cyrillic",
+    "greek",
+    "hebrew",
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    700
+   ]
+  },
+  {
+   "family": "Gelasio",
+   "kind": "serif",
+   "note": "Same widths as Georgia",
+   "scripts": [
+    "latin",
+    "vietnamese"
+   ],
+   "available": [
+    400,
+    500,
+    600,
+    700
+   ]
+  }
+ ],
+ "pairings": [
+  {
+   "label": "Clean",
+   "display": "Inter Tight",
+   "body": "Inter",
+   "note": "Modern, neutral, works for anything"
+  },
+  {
+   "label": "Product",
+   "display": "Manrope",
+   "body": "Inter",
+   "note": "Friendly tech and SaaS"
+  },
+  {
+   "label": "Technical",
+   "display": "Geist",
+   "body": "Geist",
+   "note": "Developer tools, data, AI"
+  },
+  {
+   "label": "Swiss",
+   "display": "Instrument Sans",
+   "body": "Instrument Sans",
+   "note": "Grid-led, confident"
+  },
+  {
+   "label": "Startup",
+   "display": "Bricolage Grotesque",
+   "body": "DM Sans",
+   "note": "Pitch decks with personality"
+  },
+  {
+   "label": "Bold",
+   "display": "Syne",
+   "body": "Manrope",
+   "note": "Culture, events, agencies"
+  },
+  {
+   "label": "Poster",
+   "display": "Bebas Neue",
+   "body": "Inter",
+   "note": "Huge condensed headlines"
+  },
+  {
+   "label": "Editorial",
+   "display": "Fraunces",
+   "body": "Inter",
+   "note": "Essays, strategy, thought leadership"
+  },
+  {
+   "label": "Magazine",
+   "display": "Playfair Display",
+   "body": "Source Serif 4",
+   "note": "Long reads, reports"
+  },
+  {
+   "label": "Newsroom",
+   "display": "Newsreader",
+   "body": "Schibsted Grotesk",
+   "note": "Research and briefings"
+  },
+  {
+   "label": "Luxury",
+   "display": "Cormorant Garamond",
+   "body": "Manrope",
+   "note": "Real estate, hospitality, wealth"
+  },
+  {
+   "label": "Fashion",
+   "display": "Bodoni Moda",
+   "body": "Jost",
+   "note": "High contrast, fashion and beauty"
+  },
+  {
+   "label": "Classic",
+   "display": "EB Garamond",
+   "body": "EB Garamond",
+   "note": "Books, formal documents"
+  },
+  {
+   "label": "Corporate",
+   "display": "IBM Plex Sans",
+   "body": "IBM Plex Sans",
+   "note": "Board packs, finance"
+  },
+  {
+   "label": "Arabic modern",
+   "display": "Readex Pro",
+   "body": "IBM Plex Sans Arabic",
+   "note": "Arabic + English, contemporary"
+  },
+  {
+   "label": "Arabic corporate",
+   "display": "IBM Plex Sans Arabic",
+   "body": "IBM Plex Sans Arabic",
+   "note": "Government and business"
+  },
+  {
+   "label": "Arabic geometric",
+   "display": "Alexandria",
+   "body": "Tajawal",
+   "note": "Bold, modern Gulf brands"
+  },
+  {
+   "label": "Arabic classic",
+   "display": "Amiri",
+   "body": "Noto Naskh Arabic",
+   "note": "Formal and traditional"
+  },
+  {
+   "label": "Cyrillic modern",
+   "display": "Unbounded",
+   "body": "Onest",
+   "note": "Bold Russian/Ukrainian decks"
+  },
+  {
+   "label": "Cyrillic editorial",
+   "display": "Playfair Display",
+   "body": "PT Serif",
+   "note": "Russian editorial"
+  },
+  {
+   "label": "Japanese",
+   "display": "Zen Kaku Gothic New",
+   "body": "Noto Sans JP",
+   "note": "Clean Japanese"
+  },
+  {
+   "label": "Japanese classic",
+   "display": "Noto Serif JP",
+   "body": "Noto Sans JP",
+   "note": "Formal Japanese"
+  },
+  {
+   "label": "Korean",
+   "display": "Noto Sans KR",
+   "body": "Noto Sans KR",
+   "note": "Clean Korean"
+  },
+  {
+   "label": "Chinese",
+   "display": "Noto Sans SC",
+   "body": "Noto Sans SC",
+   "note": "Simplified Chinese"
+  }
+ ]
+}

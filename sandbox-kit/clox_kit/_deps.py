@@ -17,8 +17,33 @@ _PIP_NAMES = {
     "matplotlib": "matplotlib",
     "pdfplumber": "pdfplumber",
     "xlrd": "xlrd",
+    "fontTools": "fonttools",
+    "arabic_reshaper": "arabic-reshaper",
+    "bidi": "python-bidi",
 }
 _tried: set[str] = set()
+
+
+def ensure(module: str, pip_name: str | None = None):
+    """Import `module`, installing it once if missing. Returns the module or None.
+    For packages other libraries import optionally at load time (reportlab
+    looks for uharfbuzz once, on import) — the caller hands it over itself."""
+    try:
+        return importlib.import_module(module)
+    except ImportError:
+        pass
+    if module in _tried:
+        return None
+    _tried.add(module)
+    print(f"[clox_kit] installing {pip_name or module} (one time, a few seconds)…", file=sys.stderr, flush=True)
+    try:
+        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--prefer-binary",
+                        "--disable-pip-version-check", pip_name or module], check=True, timeout=150)
+        importlib.invalidate_caches()
+        return importlib.import_module(module)
+    except Exception as e:  # noqa: BLE001
+        print(f"[clox_kit] could not install {pip_name or module}: {e}", file=sys.stderr)
+        return None
 
 
 class _AutoInstall:

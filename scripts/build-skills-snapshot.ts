@@ -64,6 +64,13 @@ const PYTHON_PACKAGES: string[] = [
   // clox_kit PNG charts (decks/PDF reports). The kit auto-installs it
   // on first use when the snapshot predates this line.
   'matplotlib>=3.8',
+  // Arabic / Hebrew / Indic text in clox_kit PDFs and charts (HarfBuzz
+  // shaping for reportlab, glyph tables). The font files themselves are
+  // added by scripts/add-font-library.ts on top of this snapshot.
+  'uharfbuzz',
+  'fonttools',
+  'arabic-reshaper',
+  'python-bidi',
 ]
 
 const SKILLS_REPO_URL    = 'https://github.com/anthropics/skills.git'

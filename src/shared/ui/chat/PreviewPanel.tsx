@@ -8,8 +8,11 @@ import {
 } from '@/shared/ui/components/file-preview'
 import type { Palette } from './palettes'
 import { closePreview, selectPreview, usePreview } from './preview-store'
+import FontPicker from './FontPicker'
 
 const WIDTH_KEY = 'clox_preview_width'
+/** Files whose fonts the kit sets: decks, reports, documents. */
+const FONT_FILE = /\.(pptx|pdf|docx)$/i
 const MIN_WIDTH = 360
 
 /** Room the left rail takes, and the least the chat should keep. */
@@ -147,6 +150,7 @@ export default function PreviewPanel({ p }: { p: Palette }) {
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+          {FONT_FILE.test(file.filename) && <FontPicker key={file.url} filename={file.filename} p={p} />}
           {twin && (
             <a className="clox-pv-btn" href={downloadUrl(twin.url)} download={twin.filename} target="_blank" rel="noreferrer">
               PDF

@@ -60,6 +60,7 @@ class Canvas:
         return font
 
     def fit(self, s, font, w, h, size, min_size=None, lh=1.15, tracking=0.0, max_lines=None):
+        font = T.resolve(str(s), font)[0]
         size_, lines, ok = T.fit(s, self.mfont(font), w, h, size, min_size, lh, tracking, max_lines,
                                  self.factor(font))
         if not ok:
@@ -77,6 +78,12 @@ class Canvas:
             s = s.upper()
         font = self.t.font(role) if role in ("display", "display_soft", "body", "medium", "semibold", "bold",
                                               "italic", "mono") else role
+        font, flow = T.resolve(s, font)
+        if flow.rtl and align == "left":
+            align = "right"
+        if flow.shaped:
+            tracking = 0.0   # spacing letters apart breaks joined scripts
+        self.flow = flow
         size_, lines, _ = self.fit(s, font, w, h, size, min_size, lh, tracking, max_lines)
         used = len(lines) * size_ * lh
         top = y
@@ -85,13 +92,16 @@ class Canvas:
         elif valign == "bottom":
             top = y + h - used
         self._draw_text(x, top, w, used, s, lines, font, size_, color or self.t.ink, align, lh, tracking)
+        self.flow = T.PLAIN
         return used
+
+    flow = T.PLAIN
 
     def measure(self, s, role="body", size=28, w=1000, lh=1.18, upper=False):
         if not s:
             return 0
         s = str(s).upper() if upper else str(s)
-        font = self.t.font(role)
+        font = T.resolve(s, self.t.font(role))[0]
         return T.block_height(s, self.mfont(font), size * self.factor(font), w, lh) / self.factor(font)
 
 
@@ -224,6 +234,8 @@ class PptxCanvas(Canvas):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.alignment = al
             p.line_spacing = lh * 0.92
+            if self.flow.rtl:
+                p._p.get_or_add_pPr().set("rtl", "1")
             r = p.add_run()
             r.text = para
             f = r.font
@@ -283,26 +295,97 @@ class PptxCanvas(Canvas):
 _REGISTERED: set[str] = set()
 
 
-def register_pdf_fonts():
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from .fonts import all_files
-    files = [os.path.join(T.FONT_DIR, fn) for fn in os.listdir(T.FONT_DIR) if fn.endswith(".ttf")]
-    try:
-        files += all_files()
-    except OSError:
-        pass
-    for path in files:
-        name = os.path.basename(path)[:-4]
-        if name not in _REGISTERED:
-            pdfmetrics.registerFont(TTFont(name, path))
-            _REGISTERED.add(name)
+def pdf_font(name: str) -> str:
+    """Register one font with reportlab the first time it is used. (The library
+    holds ~600 files; parsing them all up front would cost seconds per PDF.)"""
+    if name not in _REGISTERED:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        pdfmetrics.registerFont(TTFont(name, T.font_path(name)))
+        _REGISTERED.add(name)
+    return name
+
+
+def register_pdf_fonts(theme=None):
+    """The bundled fonts and every font the theme uses."""
+    for fn in os.listdir(T.FONT_DIR):
+        if fn.endswith(".ttf"):
+            pdf_font(fn[:-4])
+    if theme is not None:
+        for role in ("display", "display_soft", "body", "medium", "semibold", "bold", "italic", "mono"):
+            pdf_font(theme.font(role))
+
+
+def pdf_family(font: str) -> str:
+    """Register a fallback font as a reportlab family so <b> and <i> map onto it."""
+    from reportlab.pdfbase.pdfmetrics import registerFontFamily
+    pdf_font(font)
+    if font.startswith("gf-"):
+        fam, _, w, _ = T.style_of(font)
+        bold = T._variant(fam, max(w, 700), False) or font
+        registerFontFamily(font, normal=font, bold=pdf_font(bold), italic=font, boldItalic=pdf_font(bold))
+    return font
+
+
+def shaping_engine() -> bool:
+    """HarfBuzz for reportlab. reportlab only looks for it when it is first
+    imported, so a late install is handed to it directly."""
+    from reportlab.pdfbase import ttfonts
+    if getattr(ttfonts, "uharfbuzz", None) is None:
+        from ._deps import ensure
+        hb = ensure("uharfbuzz")
+        if hb is None:
+            return False
+        ttfonts.uharfbuzz = hb
+    return True
+
+
+def shaped_line(c, x_pt, base_pt, w_pt, text, font, size_pt, color, align, rtl):
+    """One line of Arabic, Hebrew, Indic or Thai text: shaped and, for RTL
+    scripts, laid out right to left (reportlab's Paragraph does the bidi work)."""
+    from html import escape
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph
+    pdf_family(font)
+    shaping = 1 if shaping_engine() else 0
+    extra = size_pt * 4   # room so reportlab never re-wraps a line we already broke
+    al = {"left": TA_LEFT, "center": TA_CENTER, "right": TA_RIGHT}[align]
+    x0 = x_pt - (extra if align == "right" else extra / 2 if align == "center" else 0)
+    st = ParagraphStyle("l", fontName=font, fontSize=size_pt, leading=size_pt, textColor=HexColor(color),
+                        alignment=al, wordWrap="RTL" if rtl else None, shaping=shaping)
+    p = Paragraph(escape(text, quote=False), st)
+    p.wrap(w_pt + extra, size_pt * 4)
+    # One line with leading = font size: its baseline sits on the bottom edge.
+    p.drawOn(c, x0, base_pt)
+
+
+def pdf_line(c, x_pt, base_pt, w_pt, text, font, size_pt, color, align="left"):
+    """One line of any script on a reportlab canvas: picks a font that can write
+    it, shapes it when needed, and right-aligns right-to-left text."""
+    text = str(text)
+    font, flow = T.resolve(text, font)
+    if flow.rtl and align == "left":
+        align = "right"
+    if flow.shaped:
+        shaped_line(c, x_pt, base_pt, w_pt, text, font, size_pt, color, align, flow.rtl)
+        return
+    from reportlab.lib.colors import HexColor
+    c.setFillColor(HexColor(color))
+    c.setFont(pdf_font(font), size_pt)
+    if align == "right":
+        c.drawRightString(x_pt + w_pt, base_pt, text)
+    elif align == "center":
+        c.drawCentredString(x_pt + w_pt / 2, base_pt, text)
+    else:
+        c.drawString(x_pt, base_pt, text)
 
 
 class PdfCanvas(Canvas):
     def __init__(self, theme, c, tmpdir):
         super().__init__(theme)
-        register_pdf_fonts()
+        register_pdf_fonts(theme)
         self.c = c
         self.tmp = tmpdir
 
@@ -360,14 +443,18 @@ class PdfCanvas(Canvas):
     def _draw_text(self, x, top, w, used, s, lines, font, size, color, align, lh, tracking):
         from reportlab.pdfbase import pdfmetrics
         c = self.c
-        f = pdfmetrics.getFont(font)
+        f = pdfmetrics.getFont(pdf_font(font))
         asc, desc = f.face.ascent / 1000, -f.face.descent / 1000
         sp = size * PT
+        flow = self.flow
         c.saveState()
         self._fill(color)
         for i, ln in enumerate(lines):
             line_top = top + i * size * lh
             base = line_top + (size * lh - (asc + desc) * size) / 2 + asc * size
+            if flow.shaped:
+                shaped_line(c, self.X(x), self.Y(base), w * PT, ln, font, sp, color, align, flow.rtl)
+                continue
             lw = pdfmetrics.stringWidth(ln, font, sp) + tracking * sp * max(0, len(ln) - 1)
             if align == "center":
                 lx = self.X(x) + (w * PT - lw) / 2
