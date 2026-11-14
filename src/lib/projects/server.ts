@@ -25,6 +25,9 @@ export function getServiceClient(): SupabaseClient {
   }
   return createServiceClient(SERVICE_URL, SERVICE_ROLE, {
     auth: { autoRefreshToken: false, persistSession: false },
+    // Next.js kept the first auth.admin.generateLink answer per email in its data
+    // cache, so a person's second Sota OS sign-in reused a spent token and failed.
+    global: { fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }) },
   })
 }
 
