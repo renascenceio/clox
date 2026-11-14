@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { AUTO_SSO_HOSTS, LEGACY_HOSTS, OMMA_ORIGIN, SSO_TRIED_COOKIE, crmSignInUrl, safeNext } from '@/lib/gaia-sso-config'
+import { AUTO_SSO_HOSTS, LEGACY_HOSTS, OMMA_ORIGIN, SIGNED_OUT_COOKIE, SSO_TRIED_COOKIE, SSO_TRIED_SECONDS, crmSignInUrl, safeNext } from '@/lib/gaia-sso-config'
 
 /** Pages anyone can open without signing in. */
 const PUBLIC_PREFIXES = ['/login', '/signup', '/forgot-password', '/auth/', '/invite/', '/privacy', '/cookies', '/terms', '/api/', '/manifest.webmanifest', '/sw.js', '/offline.html', '/icons/', '/brand/']
@@ -57,11 +57,12 @@ export async function updateSession(request: NextRequest) {
     request.method === 'GET' &&
     (!isPublic(pathname) || pathname === '/' || pathname === '/login') &&
     !request.nextUrl.searchParams.has('sso') &&
-    !request.cookies.get(SSO_TRIED_COOKIE)
+    !request.cookies.get(SSO_TRIED_COOKIE) &&
+    !request.cookies.get(SIGNED_OUT_COOKIE)
   ) {
     const next = pathname === '/login' ? safeNext(request.nextUrl.searchParams.get('redirect')) : pathname === '/' ? '/text' : pathname + search
     const res = redirectKeepingCookies(new URL(crmSignInUrl(`https://${host}`, next)))
-    res.cookies.set(SSO_TRIED_COOKIE, '1', { path: '/', sameSite: 'lax', secure: true, httpOnly: true })
+    res.cookies.set(SSO_TRIED_COOKIE, '1', { path: '/', sameSite: 'lax', secure: true, httpOnly: true, maxAge: SSO_TRIED_SECONDS })
     return res
   }
 

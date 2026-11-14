@@ -2,6 +2,7 @@ import { type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/projects/server'
 import { safeNext, verifyTicket } from '@/lib/gaia-sso'
+import { SIGNED_OUT_COOKIE, SSO_TRIED_COOKIE } from '@/lib/gaia-sso-config'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,5 +62,9 @@ export async function GET(request: NextRequest) {
   // Old tickets are only kept long enough to refuse a replay.
   await admin.from('sso_nonces').delete().lt('created_at', new Date(Date.now() - 86_400_000).toISOString())
 
-  return go(next)
+  const res = go(next)
+  for (const name of [SSO_TRIED_COOKIE, SIGNED_OUT_COOKIE]) {
+    res.headers.append('Set-Cookie', `${name}=; Path=/; Max-Age=0; SameSite=Lax; Secure`)
+  }
+  return res
 }

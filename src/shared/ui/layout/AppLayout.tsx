@@ -23,6 +23,7 @@ import ThemeToggle from '@/shared/ui/components/ThemeToggle'
 import LanguageSwitcher from '@/shared/ui/components/LanguageSwitcher'
 import Avatar from '@/shared/ui/components/Avatar'
 import { createClient } from '@/lib/supabase/client'
+import { markSignedOut } from '@/lib/gaia-sso-config'
 import { syncLocalChatsToDB } from '@/lib/projects/chat-sync'
 import { openPreferences } from '@/lib/consent/store'
 
@@ -283,6 +284,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     profileFetchedThisSession = false
     try { window.sessionStorage.removeItem(PROFILE_CACHE_KEY) } catch { /* fine */ }
     const supabase = createClient()
+    markSignedOut()
     await supabase.auth.signOut()
     window.location.href = '/login'
   }
@@ -295,6 +297,7 @@ export default function AppLayout({ children, sidebar, rightPanel }: AppLayoutPr
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (user) await supabase.from('profiles').delete().eq('id', user.id)
+    markSignedOut()
     await supabase.auth.signOut()
     window.location.href = '/login'
   }

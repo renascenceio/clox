@@ -26,6 +26,7 @@ import {
 } from './palettes'
 import type { AppLanguage, RailNavItem } from './ChatWorkspace'
 import { createClient } from '@/lib/supabase/client'
+import { markSignedOut } from '@/lib/gaia-sso-config'
 import { SIGNED_OUT_USER, cachedIdentity, watchIdentity, type ChromeUser } from './chrome-identity'
 
 export type ActiveRail =
@@ -93,6 +94,7 @@ export function useChatChrome(active: ActiveRail) {
   async function handleSignOut() {
     try {
       const supabase = createClient()
+      markSignedOut()
       await supabase.auth.signOut()
     } catch (e) {
       console.error('[v0] sign-out error:', e)
